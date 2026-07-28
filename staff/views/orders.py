@@ -1,0 +1,179 @@
+from django.contrib import messages
+from django.core.exceptions import ValidationError
+from django.core.paginator import Paginator
+from django.db import transaction
+from django.shortcuts import render, redirect, get_object_or_404
+from django.urls import reverse
+
+from orders.models import Order, OrderItem
+from staff.permissions import perm_required
+from tags.services import tags_for_many
+
+STAFF_LIST_PAGE_SIZE = 30
+ITEMS_PER_PRINT_PAGE = 14  # لو الأصناف زادت عن كده، النسخة القابلة للطباعة بتتقسم لصفحات مرقّمة 1/ن، 2/ن...
+ITEMS_PER_DETAIL_PAGE = 20  # ترقيم صفحات جدول الأصناف في تفاصيل الطلب (تفادي صفحة طويلة جدًا لو الطلب فيه أصناف كتير)
+
+
+@perm_required('orders.view_order')
+def order_list(request):
+    status = request.GET.get('status', '')
+    orders = Order.objects.select_related('client').prefetch_related('items')
+
+    if status:
+        orders = orders.filter(status=status)
+
+    paginator = Paginator(orders, STAFF_LIST_PAGE_SIZE)
+    page_obj = paginator.get_page(request.GET.get('page'))
+
+    # وسم كل طلب في الصفحة الحالية باستعلام واحد بدل ما نستدعي tags_for
+    # لكل صف على حدة (N+1) — الوسوم بتتعرض صغيرة تحت رقم الطلب في الجدول.
+    tags_by_order_id = tags_for_many(Order, [order.pk for order in page_obj])
+    for order in page_obj:
+        order.tag_list = tags_by_order_id.get(order.pk, [])
+
+    context = {
+        'orders': page_obj,
+        'page_obj': page_obj,
+        'selected_status': status,
+        'status_choices': Order.Status.choices,
+    }
+    return render(request, 'staff/orders/list.html', context)
+
+
+@perm_required('orders.view_order')
+def order_print(request, pk):
+    """
+    نسخة قابلة للطباعة من الطلب — لتسهيل المراجعة اليدوية على المخزن
+    أثناء التحضير أو قبل اتخاذ قرار التأكيد/الرفض. بدون WeasyPrint،
+    بنفس أسلوب invoices/print.html (window.print() من المتصفح).
+
+    لو عدد الأصناف أكتر من ITEMS_PER_PRINT_PAGE، بتتقسم لصفحات طباعة
+    منفصلة مرقّمة "1/ن"، "2/ن"...، والإجمالي بيظهر في آخر صفحة بس.
+    """
+    order = get_object_or_404(
+        Order.objects.select_related('client', 'client__client_profile').prefetch_related(
+            'items__product_unit__product__inventory'
+        ),
+        pk=pk,
+    )
+    all_items = list(order.items.all())
+    for idx, item in enumerate(all_items, start=1):
+        item.display_index = idx
+    item_pages = [
+        all_items[i:i + ITEMS_PER_PRINT_PAGE]
+        for i in range(0, len(all_items), ITEMS_PER_PRINT_PAGE)
+    ] or [[]]
+    return render(request, 'staff/orders/print.html', {
+        'order': order,
+        'item_pages': item_pages,
+        'item_count': len(all_items),
+    })
+
+
+@perm_required('orders.view_order')
+def order_detail(request, pk):
+    order = get_object_or_404(
+        Order.objects.select_related('client').prefetch_related('items__product_unit__product__inventory'),
+        pk=pk,
+    )
+
+    # أول ما الموظف/الأدمن يفتح تفاصيل الطلب، بيتحدد "متفتح" فورًا — بيُستخدم
+    # في عداد "طلبات لسه ماتفتحتش" على الصفحة الرئيسية للوحة التحكم.
+    if not order.viewed_by_staff:
+        order.viewed_by_staff = True
+        order.save(update_fields=['viewed_by_staff'])
+
+    if request.method == 'POST':
+        # الإجراءات دي بتعدّل حالة الطلب فعليًا (تأكيد/رفض/تسليم/تعديل كمية)
+        # فمحتاجة صلاحية "تعديل" مش "عرض" بس.
+        if not request.user.has_perm('orders.change_order'):
+            messages.error(request, 'ليس لديك صلاحية تعديل الطلبات. تواصل مع الأدمن.')
+            return redirect('staff:order_detail', pk=order.pk)
+
+        action = request.POST.get('action')
+
+        if action == 'update_quantities':
+            any_changed = False
+            for item in order.items.all():
+                field_name = f'quantity_{item.pk}'
+                if field_name not in request.POST:
+                    continue
+                try:
+                    new_qty = int(request.POST.get(field_name))
+                except (TypeError, ValueError):
+                    continue
+                if new_qty == item.quantity or new_qty < 0:
+                    continue
+                if new_qty == 0:
+                    messages.error(request, 'لا يمكن تصفير كمية صنف من هنا، استخدم خيار رفض الطلب إذا أردت إزالته بالكامل.')
+                    continue
+                try:
+                    order.amend_item_quantity(item, new_qty, actor=request.user)
+                    any_changed = True
+                except ValueError as e:
+                    messages.error(request, str(e))
+
+            if any_changed:
+                order.send_for_client_approval(actor=request.user)
+                messages.success(request, 'تم تعديل الكميات وإرسال الطلب للعميل للموافقة على التعديل.')
+            else:
+                messages.info(request, 'لم يتم تطبيق أي تعديلات.')
+            return redirect('staff:order_detail', pk=order.pk)
+
+        elif action == 'confirm':
+            if order.is_amended and order.status != Order.Status.NEEDS_APPROVAL:
+                messages.error(request, 'يحتوي الطلب على تعديلات بانتظار موافقة العميل، ولا يمكن تأكيده مباشرة.')
+            else:
+                order.confirm(actor=request.user)
+                messages.success(request, f'تم تأكيد الطلب #{order.pk}.')
+            return redirect('staff:order_detail', pk=order.pk)
+
+        elif action == 'reject':
+            reason = request.POST.get('reason', '')
+            try:
+                order.reject(actor=request.user, reason=reason)
+                messages.success(request, f'تم رفض الطلب #{order.pk}.')
+            except ValueError as e:
+                messages.error(request, str(e))
+            return redirect('staff:order_detail', pk=order.pk)
+
+        elif action == 'deliver':
+            if order.status != Order.Status.CONFIRMED:
+                messages.error(request, 'يجب تأكيد الطلب أولًا قبل التسليم.')
+            else:
+                try:
+                    with transaction.atomic():
+                        order.mark_delivered(actor=request.user)
+                    messages.success(request, f'تم تسليم الطلب #{order.pk} وإصدار الفاتورة.')
+                except ValidationError as e:
+                    messages.error(request, f'تعذّر تسليم الطلب: {"، ".join(e.messages)}')
+            return redirect('staff:order_detail', pk=order.pk)
+
+    items_qs = order.items.select_related('product_unit__product__inventory').order_by('pk')
+    items_paginator = Paginator(items_qs, ITEMS_PER_DETAIL_PAGE)
+    items_page = items_paginator.get_page(request.GET.get('page'))
+
+    # قائمة الإجراءات الموحدة (مرحلة 4) — كانت روابط طباعة متفرقة
+    # (نسخة المراجعة اليدوية + الفاتورة) متبعثرة في أماكن مختلفة من
+    # الصفحة، دلوقتي مجمّعة في قائمة منسدلة واحدة.
+    order_actions = []
+    if order.status in (Order.Status.PENDING, Order.Status.NEEDS_APPROVAL, Order.Status.CONFIRMED):
+        order_actions.append({
+            'label': 'طباعة الطلب للمراجعة اليدوية',
+            'href': reverse('staff:order_print', args=[order.pk]),
+            'icon': 'printer',
+            'target': '_blank',
+        })
+    if order.status == Order.Status.DELIVERED and hasattr(order, 'invoice'):
+        order_actions.append({
+            'label': f'عرض/طباعة الفاتورة ({order.invoice.invoice_number})',
+            'href': reverse('invoices:print', args=[order.invoice.pk]),
+            'icon': 'printer',
+            'target': '_blank',
+        })
+
+    return render(request, 'staff/orders/detail.html', {
+        'order': order,
+        'items_page': items_page,
+        'order_actions': order_actions,
+    })

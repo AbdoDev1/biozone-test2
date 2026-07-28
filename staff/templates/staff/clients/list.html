@@ -1,0 +1,154 @@
+{% extends 'staff/base.html' %}
+{% load staff_ui %}
+{% block title %}العملاء — Biozone{% endblock %}
+{% block breadcrumbs %}
+<nav class="flex items-center text-sm text-gray-500 mb-4">
+    {% crumb "الرئيسية" "staff:dashboard" %}
+    {% crumb "العملاء" %}
+</nav>
+{% endblock %}
+{% block content %}
+
+<h1 class="text-2xl font-bold text-gray-800 mb-6">المراجعة على العملاء وإدارة الصلاحيات</h1>
+
+<!-- طلبات الانتظار -->
+<div class="mb-8">
+    <h2 class="text-lg font-semibold text-yellow-600 mb-3">طلبات التسجيل ({{ pending|length }})</h2>
+    {% if pending %}
+    <div class="bg-white rounded-2xl shadow-sm overflow-hidden">
+        <table class="w-full text-sm">
+            <thead class="bg-gray-50 text-gray-600">
+                <tr>
+                    <th class="px-4 py-3 text-right">اسم النشاط</th>
+                    <th class="px-4 py-3 text-right">النوع</th>
+                    <th class="px-4 py-3 text-right">رقم الهاتف</th>
+                    <th class="px-4 py-3 text-right">إجراء</th>
+                </tr>
+            </thead>
+            <tbody class="divide-y divide-gray-100">
+                {% for profile in pending %}
+                <tr class="hover:bg-gray-50">
+                    <td class="px-4 py-3 font-medium">
+                        <a href="{% url 'staff:client_detail' profile.pk %}" class="text-primary-600 hover:underline">
+                            {{ profile.business_name }}
+                        </a>
+                    </td>
+                    <td class="px-4 py-3">{{ profile.account_type.name }}</td>
+                    <td class="px-4 py-3">{{ profile.phone }}</td>
+                    <td class="px-4 py-3 flex gap-2">
+                        <a href="{% url 'staff:client_approve' profile.pk %}"
+                           class="bg-green-500 hover:bg-green-600 text-white px-3 py-1 rounded-lg text-xs">موافقة</a>
+
+                        <div x-data="{ open: false }" class="inline-block">
+                            <button type="button" @click="open = true"
+                                    class="bg-red-500 hover:bg-red-600 text-white px-3 py-1 rounded-lg text-xs">رفض</button>
+
+                            <div x-show="open" x-cloak
+                                 class="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4">
+                                <div x-show="open" x-transition @click.outside="open = false"
+                                     class="bg-white rounded-2xl shadow-lg p-6 w-full max-w-sm text-center">
+                                    <p class="text-gray-800 font-bold mb-1">تأكيد رفض الحساب</p>
+                                    <p class="text-sm text-gray-500 mb-5">
+                                        هل أنت متأكد من رفض حساب
+                                        <span class="font-bold text-red-600">{{ profile.business_name }}</span>؟
+                                        الإجراء ده مينفعش يترجع فيه من غير مراجعة الطلب تاني.
+                                    </p>
+                                    <form method="POST" action="{% url 'staff:client_reject' profile.pk %}"
+                                          class="flex gap-3 justify-center">
+                                        {% csrf_token %}
+                                        {% btn "نعم، رفض" type="submit" variant="danger" size="sm" %}
+                                        {% btn "إلغاء" type="button" variant="secondary" size="sm" extra_attrs='@click="open = false"' %}
+                                    </form>
+                                </div>
+                            </div>
+                        </div>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% else %}
+    <p class="text-gray-400 text-sm">لا يوجد طلبات في الانتظار</p>
+    {% endif %}
+</div>
+
+<!-- العملاء النشطين -->
+<div class="mb-8" id="active-clients">
+    <h2 class="text-lg font-semibold text-green-600 mb-3">العملاء النشطين ({{ total_active }})</h2>
+    {% if active %}
+    <div class="bg-white rounded-2xl shadow-sm overflow-hidden">
+        <table class="w-full text-sm">
+            <thead class="bg-gray-50 text-gray-600">
+                <tr>
+                    <th class="px-4 py-3 text-right">اسم النشاط</th>
+                    <th class="px-4 py-3 text-right">النوع</th>
+                    <th class="px-4 py-3 text-right">رقم الهاتف</th>
+                    <th class="px-4 py-3 text-right">تفاصيل</th>
+                </tr>
+            </thead>
+            <tbody class="divide-y divide-gray-100">
+                {% for profile in active %}
+                <tr class="hover:bg-gray-50">
+                    <td class="px-4 py-3 font-medium">{{ profile.business_name }}</td>
+                    <td class="px-4 py-3">{{ profile.account_type.name }}</td>
+                    <td class="px-4 py-3">{{ profile.phone }}</td>
+                    <td class="px-4 py-3">
+                        <a href="{% url 'staff:client_detail' profile.pk %}"
+                           class="text-primary-600 hover:underline text-xs">عرض</a>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% if active_page_obj.paginator.num_pages > 1 %}
+    <div class="flex items-center justify-center gap-2 mt-4 text-sm">
+        {% if active_page_obj.has_previous %}
+        <a href="?active_page={{ active_page_obj.previous_page_number }}#active-clients"
+           class="px-3 py-2 rounded-lg bg-white shadow-sm hover:bg-primary-50 text-gray-600">السابق</a>
+        {% endif %}
+        <span class="text-gray-500 px-2">صفحة {{ active_page_obj.number }} من {{ active_page_obj.paginator.num_pages }}</span>
+        {% if active_page_obj.has_next %}
+        <a href="?active_page={{ active_page_obj.next_page_number }}#active-clients"
+           class="px-3 py-2 rounded-lg bg-white shadow-sm hover:bg-primary-50 text-gray-600">التالي</a>
+        {% endif %}
+    </div>
+    {% endif %}
+    {% else %}
+    <p class="text-gray-400 text-sm">لا يوجد عملاء نشطين</p>
+    {% endif %}
+</div>
+
+{% if rejected %}
+<div>
+    <h2 class="text-lg font-semibold text-red-500 mb-3">المرفوضين ({{ rejected|length }})</h2>
+    <div class="bg-white rounded-2xl shadow-sm overflow-hidden">
+        <table class="w-full text-sm">
+            <thead class="bg-gray-50 text-gray-600">
+                <tr>
+                    <th class="px-4 py-3 text-right">اسم النشاط</th>
+                    <th class="px-4 py-3 text-right">النوع</th>
+                    <th class="px-4 py-3 text-right">رقم الهاتف</th>
+                    <th class="px-4 py-3 text-right">إجراء</th>
+                </tr>
+            </thead>
+            <tbody class="divide-y divide-gray-100">
+                {% for profile in rejected %}
+                <tr class="hover:bg-gray-50">
+                    <td class="px-4 py-3 font-medium">{{ profile.business_name }}</td>
+                    <td class="px-4 py-3">{{ profile.account_type.name }}</td>
+                    <td class="px-4 py-3">{{ profile.phone }}</td>
+                    <td class="px-4 py-3">
+                        <a href="{% url 'staff:client_approve' profile.pk %}"
+                           class="bg-green-500 hover:bg-green-600 text-white px-3 py-1 rounded-lg text-xs">تفعيل</a>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endif %}
+
+{% endblock %}

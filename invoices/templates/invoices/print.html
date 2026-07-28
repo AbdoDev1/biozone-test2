@@ -1,0 +1,176 @@
+{% load humanize %}
+{% load static %}
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>فاتورة {{ invoice.invoice_number }}</title>
+    <link rel="stylesheet" href="{% static 'css/tailwind.css' %}">
+    <link rel="stylesheet" href="{% static 'css/fonts.css' %}">
+    <style>
+        body { font-family: 'Cairo', system-ui, sans-serif; }
+        .num { font-variant-numeric: tabular-nums; }
+        @media print {
+            .no-print { display: none !important; }
+            body { padding: 0 !important; background: #fff !important; }
+            .invoice-sheet { border-width: 1.5px !important; box-shadow: none !important; }
+            .invoice-sheet:not(:last-child) { page-break-after: always; }
+            .invoice-sheet + .invoice-sheet { margin-top: 0 !important; }
+        }
+    </style>
+</head>
+<body class="bg-gray-100 py-8">
+
+    <!-- زرار الطباعة — بيختفي تلقائيًا وقت الطباعة الفعلية -->
+    <div class="no-print max-w-3xl mx-auto mb-4 px-4 flex justify-between items-center">
+        {% if item_pages|length > 1 %}
+        <p class="text-sm text-gray-500">
+            الفاتورة مقسّمة لـ {{ item_pages|length }} صفحات طباعة ({{ item_count }} صنف، {{ item_pages.0|length }} صنف بالصفحة).
+        </p>
+        {% else %}
+        <span></span>
+        {% endif %}
+        <div class="flex items-center gap-3">
+            <button onclick="window.print()"
+                    class="bg-primary-600 hover:bg-primary-700 text-white px-5 py-2 rounded-lg text-sm font-medium">
+                طباعة الفاتورة
+            </button>
+        </div>
+    </div>
+
+    {% for page_items in item_pages %}
+    <div class="invoice-sheet max-w-3xl mx-auto bg-white shadow border-2 border-gray-900 text-gray-900 {% if not forloop.last %}mb-8{% endif %}">
+
+        <!-- Header: هوية المتجر + بيانات الفاتورة والعميل كوحدة واحدة -->
+        <div class="border-b-2 border-gray-900">
+
+            <!-- شريط هوية المتجر -->
+            <div class="flex items-center gap-3 px-5 py-4 border-b border-gray-300">
+                <div class="w-14 h-14 shrink-0 rounded-full bg-gray-900 text-white flex items-center justify-center font-extrabold text-sm">
+                    BZ
+                </div>
+                <div class="flex-1">
+                    <h1 class="text-2xl font-extrabold leading-tight">Bio Zone <span class="text-gray-400">|</span> بيو زون</h1>
+                    <p class="text-gray-500 text-xs mt-0.5">للمستلزمات الطبية ومستحضرات التجميل</p>
+                </div>
+                <div class="text-left">
+                    <p class="text-gray-600 text-xs num leading-relaxed">
+                        010 555 46 330<br>01556462929 — 01101551533
+                    </p>
+                    {% if item_pages|length > 1 %}
+                    <p class="mt-1 inline-block bg-gray-900 text-white text-xs font-bold num px-2 py-0.5 rounded">
+                        {{ forloop.counter }}/{{ item_pages|length }}
+                    </p>
+                    {% endif %}
+                </div>
+            </div>
+
+            <!-- بيانات الفاتورة والعميل -->
+            <div class="grid grid-cols-2 sm:grid-cols-4 text-sm">
+                <div class="border-l border-gray-300 px-3 py-2">
+                    <p class="text-gray-500 text-xs">فاتورة رقم</p>
+                    <p class="font-bold">
+                        {{ invoice.invoice_number }}{% if item_pages|length > 1 %} <span class="text-gray-400">({{ forloop.counter }}/{{ item_pages|length }})</span>{% endif %}
+                    </p>
+                </div>
+                <div class="border-l border-gray-300 px-3 py-2">
+                    <p class="text-gray-500 text-xs">التاريخ</p>
+                    <p class="font-semibold num">{{ invoice.issued_at|date:"d/m/Y" }}</p>
+                </div>
+                <div class="border-l border-gray-300 px-3 py-2">
+                    <p class="text-gray-500 text-xs">اسم العميل</p>
+                    <p class="font-semibold">{{ invoice.client_business_name|default:invoice.client_name }}</p>
+                </div>
+                <div class="px-3 py-2">
+                    <p class="text-gray-500 text-xs">العنوان</p>
+                    <p class="font-semibold">{{ invoice.client_address|default:"—" }}</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- جدول الأصناف (أصناف الصفحة دي بس) -->
+        <table class="w-full text-sm border-collapse">
+            <thead>
+                <tr class="bg-gray-100 border-b-2 border-gray-900">
+                    <th class="py-2 px-2 border-l border-gray-300 w-10">م</th>
+                    <th class="py-2 px-2 border-l border-gray-300 text-start">الصنف</th>
+                    <th class="py-2 px-2 border-l border-gray-300 w-16">الكمية</th>
+                    <th class="py-2 px-2 border-l border-gray-300 w-20">السعر</th>
+                    <th class="py-2 px-2 border-l border-gray-300 w-20">الخصم</th>
+                    <th class="py-2 px-2 w-24">الإجمالي</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for item in page_items %}
+                <tr class="border-b border-gray-200 {% cycle '' 'bg-gray-50' %}">
+                    <td class="py-1.5 px-2 border-l border-gray-200 text-center text-gray-500 num">{{ item.display_index }}</td>
+                    <td class="py-1.5 px-2 border-l border-gray-200">
+                        {{ item.product_name }}
+                        <span class="text-gray-400 text-xs">({{ item.unit_name }})</span>
+                    </td>
+                    <td class="py-1.5 px-2 border-l border-gray-200 text-center num">{{ item.quantity }}</td>
+                    <td class="py-1.5 px-2 border-l border-gray-200 text-center text-gray-500 num">{{ item.public_price|floatformat:-2 }}</td>
+                    <td class="py-1.5 px-2 border-l border-gray-200 text-center text-gray-500 num">
+                        {% if item.discount_percent %}{{ item.discount_percent|floatformat:-2 }}%{% else %}—{% endif %}
+                    </td>
+                    <td class="py-1.5 px-2 text-center font-semibold num">{{ item.subtotal|floatformat:-2 }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+
+        {% if forloop.last %}
+        <!-- ملخص الفاتورة والحساب — بيظهر في آخر صفحة بس -->
+        <div class="border-t-2 border-gray-900">
+            <div class="grid grid-cols-2 sm:grid-cols-4 text-center text-sm">
+                <div class="border-l border-b border-gray-300 px-2 py-2">
+                    <p class="text-gray-500 text-xs">عدد الأصناف</p>
+                    <p class="font-bold num">{{ item_count }}</p>
+                </div>
+                <div class="border-l border-b border-gray-300 px-2 py-2">
+                    <p class="text-gray-500 text-xs">صافي الفاتورة</p>
+                    <p class="font-bold num">{{ invoice.total|floatformat:-2|intcomma }}</p>
+                </div>
+                <div class="border-l border-b border-gray-300 px-2 py-2">
+                    <p class="text-gray-500 text-xs">الحساب السابق</p>
+                    <p class="font-bold num">{{ previous_balance|floatformat:-2|intcomma }}</p>
+                </div>
+                <div class="border-b border-gray-300 px-2 py-2 bg-gray-100">
+                    <p class="text-gray-500 text-xs">الرصيد الحالي</p>
+                    <p class="font-extrabold text-base num">{{ current_balance|floatformat:-2|intcomma }}</p>
+                </div>
+            </div>
+
+            <!-- المبلغ بالحروف -->
+            <div class="border-b border-gray-300 px-4 py-2.5 text-sm text-center">
+                <span class="text-gray-500">صافي الفاتورة كتابةً: </span>
+                <span class="font-semibold">{{ amount_in_words }}</span>
+            </div>
+
+            <div class="grid grid-cols-2 sm:grid-cols-4 text-center text-sm">
+                <div class="border-l border-gray-300 px-2 py-2">
+                    <p class="text-gray-500 text-xs">المسدد</p>
+                    <p class="font-semibold num">0.00</p>
+                </div>
+                <div class="border-l border-gray-300 px-2 py-2">
+                    <p class="text-gray-500 text-xs">إجمالي الجمهور</p>
+                    <p class="font-semibold num">{{ public_total|floatformat:-2|intcomma }}</p>
+                </div>
+                <div class="border-l border-gray-300 px-2 py-2">
+                    <p class="text-gray-500 text-xs">المستخدم</p>
+                    <p class="font-semibold">{{ invoice.issued_by.get_full_name|default:invoice.issued_by.username|default:"—" }}</p>
+                </div>
+                <div class="px-2 py-2">
+                    <p class="text-gray-500 text-xs">الوقت</p>
+                    <p class="font-semibold num">{{ invoice.issued_at|date:"h:i A" }}</p>
+                </div>
+            </div>
+        </div>
+        {% endif %}
+
+    </div>
+    {% endfor %}
+
+</body>
+</html>

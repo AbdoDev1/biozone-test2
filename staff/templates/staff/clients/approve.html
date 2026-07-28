@@ -1,0 +1,62 @@
+{% extends 'staff/base.html' %}
+{% block title %}{% if profile.user.status == 'ACTIVE' %}صلاحيات {{ profile.business_name }}{% else %}تفعيل حساب {{ profile.business_name }}{% endif %} — Biozone{% endblock %}
+{% block breadcrumbs %}
+{% load staff_ui %}
+<nav class="flex items-center text-sm text-gray-500 mb-4">
+    {% crumb "الرئيسية" "staff:dashboard" %}
+    {% crumb "إدارة حسابات العملاء" "staff:clients" %}
+    {% crumb profile.business_name %}
+</nav>
+{% endblock %}
+
+{% block content %}
+
+<div class="max-w-xl mx-auto bg-white rounded-2xl shadow p-6 md:p-8">
+
+    <h1 class="text-xl font-bold text-gray-800 mb-1">
+        {% if profile.user.status == 'ACTIVE' %}تعديل نوع حساب {{ profile.business_name }}{% else %}تفعيل حساب {{ profile.business_name }}{% endif %}
+    </h1>
+    <p class="text-gray-500 text-sm mb-6">{{ profile.account_type.name }} — {{ profile.user.username }}</p>
+
+    <div class="bg-gray-50 rounded-xl p-4 mb-6 text-sm text-gray-500">
+        الأسعار والخصومات بتتحدد لكل صنف على حدة حسب نوع الحساب المختار — من شاشة
+        <a href="{% url 'staff:account_types' %}" class="text-primary-600 hover:underline">أنواع الحسابات وقوائم الخصومات</a>.
+    </div>
+
+    <form method="post" hx-push-url="false" class="space-y-5">
+        {% csrf_token %}
+
+        <div>
+            <label class="text-sm font-medium text-gray-700 mb-2 block">نوع الحساب</label>
+            {% if can_change_account_type %}
+            <select name="account_type"
+                    class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm outline-none focus:border-primary-400">
+                {% for type in account_types %}
+                <option value="{{ type.pk }}" {% if profile.account_type_id == type.pk %}selected{% endif %}>
+                    {{ type.name }}
+                </option>
+                {% endfor %}
+            </select>
+            {% else %}
+            <div class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm bg-gray-50 text-gray-600">
+                {{ profile.account_type.name }}
+            </div>
+            <p class="text-xs text-gray-400 mt-1">تغيير نوع الحساب متاح للأدمن فقط. تواصل مع الأدمن لو محتاج تعديله.</p>
+            {% endif %}
+        </div>
+
+        <div class="flex flex-col sm:flex-row gap-3 pt-2">
+            {% if profile.user.status == 'ACTIVE' %}
+            {% btn "حفظ الصلاحيات" type="submit" variant="success" size="lg" rounded="xl" %}
+            {% else %}
+            {% btn "تفعيل الحساب" type="submit" variant="success" size="lg" rounded="xl" %}
+            {% endif %}
+            <a href="{% url 'staff:clients' %}"
+               class="text-center border border-gray-200 text-gray-600 px-6 py-3 rounded-xl hover:bg-gray-50 transition">
+                إلغاء
+            </a>
+        </div>
+    </form>
+</div>
+
+{% endblock %}

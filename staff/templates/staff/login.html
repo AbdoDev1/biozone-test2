@@ -1,0 +1,45 @@
+{% load static %}
+{% load staff_ui %}
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>تسجيل دخول الموظفين — Biozone</title>
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 24 24%22><rect width=%2224%22 height=%2224%22 rx=%226%22 fill=%22%231d4ed8%22/><text x=%2212%22 y=%2217%22 font-size=%2214%22 font-family=%22sans-serif%22 font-weight=%22bold%22 fill=%22white%22 text-anchor=%22middle%22>B</text></svg>">
+    <link rel="stylesheet" href="{% static 'css/fonts.css' %}">
+    <link rel="stylesheet" href="{% static 'css/tailwind.css' %}">
+    <style>body { font-family: 'Cairo', system-ui, sans-serif; }</style>
+</head>
+<body class="bg-gray-100 min-h-screen flex items-center justify-center">
+    <div class="bg-white rounded-2xl shadow-lg p-8 w-full max-w-md">
+        <div class="text-center mb-8">
+            <h1 class="text-3xl font-bold text-primary-700">Biozone</h1>
+            <p class="text-gray-500 mt-1">نظام إدارة الموظفين</p>
+        </div>
+        {% if messages %}
+        {% for message in messages %}
+        <div class="bg-red-100 text-red-700 px-4 py-2 rounded-lg mb-4 text-sm">{{ message }}</div>
+        {% endfor %}
+        {% endif %}
+        <form method="post" class="space-y-4">
+            {% csrf_token %}
+            <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">اسم المستخدم</label>
+                <input type="text" name="username"
+                       class="w-full border border-gray-300 rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-primary-500">
+            </div>
+            <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">كلمة المرور</label>
+                <input type="password" name="password"
+                       class="w-full border border-gray-300 rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-primary-500">
+            </div>
+            {% btn "تسجيل الدخول" type="submit" full_width=True %}
+        </form>
+        <p class="text-center text-xs text-gray-400 mt-6">
+            هل أنت عميل؟ <a href="{% url 'accounts:login' %}" class="text-primary-600 hover:underline">سجّل الدخول من هنا</a>
+        </p>
+    </div>
+</body>
+</html>
+

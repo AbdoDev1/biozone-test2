@@ -1,0 +1,259 @@
+{% extends 'staff/base.html' %}
+{% load staff_ui %}
+{% block title %}الحسابات — Biozone{% endblock %}
+{% block breadcrumbs %}
+<nav class="flex items-center text-sm text-gray-500 mb-4">
+    {% crumb "الرئيسية" "staff:dashboard" %}
+    {% crumb "الحسابات" %}
+</nav>
+{% endblock %}
+{% block content %}
+
+<div x-data="{ tab: 'overview' }" class="max-w-6xl">
+
+    <div class="mb-4">
+        <h1 class="text-2xl font-bold text-gray-800">الحسابات</h1>
+        <p class="text-gray-500 text-sm mt-1">نظرة عامة على مديونيات كل العملاء وحركات الحسابات على مستوى النظام.</p>
+    </div>
+
+    <!-- ملخص -->
+    <div class="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
+        <div class="bg-white rounded-2xl shadow p-5">
+            <p class="text-sm text-gray-500 mb-1">إجمالي المديونيات على العملاء</p>
+            <p class="text-2xl font-bold text-red-600">{{ total_receivable }} ج.م</p>
+        </div>
+        <div class="bg-white rounded-2xl shadow p-5">
+            <p class="text-sm text-gray-500 mb-1">إجمالي الأرصدة لصالح العملاء</p>
+            <p class="text-2xl font-bold text-green-600">{{ total_credit }} ج.م</p>
+        </div>
+        <div class="bg-white rounded-2xl shadow p-5">
+            <p class="text-sm text-gray-500 mb-1">عدد العملاء المديونين</p>
+            <p class="text-2xl font-bold text-gray-800">{{ debtors_count }}</p>
+        </div>
+    </div>
+
+    <div class="bg-white rounded-2xl shadow overflow-hidden">
+        <div class="flex border-b overflow-x-auto text-sm">
+            <button @click="tab = 'overview'"
+                    :class="tab === 'overview' ? 'border-primary-600 text-primary-600' : 'border-transparent text-gray-500 hover:text-gray-700'"
+                    class="px-5 py-3 border-b-2 font-medium whitespace-nowrap transition">
+                أرصدة العملاء
+            </button>
+            <button @click="tab = 'transactions'"
+                    :class="tab === 'transactions' ? 'border-primary-600 text-primary-600' : 'border-transparent text-gray-500 hover:text-gray-700'"
+                    class="px-5 py-3 border-b-2 font-medium whitespace-nowrap transition">
+                آخر الحركات
+            </button>
+            <button @click="tab = 'entry'"
+                    :class="tab === 'entry' ? 'border-primary-600 text-primary-600' : 'border-transparent text-gray-500 hover:text-gray-700'"
+                    class="px-5 py-3 border-b-2 font-medium whitespace-nowrap transition">
+                تسجيل دفعة / تسوية
+            </button>
+        </div>
+
+        <!-- تبويب: أرصدة العملاء -->
+        <div x-show="tab === 'overview'" class="p-4 md:p-6">
+            <div class="flex justify-end mb-4">
+                <a href="{% url 'staff:accounting_export' %}" hx-boost="false"
+                   class="text-sm bg-gray-800 hover:bg-gray-900 text-white px-4 py-2 rounded-lg transition inline-flex items-center gap-1.5">
+                    <svg class="w-4 h-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="1.8"><path stroke-linecap="round" stroke-linejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3"/></svg>
+                    تصدير Excel
+                </a>
+            </div>
+            <div class="overflow-x-auto">
+                <table class="w-full text-sm">
+                    <thead>
+                        <tr class="text-right text-gray-500 border-b">
+                            <th class="py-2 px-2 sticky-col">العميل</th>
+                            <th class="py-2 px-2">نوع الحساب</th>
+                            <th class="py-2 px-2">الرصيد</th>
+                            <th class="py-2 px-2"></th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for row in rows_page %}
+                        <tr class="border-b last:border-0 hover:bg-gray-50">
+                            <td class="py-2 px-2 font-medium sticky-col">{{ row.profile.business_name }}</td>
+                            <td class="py-2 px-2 text-gray-500">{{ row.profile.account_type.name }}</td>
+                            <td class="py-2 px-2 font-semibold
+                                {% if row.balance > 0 %}text-red-600{% elif row.balance < 0 %}text-green-600{% else %}text-gray-400{% endif %}">
+                                {% if row.balance > 0 %}
+                                    {{ row.balance }} ج.م
+                                {% elif row.balance < 0 %}
+                                    له رصيد {{ row.balance_abs }} ج.م
+                                {% else %}
+                                    0 ج.م
+                                {% endif %}
+                            </td>
+                            <td class="py-2 px-2">
+                                {% if perms.accounts.view_clientprofile %}
+                                <a href="{% url 'staff:client_detail' row.profile.pk %}" class="text-primary-600 hover:underline text-xs">
+                                    عرض الحساب
+                                </a>
+                                {% else %}
+                                <span class="text-gray-300 text-xs">—</span>
+                                {% endif %}
+                            </td>
+                        </tr>
+                        {% empty %}
+                        <tr>
+                            <td colspan="4" class="py-6 text-center text-gray-400">لا يوجد عملاء نشطون حتى الآن.</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            {% if rows_page.paginator.num_pages > 1 %}
+            <div class="flex items-center justify-center gap-2 mt-4 text-sm">
+                {% if rows_page.has_previous %}
+                <a href="?clients_page={{ rows_page.previous_page_number }}"
+                   class="px-3 py-1.5 rounded-lg bg-gray-50 hover:bg-primary-50 text-gray-600">السابق</a>
+                {% endif %}
+                <span class="text-gray-500 px-2">صفحة {{ rows_page.number }} من {{ rows_page.paginator.num_pages }}</span>
+                {% if rows_page.has_next %}
+                <a href="?clients_page={{ rows_page.next_page_number }}"
+                   class="px-3 py-1.5 rounded-lg bg-gray-50 hover:bg-primary-50 text-gray-600">التالي</a>
+                {% endif %}
+            </div>
+            {% endif %}
+        </div>
+
+        <!-- تبويب: آخر الحركات -->
+        <div x-show="tab === 'transactions'" class="p-4 md:p-6">
+            <div class="overflow-x-auto">
+                <table class="w-full text-xs sm:text-sm">
+                    <thead class="bg-gray-50 text-gray-600">
+                        <tr>
+                            <th class="px-3 py-2 text-right sticky-col">التاريخ</th>
+                            <th class="px-3 py-2 text-right">العميل</th>
+                            <th class="px-3 py-2 text-right">النوع</th>
+                            <th class="px-3 py-2 text-right">تفاصيل</th>
+                            <th class="px-3 py-2 text-right">المبلغ</th>
+                            <th class="px-3 py-2 text-right">بواسطة</th>
+                        </tr>
+                    </thead>
+                    <tbody class="divide-y divide-gray-100">
+                        {% for tx in recent_transactions %}
+                        <tr>
+                            <td class="px-3 py-2 text-gray-500 sticky-col">{{ tx.created_at|date:"Y-m-d H:i" }}</td>
+                            <td class="px-3 py-2 font-medium">{{ tx.client.client_profile.business_name|default:tx.client.username }}</td>
+                            <td class="px-3 py-2">
+                                {% status_badge tx.get_kind_display group="tx_kind" key=tx.kind %}
+                            </td>
+                            <td class="px-3 py-2 text-gray-500">
+                                {% if tx.invoice %}{{ tx.invoice.invoice_number }}{% endif %}
+                                {{ tx.note }}
+                                {% if tx.method %}({{ tx.get_method_display }}){% endif %}
+                            </td>
+                            <td class="px-3 py-2 font-medium {% if tx.amount > 0 %}text-red-600{% else %}text-green-600{% endif %}">
+                                {{ tx.amount }}
+                            </td>
+                            <td class="px-3 py-2 text-gray-400">{{ tx.created_by.username|default:'—' }}</td>
+                        </tr>
+                        {% empty %}
+                        <tr>
+                            <td colspan="6" class="px-3 py-6 text-center text-gray-400">لا يوجد حركات مسجّلة حتى الآن.</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            {% if recent_transactions.paginator.num_pages > 1 %}
+            <div class="flex items-center justify-center gap-2 mt-4 text-sm">
+                {% if recent_transactions.has_previous %}
+                <a href="?tx_page={{ recent_transactions.previous_page_number }}"
+                   class="px-3 py-1.5 rounded-lg bg-gray-50 hover:bg-primary-50 text-gray-600">السابق</a>
+                {% endif %}
+                <span class="text-gray-500 px-2">صفحة {{ recent_transactions.number }} من {{ recent_transactions.paginator.num_pages }}</span>
+                {% if recent_transactions.has_next %}
+                <a href="?tx_page={{ recent_transactions.next_page_number }}"
+                   class="px-3 py-1.5 rounded-lg bg-gray-50 hover:bg-primary-50 text-gray-600">التالي</a>
+                {% endif %}
+            </div>
+            {% endif %}
+        </div>
+
+        <!-- تبويب: تسجيل دفعة / تسوية -->
+        <div x-show="tab === 'entry'" x-data="{ mode: 'PAYMENT', balance: null }" class="p-4 md:p-6">
+
+            <!-- شريط اختيار نوع الحركة: عملية واحدة بس في المرة، مش الاتنين في نفس الوقت -->
+            <div class="inline-flex rounded-lg border border-gray-200 p-1 bg-gray-50 mb-4">
+                <button type="button" @click="mode = 'PAYMENT'"
+                        :class="mode === 'PAYMENT' ? 'bg-white shadow text-primary-600' : 'text-gray-500 hover:text-gray-700'"
+                        class="px-4 py-1.5 rounded-md text-sm font-semibold transition">
+                    تسجيل دفعة
+                </button>
+                <button type="button" @click="mode = 'ADJUSTMENT'"
+                        :class="mode === 'ADJUSTMENT' ? 'bg-white shadow text-primary-600' : 'text-gray-500 hover:text-gray-700'"
+                        class="px-4 py-1.5 rounded-md text-sm font-semibold transition">
+                    تسوية يدوية
+                </button>
+            </div>
+
+            <form method="post" hx-push-url="false" action="{% url 'staff:accounting_quick_entry' %}"
+                  class="border border-gray-100 rounded-xl p-4 space-y-3 max-w-md">
+                {% csrf_token %}
+                <input type="hidden" name="kind" :value="mode">
+
+                <div>
+                    <label class="block text-xs text-gray-500 mb-1">العميل</label>
+                    <select name="client_id" required
+                            @change="balance = $event.target.selectedOptions[0].dataset.balance ?? null"
+                            class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm outline-none focus:border-primary-400">
+                        <option value="">اختر عميل...</option>
+                        {% for row in rows %}
+                        <option value="{{ row.profile.user_id }}" data-balance="{{ row.balance }}">{{ row.profile.business_name }}</option>
+                        {% endfor %}
+                    </select>
+                    <p x-show="balance !== null" class="text-xs mt-1.5"
+                       :class="parseFloat(balance) > 0 ? 'text-red-600' : (parseFloat(balance) < 0 ? 'text-green-600' : 'text-gray-400')">
+                        <span x-text="parseFloat(balance) > 0 ? 'مديونيته الحالية: ' + balance + ' ج.م' : (parseFloat(balance) < 0 ? 'له رصيد: ' + Math.abs(parseFloat(balance)) + ' ج.م' : 'لا يوجد عليه مديونية حاليًا')"></span>
+                    </p>
+                </div>
+
+                <div>
+                    <label class="block text-xs text-gray-500 mb-1">المبلغ</label>
+                    <input type="number" step="0.01" min="0.01" name="amount" required
+                           class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm outline-none focus:border-primary-400">
+                </div>
+
+                <!-- حقول خاصة بالدفعة بس -->
+                <div x-show="mode === 'PAYMENT'">
+                    <label class="block text-xs text-gray-500 mb-1">طريقة السداد</label>
+                    <select name="method" class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm outline-none focus:border-primary-400">
+                        {% for value, label in payment_methods %}
+                        <option value="{{ value }}">{{ label }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+
+                <!-- حقول خاصة بالتسوية بس -->
+                <div x-show="mode === 'ADJUSTMENT'">
+                    <label class="block text-xs text-gray-500 mb-1">الاتجاه</label>
+                    <select name="direction" class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm outline-none focus:border-primary-400">
+                        <option value="increase">زيادة المديونية (عليه)</option>
+                        <option value="decrease">تقليل المديونية (لصالحه)</option>
+                    </select>
+                </div>
+
+                <div>
+                    <label class="block text-xs text-gray-500 mb-1">
+                        <span x-text="mode === 'ADJUSTMENT' ? 'السبب' : 'ملاحظة (اختياري)'"></span>
+                        <span x-show="mode === 'ADJUSTMENT'" class="text-red-500">*</span>
+                    </label>
+                    <input type="text" name="note" :required="mode === 'ADJUSTMENT'"
+                           class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm outline-none focus:border-primary-400">
+                </div>
+
+                <button type="submit"
+                        :class="mode === 'PAYMENT' ? 'bg-green-600 hover:bg-green-700' : 'bg-amber-500 hover:bg-amber-600'"
+                        class="w-full text-white font-semibold py-2.5 rounded-lg transition">
+                    <span x-text="mode === 'PAYMENT' ? 'تسجيل الدفعة' : 'تسجيل التسوية'"></span>
+                </button>
+            </form>
+        </div>
+
+    </div>
+</div>
+
+{% endblock %}

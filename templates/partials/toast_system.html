@@ -1,0 +1,56 @@
+{% comment %}
+نظام إشعارات موحّد (Toast) لواجهة العميل — يبني على محرك التوست المشترك
+(toast_core.html، المستخدم في العميل والموظفين مع بعض) ويضيف فوقه اللي
+خاص بالعميل بس:
+  1) توست تلقائي لأي رسالة Django (بدل بانر ثابت في الصفحة).
+  2) إشعار "وارد جديد" فوري لما العميل يفتح المتجر لأول مرة في الجلسة —
+     نفس الإشعار ده أصلاً موجود في قائمة الإشعارات (جرس الإشعارات)، التوست
+     هنا بس تنبيه مؤقت بيلفت نظره ليه ويختفي لوحده بعد ثواني.
+
+الاستخدام في أي مكان تاني بواجهة العميل (متاح تلقائيًا بعد تضمين هذا الملف):
+  - showToast("تم الحفظ بنجاح", {type: "success"})
+  - showConfirmToast("هل أنت متأكد؟", function(){ ... }, {type: "warning"})
+  - أو حط data-confirm="نص السؤال" على أي <form> بدل onsubmit="return confirm(...)"
+    وهيتاعترض تلقائيًا.
+{% endcomment %}
+{% include 'partials/toast_core.html' %}
+
+<script>
+{% if messages %}
+document.addEventListener('DOMContentLoaded', function () {
+    {% for message in messages %}
+    showToast("{{ message|escapejs }}", { type: "{{ message.tags|default:'info'|escapejs }}" });
+    {% endfor %}
+});
+{% endif %}
+
+// تنبيه "وارد جديد" أول ما العميل يفتح الموقع (مرة واحدة في الجلسة)
+document.addEventListener('DOMContentLoaded', function () {
+    if (window.__newArrivalsToast) {
+        const n = window.__newArrivalsToast;
+        const seenKey = 'biozone_new_arrivals_seen_' + n.id;
+        if (!sessionStorage.getItem(seenKey)) {
+            sessionStorage.setItem(seenKey, '1');
+            showToast(
+                '🆕 <strong>' + n.title + '</strong>' + (n.message ? '<br><span class="text-gray-500">' + n.message + '</span>' : ''),
+                { type: 'info', duration: 8000, actionHref: n.url, actionLabel: 'تصفح الوارد الجديد' }
+            );
+        }
+    }
+});
+</script>
+
+{% if request.user.is_authenticated and request.user.role == 'CLIENT' %}
+{% for n in nav_notifications %}
+{% if n.kind == 'NEW_ARRIVALS' and not n.is_read %}
+<script>
+    window.__newArrivalsToast = window.__newArrivalsToast || {
+        id: {{ n.pk }},
+        title: "{{ n.title|escapejs }}",
+        message: "{{ n.message|escapejs }}",
+        url: "{% url 'store:new_arrivals' %}"
+    };
+</script>
+{% endif %}
+{% endfor %}
+{% endif %}

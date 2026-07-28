@@ -1,0 +1,56 @@
+{% extends 'base.html' %}
+
+{% block title %}الطلبات — Biozone{% endblock %}
+
+{% block content %}
+
+<div class="max-w-3xl mx-auto px-4 py-8">
+    <h1 class="text-2xl font-bold text-gray-800 mb-6">الطلبات</h1>
+
+    {% if orders %}
+    <div class="space-y-3">
+      {% for order in orders %}
+      <a href="{% url 'orders:order_detail' order.pk %}"
+         class="bg-white rounded-2xl shadow-sm p-5 flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3 hover:shadow-md transition block">
+        <div>
+          <p class="font-bold text-gray-800">طلب #{{ order.pk }}</p>
+          <p class="text-xs text-gray-400 mt-1">{{ order.created_at|date:"d/m/Y" }}</p>
+        </div>
+        <div class="flex items-center gap-4">
+          <span class="px-3 py-1 rounded-full text-xs font-medium
+            {% if order.status == 'PENDING' %}bg-yellow-100 text-yellow-700
+            {% elif order.status == 'NEEDS_APPROVAL' %}bg-orange-100 text-orange-700
+            {% elif order.status == 'CONFIRMED' %}bg-green-100 text-green-700
+            {% elif order.status == 'REJECTED' %}bg-red-100 text-red-600
+            {% else %}bg-primary-100 text-primary-700{% endif %}">
+            {{ order.get_status_display }}
+          </span>
+          <span class="font-bold text-primary-700">{{ order.total }} ج.م</span>
+        </div>
+      </a>
+      {% endfor %}
+    </div>
+
+    {% if page_obj.paginator.num_pages > 1 %}
+    <div class="flex items-center justify-center gap-2 mt-6 text-sm">
+        {% if page_obj.has_previous %}
+        <a href="?page={{ page_obj.previous_page_number }}"
+           class="px-3 py-2 rounded-lg bg-white shadow-sm hover:bg-primary-50 text-gray-600">السابق</a>
+        {% endif %}
+        <span class="text-gray-500 px-2">صفحة {{ page_obj.number }} من {{ page_obj.paginator.num_pages }}</span>
+        {% if page_obj.has_next %}
+        <a href="?page={{ page_obj.next_page_number }}"
+           class="px-3 py-2 rounded-lg bg-white shadow-sm hover:bg-primary-50 text-gray-600">التالي</a>
+        {% endif %}
+    </div>
+    {% endif %}
+
+    {% else %}
+    <div class="bg-white rounded-2xl shadow-sm p-10 text-center text-gray-400">
+     لا توجد طلبات.
+      <a href="{% url 'store:home' %}" class="text-primary-600 hover:underline block mt-2">تصفح المنتجات</a>
+    </div>
+    {% endif %}
+</div>
+
+{% endblock %}

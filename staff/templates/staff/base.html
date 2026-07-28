@@ -1,0 +1,232 @@
+{% load static %}
+{% load staff_ui %}
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}Biozone{% endblock %}</title>
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 24 24%22><rect width=%2224%22 height=%2224%22 rx=%226%22 fill=%22%231d4ed8%22/><text x=%2212%22 y=%2217%22 font-size=%2214%22 font-family=%22sans-serif%22 font-weight=%22bold%22 fill=%22white%22 text-anchor=%22middle%22>B</text></svg>">
+    <link rel="apple-touch-icon" href="{% static 'icons/apple-touch-icon.png' %}">
+    <link rel="manifest" href="{% static 'manifest.json' %}">
+    <meta name="theme-color" content="#1d4ed8">
+    <link rel="stylesheet" href="{% static 'css/fonts.css' %}">
+    <link rel="stylesheet" href="{% static 'css/tailwind.css' %}">
+    <!-- htmx: بيفعّل hx-boost على كل لوحة الموظفين (راجع body تحت) — التنقل
+         بين الصفحات (سايدبار وأزرار) بقى AJAX ناعم بدل full page reload
+         كامل، من غير ما نلمس أي view أو منطق سيرفر.
+         integrity/crossorigin (SRI): نفس السبب في templates/base.html —
+         حماية من تلاعب محتمل في محتوى الـ CDN، والإصدار مثبّت بالظبط
+         (مش @3.x.x ولا @4 عايمين) عشان الهاش يفضل صحيح. -->
+    <script src="https://unpkg.com/htmx.org@1.9.10"
+            integrity="sha384-D1Kt99CQMDuVetoL1lrYwg5t+9QdHe7NLX/SoJYkXDFfX37iInKRy5xLSi8nO7UC"
+            crossorigin="anonymous"></script>
+    <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.15.12/dist/cdn.min.js"
+            integrity="sha384-pb6hrQvo4s23cEUFtj0CZkzGE3jyK3pj26RIupXXxhSrrcUA/Cn0lZgcCrGH0t6L"
+            crossorigin="anonymous"></script>
+    <!-- Chart.js: اتنقل هنا مركزيًا (بدل ما يتكرر جوه كل صفحة تقرير) عشان
+         مشكلة حقيقية سببها hx-boost: أي <script src> بيتحقن ديناميكيًا وقت
+         استبدال الـ body (بعد أي تنقل boosted) بيتحمّل async تلقائيًا من
+         المتصفح، فسكريبت الرسم البياني اللي بعده كان ممكن يتنفذ قبل ما
+         Chart.js يخلص تحميل ويرمي "Chart is not defined" — بس لما توصل
+         للصفحة عن طريق ضغطة رابط، مش عن طريق refresh يدوي. htmx بيدمج
+         الـ head (مش بيستبدله) وبيلاحظ إن نفس الـ src موجود فمش بيعيد
+         تحميله/تنفيذه تاني، فالتحميل هنا مرة واحدة بيضمن إن المكتبة
+         جاهزة قبل أي سكريبت رسم بياني في أي صفحة. -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.5.1/dist/chart.umd.min.js"
+            integrity="sha384-jb8JQMbMoBUzgWatfe6COACi2ljcDdZQ2OxczGA3bGNeWe+6DChMTBJemed7ZnvJ"
+            crossorigin="anonymous"></script>
+    <script>
+        // htmx بيحتاج يبعت CSRF token في header يدويًا لأي POST مُعمول
+        // boost (زي فورم تسجيل الخروج)، لأنه مش فورم عادي بيتقرا من
+        // الـ input المخفي وقت الإرسال — بنقرأه من كوكي csrftoken.
+        function getCookie(name) {
+            const match = document.cookie.match('(^|;)\\s*' + name + '\\s*=\\s*([^;]+)');
+            return match ? decodeURIComponent(match.pop()) : null;
+        }
+        document.body.addEventListener('htmx:configRequest', (evt) => {
+            evt.detail.headers['X-CSRFToken'] = getCookie('csrftoken');
+        });
+        // Alpine.js بيبني تفاعليته وقت ما الصفحة تتحمّل أول مرة بس. لما
+        // htmx يستبدل جزء من الـ DOM (بعد أي boost)، العناصر الجديدة (رسائل
+        // التنبيه، الـ backdrop، إلخ) لازم Alpine يتعرف عليها يدويًا وإلا
+        // هتفضل بدون تفاعل (x-show/x-data مش هيشتغلوا).
+        document.body.addEventListener('htmx:afterSwap', (evt) => {
+            if (window.Alpine) window.Alpine.initTree(evt.detail.target);
+        });
+        // انتقال ناعم (fade) بين الصفحات لو المتصفح بيدعم View Transitions
+        // API (Chrome/Edge حاليًا). المتصفحات اللي مش بتدعمها (Firefox
+        // مثلًا) هتستبدل المحتوى فورًا زي أي وقت من غير أي انيميشن — مفيش
+        // كسر أو تعطل، بس مفيش الأنيميشن الإضافي دي بالذات.
+        htmx.config.globalViewTransitions = true;
+        // منع أي transition (زي عرض/هامش السايدبار اللي أصلاً بيتحرك بنعومة
+        // 300ms لما المستخدم يفتح/يقفل السايدبار يدويًا) من الاشتغال في
+        // نفس لحظة تنقل الـ htmx: بعد كل boosted swap، Alpine بيعيد بناء
+        // x-data من الصفر على المحتوى الجديد، وده بيخلي المتصفح يرسم فريم
+        // وسيط قبل ما class العرض يتطبّق، فالـ transition الأصلي بتاع
+        // السايدبار كان بيتفعّل هو كمان فوق فيد الصفحة — إحساس بحركتين
+        // مع بعض (انزلاق واضح من اليمين للشمال + فيد) بدل فيد بس. الحل:
+        // نلغي كل الـ transitions مؤقتًا من أول ما الطلب يتبعت لحد ما
+        // الاستقرار (settle) يخلص، وترجع الحركة اليدوية (زرار الفتح/القفل)
+        // سلسة زي ما هي لأنها مش بتعدي على أي htmx swap.
+        document.body.addEventListener('htmx:beforeRequest', () => {
+            document.body.classList.add('htmx-swap-nofx');
+        });
+        document.body.addEventListener('htmx:afterSettle', () => {
+            requestAnimationFrame(() => {
+                document.body.classList.remove('htmx-swap-nofx');
+            });
+        });
+        // شريط تحميل رفيع فوق الصفحة (زي يوتيوب) بيظهر فورًا وقت الضغط على أي
+        // رابط ويكبر تدريجيًا لحد ما الرد يوصل، عشان تبقى في إشارة بصرية
+        // فورية إن حاجة بتحصل من لحظة الضغط، مش بس فيد في الآخر.
+        const pageProgress = document.getElementById('page-progress');
+        document.body.addEventListener('htmx:beforeRequest', () => {
+            pageProgress.style.transition = 'none';
+            pageProgress.style.transform = 'scaleX(0)';
+            pageProgress.style.opacity = '1';
+            void pageProgress.offsetWidth; // إجبار إعادة رسم قبل التحريك
+            pageProgress.style.transition = 'transform 4s cubic-bezier(0.1,0.4,0.1,1)';
+            pageProgress.style.transform = 'scaleX(0.85)';
+        });
+        document.body.addEventListener('htmx:afterSettle', () => {
+            pageProgress.style.transition = 'transform 0.2s ease-out';
+            pageProgress.style.transform = 'scaleX(1)';
+            setTimeout(() => {
+                pageProgress.style.transition = 'opacity 0.3s ease-out';
+                pageProgress.style.opacity = '0';
+            }, 150);
+        });
+    </script>
+    <style>
+        ::view-transition-old(root),
+        ::view-transition-new(root) {
+            animation-duration: 0.12s;
+        }
+        body.htmx-swap-nofx,
+        body.htmx-swap-nofx *:not(#page-progress) {
+            transition: none !important;
+        }
+        #page-progress {
+            transform: scaleX(0);
+            transform-origin: left;
+        }
+        /* تظليل فوري لأي رابط سايدبار بمجرد الضغط عليه (لحد ما الصفحة الجديدة
+           توصل)، عشان الإحساس بالاستجابة يبقى فوري من لحظة الضغط نفسها، مش
+           بس بعد ما التحميل يخلص. htmx بيضيف class="htmx-request" تلقائيًا
+           على العنصر اللي عمل الطلب (الرابط نفسه هنا، طالما مفيش hx-indicator
+           محدد) طول ما الطلب شغّال. */
+        nav a.htmx-request {
+            background-color: #eff6ff;
+        }
+        /* طباعة موحّدة لكل صفحات لوحة الموظفين: أي عنصر عليه class="no-print"
+           (التوب بار، السايدبار، الفلاتر، الأزرار) بيختفي وقت الطباعة، وplant
+           print-area بس هو اللي بيتطبع. بيُستخدم في كل تقارير قسم التقارير
+           لأزرار "طباعة / PDF" (المتصفح بيسمح بـ "طباعة" إلى PDF مباشرة). */
+        @media print {
+            .no-print { display: none !important; }
+            body { background: #fff !important; }
+            main { padding-top: 0 !important; margin: 0 !important; }
+            .print-area { box-shadow: none !important; }
+        }
+        /* التوب بار والسايدبار وشريط التقدّم fixed-positioned، والـ no-print
+           كان متطبق بس على عناصر جواهم مش هما نفسهم — فكانوا فاضلين ظاهرين
+           فوق التقرير وقت الطباعة (Chrome بيثبّتهم فوق كل الصفحات المطبوعة
+           وبيغطوا/يبهدلوا محتوى التقرير). بنخفيهم هنا صراحة. */
+        @media print {
+            header, aside, #page-progress { display: none !important; }
+            main { margin-right: 0 !important; }
+            /* .overflow-x-auto بيعتمد على سكرول بار مش موجود وقت الطباعة،
+               فأي جدول أعرض من الصفحة كان بيتقص. overflow: visible بيخلي
+               الجدول كله يظهر (المتصفح بيقسمه على الصفحات لو لزم). */
+            .overflow-x-auto { overflow: visible !important; }
+        }
+    </style>
+</head>
+<body class="bg-surface-page min-h-screen" hx-boost="true" x-data="{ sidebarOpen: window.innerWidth >= 768 }">
+<div id="page-progress" class="fixed top-0 inset-x-0 h-0.5 bg-primary-800 z-[9999]"></div>
+{% include 'partials/toast_core.html' %}
+{% with url_name=request.resolver_match.url_name %}
+<!-- Topbar -->
+<header class="fixed top-0 right-0 left-0 h-14 bg-primary-600 shadow z-30 flex items-center px-4 gap-4">
+    {% if url_name != 'dashboard' %}
+    <button @click="sidebarOpen = !sidebarOpen" class="text-primary-100 hover:text-white">
+        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"/>
+        </svg>
+    </button>
+    {% endif %}
+    <a href="{% url 'staff:dashboard' %}" class="font-bold text-white text-lg hover:text-primary-100">Biozone</a>
+    <div class="mr-auto flex items-center gap-4">
+        {% include 'notifications/partials/bell.html' %}
+        <span class="text-sm text-primary-100">{{ request.user.username }}</span>
+        <form method="post" action="{% url 'staff:logout' %}" class="inline" hx-boost="false">
+            {% csrf_token %}
+            <button type="submit" class="text-sm text-red-200 hover:text-white hover:underline">تسجيل الخروج</button>
+        </form>
+    </div>
+</header>
+
+{% if url_name != 'dashboard' %}
+<!-- Backdrop (موبايل بس — بيقفل السايدبار لما تدوس برّاه) -->
+<div x-show="sidebarOpen"
+     @click="sidebarOpen = false"
+     x-cloak
+     class="fixed inset-0 bg-black/30 z-10 md:hidden"></div>
+
+<!-- Sidebar — بيظهر في أي صفحة غير الرئيسية بس (التنقل من الرئيسية بقى
+     عن طريق شبكة أيقونات التطبيقات، زي Odoo — راجع staff/dashboard.html
+     وstaff/navigation.py لمصدر عناصر التنقل المشترك بين الاتنين). -->
+<aside class="fixed top-14 bottom-0 right-0 bg-white shadow-md z-20 transition-all duration-300 overflow-hidden"
+       :class="sidebarOpen ? 'w-64 md:w-56' : 'w-0'">
+    <nav class="p-4 space-y-1 text-sm w-64 md:w-56">
+        {% for item in staff_nav_items %}
+        <a href="{{ item.url }}"
+           class="flex items-center gap-3 px-3 py-2 rounded-lg border-l-4
+           {% if item.is_active %}bg-primary-50 text-primary-600 font-semibold border-primary-600{% else %}border-transparent hover:bg-primary-50 text-gray-700 hover:text-primary-600{% endif %}">
+            <svg class="w-5 h-5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="1.8">
+                {% for d in item.icon_path|icon_paths %}<path stroke-linecap="round" stroke-linejoin="round" d="{{ d }}"/>{% endfor %}
+            </svg>
+            {{ item.label }}
+        </a>
+        {% endfor %}
+        <hr class="my-2">
+        <a href="/admin/" hx-boost="false" title="لوحة إدارة Django — لغير المطورين، افضل تستخدم صفحات النظام العادية بدل كده"
+           class="flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-primary-50 text-gray-500 hover:text-primary-600 text-xs">
+            <svg class="w-4 h-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="1.8"><path stroke-linecap="round" stroke-linejoin="round" d="M9.594 3.94c.09-.542.56-.94 1.11-.94h2.593c.55 0 1.02.398 1.11.94l.213 1.281c.063.374.313.686.645.87.074.04.147.083.22.127.324.196.72.257 1.075.124l1.217-.456a1.125 1.125 0 011.37.49l1.296 2.247a1.125 1.125 0 01-.26 1.431l-1.003.827c-.293.24-.438.613-.431.992a6.759 6.759 0 010 .255c-.007.378.138.75.43.99l1.005.828c.424.35.534.954.26 1.43l-1.298 2.247a1.125 1.125 0 01-1.369.491l-1.217-.456c-.355-.133-.75-.072-1.076.124a6.57 6.57 0 01-.22.128c-.331.183-.581.495-.644.869l-.213 1.28c-.09.543-.56.941-1.11.941h-2.594c-.55 0-1.019-.398-1.11-.94l-.213-1.281c-.062-.374-.312-.686-.644-.87a6.52 6.52 0 01-.22-.127c-.325-.196-.72-.257-1.076-.124l-1.217.456a1.125 1.125 0 01-1.369-.49l-1.297-2.247a1.125 1.125 0 01.26-1.431l1.004-.827c.292-.24.437-.613.43-.992a6.932 6.932 0 010-.255c.007-.378-.138-.75-.43-.99l-1.004-.828a1.125 1.125 0 01-.26-1.43l1.297-2.247a1.125 1.125 0 011.37-.491l1.216.456c.356.133.751.072 1.076-.124.072-.044.146-.087.22-.128.332-.183.582-.495.644-.869l.214-1.28z"/><path stroke-linecap="round" stroke-linejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/></svg>
+            لوحة الإدارة
+        </a>
+    </nav>
+</aside>
+{% endif %}
+<!-- Main Content -->
+<main class="pt-14 transition-all duration-300"
+      {% if url_name != 'dashboard' %}:class="sidebarOpen ? 'md:mr-56' : 'mr-0'"{% endif %}>
+    {% if messages %}
+    <div class="fixed top-16 left-1/2 -translate-x-1/2 z-50 space-y-2">
+        {% for message in messages %}
+        <div x-data="{ show: true }"
+             x-show="show"
+             x-init="setTimeout(() => show = false, 6000)"
+             x-transition:leave="transition ease-in duration-500"
+             x-transition:leave-start="opacity-100"
+             x-transition:leave-end="opacity-0"
+             class="flex items-center gap-3 px-6 py-3 rounded-lg shadow text-white text-sm
+            {% if message.tags == 'success' %}bg-green-500
+            {% elif message.tags == 'error' %}bg-red-500
+            {% elif message.tags == 'warning' %}bg-yellow-500
+            {% else %}bg-primary-500{% endif %}">
+            <span>{{ message }}</span>
+            <button @click="show = false" class="opacity-80 hover:opacity-100 leading-none" aria-label="إغلاق"><svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/></svg></button>
+        </div>
+        {% endfor %}
+    </div>
+    {% endif %}
+    <div class="p-6">
+        {% block breadcrumbs %}{% endblock %}
+        {% block content %}{% endblock %}
+    </div>
+</main>
+{% endwith %}
+</body>
+</html>

@@ -1,0 +1,141 @@
+{% load static %}
+{% load staff_ui %}
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>طلب #{{ order.pk }} — طباعة</title>
+    <link rel="stylesheet" href="{% static 'css/tailwind.css' %}">
+    <style>
+        @media print {
+            .no-print { display: none !important; }
+            body { padding: 0 !important; }
+            .order-sheet:not(:last-child) { page-break-after: always; }
+        }
+    </style>
+</head>
+<body class="bg-gray-100 py-8">
+
+    <!-- زرار الطباعة — بيختفي تلقائيًا وقت الطباعة الفعلية -->
+    <div class="no-print max-w-2xl mx-auto mb-4 px-4 flex justify-between items-center">
+        <a href="javascript:window.close();" class="text-sm text-gray-500 hover:underline">إغلاق</a>
+        {% if item_pages|length > 1 %}
+        <p class="text-sm text-gray-500">
+            الطلب مقسّم لـ {{ item_pages|length }} صفحات طباعة ({{ item_count }} صنف).
+        </p>
+        {% endif %}
+        {% btn "طباعة الطلب" onclick="window.print()" icon="printer" %}
+    </div>
+
+    {% for page_items in item_pages %}
+    <div class="order-sheet max-w-2xl mx-auto bg-white shadow rounded-xl p-8 {% if not forloop.last %}mb-8{% endif %}">
+
+        <!-- Header -->
+        <div class="text-center border-b border-gray-200 pb-4 mb-4">
+            <h1 class="text-xl font-bold text-gray-800">Biozone للمستلزمات الطبية</h1>
+            <p class="text-gray-500 text-sm mt-1">نسخة مخزن — للمراجعة اليدوية أثناء التحضير</p>
+            {% if item_pages|length > 1 %}
+            <p class="mt-2 inline-block bg-gray-800 text-white text-xs font-bold px-2 py-0.5 rounded">
+                صفحة {{ forloop.counter }}/{{ item_pages|length }}
+            </p>
+            {% endif %}
+        </div>
+
+        <!-- بيانات الطلب والعميل -->
+        <div class="flex flex-col sm:flex-row sm:justify-between gap-3 text-sm mb-6">
+            <div>
+                <p class="text-gray-500">رقم الطلب</p>
+                <p class="font-semibold text-gray-800">
+                    #{{ order.pk }}{% if item_pages|length > 1 %} ({{ forloop.counter }}/{{ item_pages|length }}){% endif %}
+                </p>
+            </div>
+            <div>
+                <p class="text-gray-500">التاريخ</p>
+                <p class="font-semibold text-gray-800">{{ order.created_at|date:"Y-m-d H:i" }}</p>
+            </div>
+            <div>
+                <p class="text-gray-500">الحالة</p>
+                <p class="font-semibold text-gray-800">{{ order.get_status_display }}</p>
+            </div>
+            <div>
+                <p class="text-gray-500">العميل</p>
+                <p class="font-semibold text-gray-800">
+                    {% if order.client.client_profile %}{{ order.client.client_profile.business_name }}{% else %}{{ order.client.username }}{% endif %}
+                </p>
+                {% if order.client.client_profile %}
+                <p class="text-gray-500">{{ order.client.client_profile.phone }}</p>
+                {% endif %}
+            </div>
+        </div>
+
+        {% if order.is_amended %}
+        <div class="border border-orange-300 bg-orange-50 text-orange-800 text-sm rounded-lg px-3 py-2 mb-4 flex items-center gap-2">
+            <svg class="w-4 h-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="1.8"><path stroke-linecap="round" stroke-linejoin="round" d="M12 6v6h4.5m4.5 0a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+            <span>هذا الطلب معدَّل الكميات وبانتظار موافقة العميل — الكميات أدناه هي الكميات المعدَّلة.</span>
+        </div>
+        {% endif %}
+
+        <!-- جدول الأصناف (أصناف الصفحة دي بس) -->
+        <table class="w-full text-sm mb-4">
+            <thead>
+                <tr class="text-right text-gray-500 border-b border-gray-200">
+                    <th class="py-2 w-10">م</th>
+                    <th class="py-2">الصنف</th>
+                    <th class="py-2">الوحدة</th>
+                    <th class="py-2">الكمية المطلوبة</th>
+                    <th class="py-2">الإجمالي</th>
+                    <th class="py-2 no-print">تجهيز</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for item in page_items %}
+                <tr class="border-b border-gray-100 {% if item.is_amended %}bg-orange-50{% endif %}">
+                    <td class="py-2 text-gray-400">{{ item.display_index }}</td>
+                    <td class="py-2">
+                        {{ item.product_unit.product.display_name }}
+                        {% if item.is_amended %}
+                        <p class="text-xs text-orange-600">كانت: {{ item.original_quantity }} × {{ item.original_unit_price }} ج.م</p>
+                        {% endif %}
+                    </td>
+                    <td class="py-2 text-gray-500">{{ item.product_unit.name }}</td>
+                    <td class="py-2 font-medium">{{ item.quantity }}</td>
+                    <td class="py-2 font-medium">{{ item.subtotal }} ج.م</td>
+                    <td class="py-2 no-print">
+                        <span class="inline-block w-4 h-4 border border-gray-400 rounded-sm"></span>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+
+        {% if forloop.last %}
+        <!-- الإجمالي — بيظهر في آخر صفحة بس -->
+        <div class="text-left pt-3 border-t border-gray-200">
+            <span class="text-gray-500 text-sm">الإجمالي: </span>
+            <span class="font-bold text-lg text-gray-800">{{ order.total }} ج.م</span>
+        </div>
+
+        {% if order.notes %}
+        <div class="mt-6 pt-4 border-t border-gray-200 text-sm">
+            <p class="text-gray-500 mb-1">ملاحظات العميل:</p>
+            <p class="text-gray-700">{{ order.notes }}</p>
+        </div>
+        {% endif %}
+
+        <!-- مساحة توقيع/ملاحظات المخزن اليدوية -->
+        <div class="mt-8 pt-4 border-t border-gray-200 text-sm">
+            <p class="text-gray-500 mb-2">ملاحظات المخزن (يدوي):</p>
+            <div class="h-16 border border-dashed border-gray-300 rounded-lg"></div>
+        </div>
+        {% else %}
+        <div class="pt-3 border-t border-gray-200 text-center text-xs text-gray-500">
+            تكملة الأصناف في الصفحة التالية ({{ forloop.counter|add:1 }}/{{ item_pages|length }}) ←
+        </div>
+        {% endif %}
+
+    </div>
+    {% endfor %}
+
+</body>
+</html>

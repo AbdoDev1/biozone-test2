@@ -1,0 +1,155 @@
+{% extends 'staff/base.html' %}
+{% block title %}استيراد منتجات — Biozone{% endblock %}
+{% block breadcrumbs %}
+{% load staff_ui %}
+<nav class="flex items-center text-sm text-gray-500 mb-4">
+    {% crumb "الرئيسية" "staff:dashboard" %}
+    {% crumb "المنتجات" "staff:product_list" %}
+    {% crumb "استيراد" %}
+</nav>
+{% endblock %}
+
+{% block content %}
+
+<div class="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3 mb-6">
+    <h1 class="text-2xl font-bold text-gray-800">استيراد منتجات من Excel</h1>
+    <a href="{% url 'staff:product_list' %}"
+       class="text-sm text-gray-500 hover:text-primary-600">← قائمة المنتجات</a>
+</div>
+
+{% if messages %}
+<div class="mb-6 space-y-2">
+    {% for message in messages %}
+    <div class="px-4 py-3 rounded-lg text-sm
+        {% if message.tags == 'success' %}bg-green-50 text-green-700 border border-green-200
+        {% elif message.tags == 'warning' %}bg-yellow-50 text-yellow-700 border border-yellow-200
+        {% else %}bg-red-50 text-red-700 border border-red-200{% endif %}">
+        {{ message }}
+    </div>
+    {% endfor %}
+</div>
+{% endif %}
+
+<!-- تحميل القالب: ده الوحيد اللي فعلاً جزء من رحلة "الاستيراد" نفسها.
+     تصدير الأصناف الحالية (كل الأصناف / أصناف محددة) بقى منفصل تمامًا
+     ومتاح مباشرة من قائمة المنتجات (زرار "تصدير Excel")، مش هنا — عشان
+     أي حد عنده صلاحية عرض المنتجات بس (من غير صلاحية استيراد) يقدر
+     يوصله برضه. -->
+<div class="bg-primary-50 border border-primary-200 rounded-xl p-4 mb-6 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+    <div>
+        <p class="font-semibold text-primary-800 text-sm">قالب Excel الجاهز</p>
+        <p class="text-primary-600 text-xs mt-1">حمّل القالب، ثم قم بتعبئته ورفعه مرة أخرى</p>
+    </div>
+    {% url 'staff:download_template' as download_template_url %}
+    {% btn "تحميل القالب" href=download_template_url extra_attrs='hx-boost="false"' %}
+</div>
+<p class="text-xs text-gray-500 -mt-3 mb-6">
+    لو هتحدّث أصناف موجودة بالفعل (خصوصًا لو محتمل تعدّل اسم الصنف)، الأفضل تصدّر
+    الأصناف الحالية الأول من
+    <a href="{% url 'staff:product_list' %}" class="text-primary-600 hover:underline">قائمة المنتجات</a>
+    (زرار "تصدير Excel" ← "تصدير أصناف محددة") بدل ما تكتب من الصفر — الملف هيجيلك
+    فيه كود كل صنف جاهز، وده بيضمن إن التحديث يحصل على نفس الصنف حتى لو غيّرت اسمه بالكامل.
+</p>
+
+<!-- الأعمدة -->
+<div class="bg-white rounded-2xl shadow-sm p-4 mb-6">
+    <h2 class="font-bold text-gray-700 mb-3 text-sm">الأعمدة في الملف</h2>
+    <p class="text-xs text-gray-500 mb-3">
+        كل <strong>صف = وحدة واحدة</strong> (قطعة أو كرتونة)، مش صنف كامل. الصنف اللي له
+        وحدتين (قطعة + كرتونة) بيتكرر في صفين بنفس <code>code</code> (أو نفس الاسم بالظبط لو
+        الصنف جديد ومفيهوش كود لسه)، والصنف اللي له وحدة واحدة بس بياخد صف واحد.
+    </p>
+    <div class="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
+        <div class="flex items-center gap-2">
+            <span class="bg-gray-100 text-gray-500 px-2 py-0.5 rounded">اختياري</span>
+            <span class="text-gray-600">code — كود الصنف (سيبه فاضي للأصناف الجديدة)</span>
+        </div>
+        <div class="flex items-center gap-2">
+            <span class="bg-gray-100 text-gray-500 px-2 py-0.5 rounded">اختياري</span>
+            <span class="text-gray-600">barcode — الباركود الفعلي المطبوع على العبوة (لو موجود). عند التحديث: سيبه فاضي يخلّي الباركود المسجّل زي ما هو من غير تغيير</span>
+        </div>
+        <div class="flex items-center gap-2">
+            <span class="bg-red-100 text-red-600 px-2 py-0.5 rounded">مطلوب للجديد</span>
+            <span class="text-gray-600">category_slug — كود القسم (اختياري عند التحديث فقط)</span>
+        </div>
+        <div class="flex items-center gap-2">
+            <span class="bg-red-100 text-red-600 px-2 py-0.5 rounded">مطلوب</span>
+            <span class="text-gray-600">name_ar — اسم الصنف بالعربي</span>
+        </div>
+        <div class="flex items-center gap-2">
+            <span class="bg-red-100 text-red-600 px-2 py-0.5 rounded">مطلوب</span>
+            <span class="text-gray-600">unit_name — اسم الوحدة (قطعة، علبة، كرتونة...)</span>
+        </div>
+        <div class="flex items-center gap-2">
+            <span class="bg-red-100 text-red-600 px-2 py-0.5 rounded">مطلوب</span>
+            <span class="text-gray-600">qty_in_small — كام قطعة جوه الوحدة دي (1 لو هي نفسها الوحدة الصغرى)</span>
+        </div>
+        <div class="flex items-center gap-2">
+            <span class="bg-red-100 text-red-600 px-2 py-0.5 rounded">مطلوب</span>
+            <span class="text-gray-600">unit_price — سعر الجمهور لهذه الوحدة</span>
+        </div>
+        <div class="flex items-center gap-2">
+            <span class="bg-gray-100 text-gray-500 px-2 py-0.5 rounded">اختياري (افتراضي 0)</span>
+            <span class="text-gray-600">quantity — كمية "وارد" هتتضاف فوق الرصيد الحالي (رصيد افتتاحي للجديد، أو تزويد للموجود)</span>
+        </div>
+        <div class="flex items-center gap-2">
+            <span class="bg-primary-100 text-primary-600 px-2 py-0.5 rounded">اختياري</span>
+            <span class="text-gray-600">discount:&lt;اسم نوع الحساب&gt; — نسبة الخصم (0-100) لهذا النوع، عمود لكل فئة</span>
+        </div>
+    </div>
+    <p class="text-xs text-gray-500 mt-3">
+        أعمدة <code>discount:&lt;فئة&gt;</code> بتتولّد تلقائيًا في القالب/التصدير حسب أنواع الحسابات
+        الموجودة دلوقتي — تقدر تضيف أو تحذف عمود فئة كامل من الملف براحتك (لو النوع مش موجود
+        وقت الرفع، العمود هيتجاهل من غير ما يوقف الاستيراد). الخصم بيتحسب دايمًا على الوحدة
+        الصغرى (قطعة) لو الصنف عنده وحدتين — الكرتونة ساعتها بتاخد نفس نسبة القطعة تلقائيًا،
+        فسيب خانة الخصم في صف الكرتونة فاضية. لو الصنف عنده وحدة واحدة بس (كرتونة بدون قطعة)،
+        اكتب الخصم في صفها هي مباشرة. عمود فئة فاضي في صف الوحدة الأساسية = مفيش خصم لهذا
+        النوع (بيمسح أي خصم قديم مسجّل).
+    </p>
+    <p class="text-xs text-gray-500 mt-2">
+        المطابقة بتعتمد على: الكود (لو موجود) ← الاسم بعد تجاهل فروق المسافات/الأرقام/الحروف
+        الشكلية ← وإلا لو الاسم قريب جدًا من صنف موجود هيوقّفلك الصف في شاشة مراجعة قبل الحفظ
+        بدل ما يضيفه كصنف مكرر تلقائيًا.
+    </p>
+</div>
+
+<!-- فورم الرفع -->
+<div class="bg-white rounded-2xl shadow-sm p-6" x-data="{ submitting: false }">
+    <form method="POST" enctype="multipart/form-data" @submit="submitting = true">
+        {% csrf_token %}
+        <label class="block mb-4">
+            <span class="text-sm font-medium text-gray-700 mb-2 block">اختر ملف Excel</span>
+            <input type="file" name="excel_file" accept=".xlsx" :disabled="submitting"
+                   class="block w-full text-sm text-gray-500 border border-gray-200 rounded-lg p-2
+                          file:ml-4 file:py-2 file:px-4 file:rounded-lg file:border-0
+                          file:bg-primary-50 file:text-primary-700 file:font-medium hover:file:bg-primary-100">
+        </label>
+        {% btn "رفع واستيراد" type="submit" size="lg" rounded="xl" full_width=True extra_attrs=':disabled="submitting" x-text="submitting ? \'جاري رفع الملف ومعالجته…\' : \'رفع واستيراد\'"' %}
+    </form>
+
+    <!-- مؤشر تقدّم بصري وقت المعالجة: العملية كلها بترجع في request واحد
+         (قراءة الملف + تصنيف الصفوف)، فمفيش نسبة مئوية حقيقية نقدر نحسبها،
+         بس المستخدم كان بيحس إن الصفحة "واقفة" من غير أي رد فعل لحد ما
+         النتيجة تظهر فجأة. شريط متحرك غير محدد (indeterminate) + رسالة
+         واضحة بيأكدوا إن حاجة شغالة فعلًا وميقفلش الصفحة. -->
+    <div x-show="submitting" x-cloak class="mt-4">
+        <div class="h-1.5 w-full bg-primary-100 rounded-full overflow-hidden">
+            <div class="h-full w-1/3 bg-primary-500 rounded-full animate-import-progress"></div>
+        </div>
+        <p class="text-xs text-gray-500 mt-2 text-center">
+            جاري قراءة الملف ومطابقة الأصناف، ده ممكن ياخد شوية ثواني حسب حجم الملف — من فضلك متقفلش الصفحة ولا تضغط رجوع.
+        </p>
+    </div>
+</div>
+
+<style>
+    @keyframes import-progress-slide {
+        0% { transform: translateX(-100%); }
+        100% { transform: translateX(300%); }
+    }
+    .animate-import-progress {
+        animation: import-progress-slide 1.1s ease-in-out infinite;
+    }
+</style>
+
+{% endblock %}

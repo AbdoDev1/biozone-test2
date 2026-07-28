@@ -1,0 +1,173 @@
+{% extends 'staff/base.html' %}
+{% load staff_ui %}
+{% block title %}لوحة المؤشرات — Biozone{% endblock %}
+{% block breadcrumbs %}
+<nav class="text-sm mb-4">{% crumb "التقارير" %}</nav>
+{% endblock %}
+{% block content %}
+<div class="max-w-7xl">
+
+    <div class="flex flex-wrap items-center justify-between gap-3 mb-2">
+        <div>
+            <h1 class="text-2xl font-bold text-gray-800">لوحة المؤشرات</h1>
+            <p class="text-gray-500 text-sm mt-1">نظرة سريعة على أداء المتجر — مبيعات، أرباح، مخزون وعملاء.</p>
+        </div>
+        <div class="flex flex-wrap gap-2 text-sm">
+            <a href="{% url 'staff:reports_sales' %}" class="px-3 py-2 rounded-lg bg-white shadow-sm hover:shadow text-gray-700">تقرير المبيعات</a>
+            <a href="{% url 'staff:reports_products' %}" class="px-3 py-2 rounded-lg bg-white shadow-sm hover:shadow text-gray-700">المنتجات المباعة</a>
+            <a href="{% url 'staff:reports_customers' %}" class="px-3 py-2 rounded-lg bg-white shadow-sm hover:shadow text-gray-700">أفضل العملاء</a>
+            <a href="{% url 'staff:reports_profit' %}" class="px-3 py-2 rounded-lg bg-white shadow-sm hover:shadow text-gray-700">الأرباح</a>
+            <a href="{% url 'staff:reports_stagnant' %}" class="px-3 py-2 rounded-lg bg-white shadow-sm hover:shadow text-gray-700">منتجات راكدة</a>
+        </div>
+    </div>
+
+    <!-- المؤشرات الرئيسية: أهم 4 أرقام بس، بارزة وبخط أكبر -->
+    <div class="grid grid-cols-2 lg:grid-cols-4 gap-4 mt-6 mb-4">
+        <div class="bg-white rounded-2xl shadow-sm p-5">
+            <p class="text-xs text-gray-500 mb-1">مبيعات اليوم</p>
+            <p class="text-2xl font-bold text-gray-800">{{ today_summary.total|floatformat:2 }} <span class="text-sm font-normal text-gray-400">ج.م</span></p>
+            <p class="text-[11px] text-gray-400 mt-1">{{ today_summary.count }} فاتورة</p>
+        </div>
+        <div class="bg-white rounded-2xl shadow-sm p-5">
+            <p class="text-xs text-gray-500 mb-1">مبيعات الشهر</p>
+            <p class="text-2xl font-bold text-gray-800">{{ month_summary.total|floatformat:2 }} <span class="text-sm font-normal text-gray-400">ج.م</span></p>
+            <p class="text-[11px] text-gray-400 mt-1">{{ month_summary.count }} فاتورة</p>
+        </div>
+        <div class="bg-white rounded-2xl shadow-sm p-5">
+            <p class="text-xs text-gray-500 mb-1">صافي الربح (الشهر)</p>
+            <p class="text-2xl font-bold {% if month_profit.profit >= 0 %}text-green-600{% else %}text-red-600{% endif %}">{{ month_profit.profit|floatformat:2 }} <span class="text-sm font-normal text-gray-400">ج.م</span></p>
+            <p class="text-[11px] text-gray-400 mt-1">هامش {{ month_profit.margin_percent|floatformat:1 }}%</p>
+        </div>
+        <div class="bg-white rounded-2xl shadow-sm p-5">
+            <p class="text-xs text-gray-500 mb-1">قيمة المخزون الحالية</p>
+            <p class="text-2xl font-bold text-gray-800">{{ stock_value|floatformat:2 }} <span class="text-sm font-normal text-gray-400">ج.م</span></p>
+            <p class="text-[11px] text-gray-400 mt-1">{{ total_products }} منتج</p>
+        </div>
+    </div>
+
+    <!-- مؤشرات ثانوية: شريط واحد مختصر بدل 5 بطاقات منفصلة -->
+    <div class="bg-white rounded-2xl shadow-sm px-5 py-3 mb-6 flex flex-wrap">
+        <div class="flex-1 min-w-[150px] px-2 py-1">
+            <p class="text-[11px] text-gray-400">متوسط الفاتورة (الشهر)</p>
+            <p class="text-sm font-bold text-gray-700 mt-0.5">{{ month_summary.avg|floatformat:2 }} ج.م</p>
+        </div>
+        <div class="flex-1 min-w-[150px] px-2 py-1 border-r border-gray-100">
+            <p class="text-[11px] text-gray-400">العملاء</p>
+            <p class="text-sm font-bold text-gray-700 mt-0.5">{{ total_customers }} <span class="text-gray-400 font-normal">({{ active_customers }} نشط)</span></p>
+        </div>
+        <div class="flex-1 min-w-[150px] px-2 py-1 border-r border-gray-100">
+            <p class="text-[11px] text-gray-400">عدد المنتجات</p>
+            <p class="text-sm font-bold text-gray-700 mt-0.5">{{ total_products }}</p>
+        </div>
+        <div class="flex-1 min-w-[150px] px-2 py-1 border-r border-gray-100">
+            <p class="text-[11px] {% if low_stock_count > 0 %}text-orange-500{% else %}text-gray-400{% endif %}">مخزون منخفض</p>
+            <p class="text-sm font-bold {% if low_stock_count > 0 %}text-orange-600{% else %}text-gray-700{% endif %} mt-0.5">
+                {{ low_stock_count }}{% if low_stock_count > 0 %} <a href="{% url 'staff:inventory' %}?low=1" class="text-[11px] text-primary-600 hover:underline font-normal">(عرض)</a>{% endif %}
+            </p>
+        </div>
+    </div>
+
+    <!-- الرسوم البيانية -->
+    <div class="grid grid-cols-1 lg:grid-cols-3 gap-4 mb-6">
+        <div class="bg-white rounded-2xl shadow-sm p-5 lg:col-span-2">
+            <h2 class="font-bold text-gray-700 mb-3">المبيعات اليومية (آخر 14 يوم)</h2>
+            <canvas id="dailySalesChart" height="120"></canvas>
+        </div>
+        <div class="bg-white rounded-2xl shadow-sm p-5">
+            <h2 class="font-bold text-gray-700 mb-3">الأرباح الشهرية (آخر 6 أشهر)</h2>
+            <canvas id="monthlyProfitChart" height="160"></canvas>
+        </div>
+    </div>
+
+    <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
+        <div class="bg-white rounded-2xl shadow-sm p-5">
+            <div class="flex justify-between items-center mb-3">
+                <h2 class="font-bold text-gray-700">أفضل المنتجات (الشهر الحالي)</h2>
+                <a href="{% url 'staff:reports_products' %}" class="text-xs text-primary-600 hover:underline">التقرير الكامل</a>
+            </div>
+            <table class="w-full text-sm">
+                <thead>
+                    <tr class="text-right text-gray-400 border-b text-xs">
+                        <th class="py-2">المنتج</th>
+                        <th class="py-2">الكمية</th>
+                        <th class="py-2">الإيراد</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for p in top_products %}
+                    <tr class="border-b last:border-0">
+                        <td class="py-2">{{ p.display_name }}</td>
+                        <td class="py-2 text-gray-500">{{ p.total_qty }}</td>
+                        <td class="py-2 font-semibold">{{ p.total_revenue|floatformat:2 }} ج.م</td>
+                    </tr>
+                    {% empty %}
+                    <tr><td colspan="3" class="py-4 text-center text-gray-400">لا توجد مبيعات في هذه الفترة</td></tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        <div class="bg-white rounded-2xl shadow-sm p-5">
+            <div class="flex justify-between items-center mb-3">
+                <h2 class="font-bold text-gray-700">أكثر العملاء شراءً (الشهر الحالي)</h2>
+                <a href="{% url 'staff:reports_customers' %}" class="text-xs text-primary-600 hover:underline">التقرير الكامل</a>
+            </div>
+            <table class="w-full text-sm">
+                <thead>
+                    <tr class="text-right text-gray-400 border-b text-xs">
+                        <th class="py-2">العميل</th>
+                        <th class="py-2">الفواتير</th>
+                        <th class="py-2">الإجمالي</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for c in top_customers %}
+                    <tr class="border-b last:border-0">
+                        <td class="py-2">{{ c.display_name }}</td>
+                        <td class="py-2 text-gray-500">{{ c.invoices_count }}</td>
+                        <td class="py-2 font-semibold">{{ c.total_revenue|floatformat:2 }} ج.م</td>
+                    </tr>
+                    {% empty %}
+                    <tr><td colspan="3" class="py-4 text-center text-gray-400">لا توجد مبيعات في هذه الفترة</td></tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<script>
+    const dailyLabels = [{% for d in daily_series %}"{{ d.date|date:'d/m' }}",{% endfor %}];
+    const dailyTotals = [{% for d in daily_series %}{{ d.total|floatformat:2 }},{% endfor %}];
+    new Chart(document.getElementById('dailySalesChart'), {
+        type: 'line',
+        data: {
+            labels: dailyLabels,
+            datasets: [{
+                label: 'المبيعات (ج.م)',
+                data: dailyTotals,
+                borderColor: '#2563eb',
+                backgroundColor: 'rgba(37,99,235,0.1)',
+                tension: 0.3,
+                fill: true,
+            }]
+        },
+        options: { plugins: { legend: { display: false } }, scales: { y: { beginAtZero: true } } }
+    });
+
+    const monthlyLabels = [{% for m in monthly_series %}"{{ m.label }}",{% endfor %}];
+    const monthlyProfits = [{% for m in monthly_series %}{{ m.profit|floatformat:2 }},{% endfor %}];
+    new Chart(document.getElementById('monthlyProfitChart'), {
+        type: 'bar',
+        data: {
+            labels: monthlyLabels,
+            datasets: [{
+                label: 'الربح (ج.م)',
+                data: monthlyProfits,
+                backgroundColor: '#16a34a',
+                borderRadius: 6,
+            }]
+        },
+        options: { plugins: { legend: { display: false } }, scales: { y: { beginAtZero: true } } }
+    });
+</script>
+{% endblock %}

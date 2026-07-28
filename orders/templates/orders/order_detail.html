@@ -1,0 +1,132 @@
+{% extends 'base.html' %}
+
+{% block title %}طلب #{{ order.pk }} — Biozone{% endblock %}
+
+{% block content %}
+
+<div class="max-w-2xl mx-auto px-4 py-8">
+    <div class="bg-white rounded-2xl shadow-sm p-6">
+      <div class="flex flex-col sm:flex-row sm:justify-between sm:items-start gap-3 mb-6">
+        <div>
+          <h1 class="text-2xl font-bold text-gray-800">طلب #{{ order.pk }}</h1>
+          <p class="text-gray-400 text-sm mt-1">{{ order.created_at|date:"d/m/Y — H:i" }}</p>
+        </div>
+        <span class="px-3 py-1 rounded-full text-sm font-medium
+          {% if order.status == 'PENDING' %}bg-yellow-100 text-yellow-700
+          {% elif order.status == 'NEEDS_APPROVAL' %}bg-orange-100 text-orange-700
+          {% elif order.status == 'CONFIRMED' %}bg-green-100 text-green-700
+          {% elif order.status == 'REJECTED' %}bg-red-100 text-red-600
+          {% else %}bg-primary-100 text-primary-700{% endif %}">
+          {{ order.get_status_display }}
+        </span>
+      </div>
+
+      {% if order.status == 'PENDING' %}
+      <div class="bg-yellow-50 border border-yellow-200 text-yellow-800 rounded-xl p-4 mb-6 text-sm">
+        <p class="font-bold mb-2 flex items-center gap-1.5">
+          <svg class="w-4 h-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 6v6l4 2m6-2a10 10 0 11-20 0 10 10 0 0120 0z"/></svg>
+          طلبك قيد المراجعة من فريق المخزن
+        </p>
+      </div>
+      {% endif %}
+
+      {% if order.status == 'NEEDS_APPROVAL' %}
+      <div class="bg-orange-50 border border-orange-200 text-orange-800 rounded-xl p-4 mb-6 text-sm">
+        <p class="font-bold mb-2 flex items-center gap-1.5">
+          <svg class="w-4 h-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z"/></svg>
+          تم تعديل كميات طلبك من قِبل المخزن
+        </p>
+        <p class="mb-3">كان الإجمالي السابق <strong>{{ order.original_total }} ج.م</strong>، وأصبح بعد التعديل <strong>{{ order.total }} ج.م</strong>. الأصناف اللي اتغيّرت (بالزيادة أو النقص) موضّحة تحت — يرجى مراجعتها وتحديد موافقتك.</p>
+        <div class="flex flex-col sm:flex-row gap-3">
+          <form method="POST" action="{% url 'orders:order_approve_amendment' order.pk %}">
+            {% csrf_token %}
+            <button type="submit" class="bg-green-600 hover:bg-green-700 text-white text-sm font-semibold px-5 py-2 rounded-lg transition inline-flex items-center gap-1.5">
+              <svg class="w-4 h-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M4.5 12.75l6 6 9-13.5"/></svg>
+              موافق على التعديل
+            </button>
+          </form>
+          <form method="POST" action="{% url 'orders:order_reject_amendment' order.pk %}"
+                data-confirm="هل أنت متأكد من رفض التعديل؟ سيتم رفض الطلب بالكامل." data-confirm-type="error">
+            {% csrf_token %}
+            <button type="submit" class="bg-white border border-red-300 text-red-600 text-sm font-semibold px-5 py-2 rounded-lg hover:bg-red-50 transition inline-flex items-center gap-1.5">
+              <svg class="w-4 h-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/></svg>
+              رفض التعديل
+            </button>
+          </form>
+        </div>
+      </div>
+      {% endif %}
+
+      <a href="{% url 'orders:order_items' order.pk %}"
+         class="flex justify-between items-center bg-gray-50 hover:bg-gray-100 transition rounded-xl p-4 mb-6 text-sm">
+        <span class="font-medium text-gray-700 inline-flex items-center gap-1.5">
+          <svg class="w-4 h-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="1.8"><path stroke-linecap="round" stroke-linejoin="round" d="M8.25 6.75h12M8.25 12h12m-12 5.25h12M3.75 6.75h.007v.008H3.75V6.75zm.375 0a.375.375 0 11-.75 0 .375.375 0 01.75 0zM3.75 12h.007v.008H3.75V12zm.375 0a.375.375 0 11-.75 0 .375.375 0 01.75 0zm-.375 5.25h.007v.008H3.75v-.008zm.375 0a.375.375 0 11-.75 0 .375.375 0 01.75 0z"/></svg>
+          عرض أصناف الطلب ({{ items_count }} صنف)
+        </span>
+        <span class="flex items-center gap-3">
+          <span class="font-bold text-primary-700">{{ order.total }} ج.م</span>
+          <svg class="w-4 h-4 text-gray-400 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M10.5 19.5L3 12m0 0l7.5-7.5M3 12h18"/></svg>
+        </span>
+      </a>
+
+      {% if order.status == 'DELIVERED' %}
+      <div class="bg-primary-50 border border-primary-200 text-primary-800 rounded-xl p-4 mb-6 text-sm">
+        <p class="font-bold mb-2 flex items-center gap-1.5">
+          <svg class="w-4 h-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M4.5 12.75l6 6 9-13.5"/></svg>
+          تم تسليم طلبك
+        </p>
+        {% if invoice %}
+        <p class="mb-3">تم إصدار الفاتورة الرسمية لطلبك، وتقدر تعرضها أو تطبعها من هنا.</p>
+        <a href="{% url 'invoices:print' invoice.pk %}" target="_blank"
+           class="inline-flex items-center gap-1.5 bg-white hover:bg-primary-100 text-primary-700 text-sm font-semibold px-4 py-2 rounded-lg border border-primary-300 transition">
+          <svg class="w-4 h-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M6.72 13.829c-.24.03-.48.062-.72.096m.72-.096a42.415 42.415 0 0110.56 0m-10.56 0L6.34 18m10.94-4.171c.24.03.48.062.72.096m-.72-.096L17.66 18m0 0l.229 2.523a1.125 1.125 0 01-1.12 1.227H7.231c-.662 0-1.18-.568-1.12-1.227L6.34 18m11.32 0a42.475 42.475 0 00-11.32 0m11.32 0a41.678 41.678 0 00-2.13-.176M7.34 18a41.678 41.678 0 012.13-.176m0 0a41.72 41.72 0 015.06 0m-5.06 0V12.75a1.125 1.125 0 011.125-1.125h2.81a1.125 1.125 0 011.125 1.125v5.074"/></svg>
+          عرض/طباعة الفاتورة ({{ invoice.invoice_number }})
+        </a>
+        {% else %}
+        <p>تم تسليم طلبك، وجارٍ إصدار الفاتورة الرسمية.</p>
+        {% endif %}
+      </div>
+      {% endif %}
+
+      {% if order.notes %}
+      <div class="bg-gray-50 rounded-xl p-4 text-sm text-gray-600 mb-6">
+        <p class="font-medium mb-1">ملاحظات:</p>
+        <p>{{ order.notes }}</p>
+      </div>
+      {% endif %}
+
+      <div class="mb-6">
+        <h2 class="font-bold text-gray-700 mb-4">سجل العمليات</h2>
+        <div class="space-y-4 border-r-2 border-gray-100 pr-4">
+          {% for log in order.logs.all %}
+          <div class="relative">
+            <span class="absolute -right-[21px] top-1 w-2.5 h-2.5 rounded-full
+              {% if log.event == 'STATUS_CHANGED' and log.new_status == 'CONFIRMED' %}bg-green-500
+              {% elif log.event == 'STATUS_CHANGED' and log.new_status == 'REJECTED' %}bg-red-500
+              {% elif log.event == 'STATUS_CHANGED' and log.new_status == 'DELIVERED' %}bg-primary-500
+              {% else %}bg-gray-400{% endif %}"></span>
+            <p class="text-sm text-gray-700">{{ log.note }}</p>
+            <p class="text-xs text-gray-400 mt-0.5">{{ log.created_at|date:"d/m/Y — H:i" }}</p>
+          </div>
+          {% endfor %}
+        </div>
+      </div>
+
+      <div class="mt-6 flex flex-wrap gap-3 items-center">
+        <form method="POST" action="{% url 'orders:order_reorder' order.pk %}">
+          {% csrf_token %}
+          <button type="submit"
+                  class="inline-flex items-center gap-1.5 bg-primary-600 hover:bg-primary-700 text-white text-sm font-semibold px-4 py-2 rounded-lg transition">
+            <svg class="w-4 h-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0l3.181 3.183a8.25 8.25 0 0013.803-3.7M4.031 9.865a8.25 8.25 0 0113.803-3.7l3.181 3.182m0-4.991v4.99"/></svg>
+            إعادة الطلب لسلة جديدة
+          </button>
+        </form>
+        <a href="{% url 'orders:order_list' %}"
+           class="text-sm text-primary-600 hover:underline">← الطلبات</a>
+        <a href="{% url 'store:home' %}"
+           class="text-sm text-gray-500 hover:underline">المتجر</a>
+      </div>
+    </div>
+</div>
+
+{% endblock %}
