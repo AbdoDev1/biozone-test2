@@ -22,7 +22,7 @@ def discount_col_name(account_type):
     return f'{DISCOUNT_COL_PREFIX}{account_type.name}'
 
 
-def resolve_category(value):
+def resolve_category(value, create=False):
     """
     بتدوّر على القسم من قيمة عمود category_slug في ملف الإكسل — بتقبل إما
     الـslug الحقيقي (زي "عناية-بالاسنان") أو اسم القسم العادي بمسافات
@@ -33,6 +33,11 @@ def resolve_category(value):
     نحوّل القيمة نفسها لـslug (بنفس دالة توليد الـslug الأصلية) ونجرّب
     تاني — بيغطي حالة "القيمة فيها مسافات بس لو تحوّلت لslug هتطابق قسم
     موجود". بيرجّع الـCategory أو None لو مفيش تطابق بأي طريقة.
+
+    لو create=True ومفيش تطابق بأي طريقة، بينشئ قسم جديد بالاسم زي ما هو
+    مكتوب في الملف (والـslug الناتج من نفس دالة التطبيع اللي جرّبناها فوق)
+    بدل ما يرجّع None — مستخدم وقت الحفظ الفعلي (commit.py) عشان صنف جديد
+    له قسم مش موجود مايوقفش الاستيراد كله.
     """
     from products.models import Category
 
@@ -54,7 +59,12 @@ def resolve_category(value):
         if category:
             return category
 
-    return None
+    if not create:
+        return None
+
+    slug = normalized_slug or value
+    category, _ = Category.objects.get_or_create(slug=slug, defaults={'name': value})
+    return category
 
 
 import re

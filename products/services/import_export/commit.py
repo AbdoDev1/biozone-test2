@@ -31,7 +31,7 @@ def commit_product(row_data, target_pk, user, account_types_by_pk):
     """
     category = None
     if row_data['category_slug']:
-        category = resolve_category(row_data['category_slug'])
+        category = resolve_category(row_data['category_slug'], create=True)
 
     if target_pk:
         product = Product.objects.get(pk=target_pk)
