@@ -146,14 +146,16 @@ def import_products_confirm(request):
     }
     try:
         with transaction.atomic():
-            created_count, updated_count, restocked_count = import_export_service.commit_import_batch(
-                rows, decisions, request.user,
+            created_count, updated_count, restocked_count, categories_created_count = (
+                import_export_service.commit_import_batch(rows, decisions, request.user)
             )
     except Exception as e:
         messages.error(request, f'حصل خطأ أثناء الحفظ ولم يتم حفظ أي صنف: {str(e)}')
         return redirect('staff:import_products')
 
     del request.session[IMPORT_SESSION_KEY]
+    if categories_created_count:
+        messages.success(request, f'تم إنشاء {categories_created_count} قسم جديد تلقائيًا من الملف.')
     if created_count:
         messages.success(request, f'تم إضافة {created_count} صنف جديد.')
     if updated_count:

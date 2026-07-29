@@ -115,12 +115,6 @@
 
 <!-- فورم الرفع -->
 <div class="bg-white rounded-2xl shadow-sm p-6" x-data="{ submitting: false }">
-    <!-- hx-boost="false": الصفحة كلها تحت hx-boost (راجع base.html)، وhtmx
-         بيستثني ملفات input[type=file] من الفورمز اللي بتتبعت boosted —
-         يعني لو سبنا الفورم زي ما هو، الملف مش هيتبعت خالص للسيرفر حتى لو
-         الموظف فعلاً اختاره، وهيرجّعله خطأ "يرجى اختيار ملف Excel أولاً".
-         نفس السبب اللي كل فورم/رابط خاص تاني في اللوحة (تصدير، تحميل،
-         logout) بيعطّل الـboost بشكل صريح. -->
     <form method="POST" enctype="multipart/form-data" hx-boost="false" @submit="submitting = true">
         {% csrf_token %}
         <label class="block mb-4">

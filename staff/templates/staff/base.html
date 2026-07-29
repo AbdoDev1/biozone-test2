@@ -36,68 +36,11 @@
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.5.1/dist/chart.umd.min.js"
             integrity="sha384-jb8JQMbMoBUzgWatfe6COACi2ljcDdZQ2OxczGA3bGNeWe+6DChMTBJemed7ZnvJ"
             crossorigin="anonymous"></script>
-    <script>
-        // htmx بيحتاج يبعت CSRF token في header يدويًا لأي POST مُعمول
-        // boost (زي فورم تسجيل الخروج)، لأنه مش فورم عادي بيتقرا من
-        // الـ input المخفي وقت الإرسال — بنقرأه من كوكي csrftoken.
-        function getCookie(name) {
-            const match = document.cookie.match('(^|;)\\s*' + name + '\\s*=\\s*([^;]+)');
-            return match ? decodeURIComponent(match.pop()) : null;
-        }
-        document.body.addEventListener('htmx:configRequest', (evt) => {
-            evt.detail.headers['X-CSRFToken'] = getCookie('csrftoken');
-        });
-        // Alpine.js بيبني تفاعليته وقت ما الصفحة تتحمّل أول مرة بس. لما
-        // htmx يستبدل جزء من الـ DOM (بعد أي boost)، العناصر الجديدة (رسائل
-        // التنبيه، الـ backdrop، إلخ) لازم Alpine يتعرف عليها يدويًا وإلا
-        // هتفضل بدون تفاعل (x-show/x-data مش هيشتغلوا).
-        document.body.addEventListener('htmx:afterSwap', (evt) => {
-            if (window.Alpine) window.Alpine.initTree(evt.detail.target);
-        });
-        // انتقال ناعم (fade) بين الصفحات لو المتصفح بيدعم View Transitions
-        // API (Chrome/Edge حاليًا). المتصفحات اللي مش بتدعمها (Firefox
-        // مثلًا) هتستبدل المحتوى فورًا زي أي وقت من غير أي انيميشن — مفيش
-        // كسر أو تعطل، بس مفيش الأنيميشن الإضافي دي بالذات.
-        htmx.config.globalViewTransitions = true;
-        // منع أي transition (زي عرض/هامش السايدبار اللي أصلاً بيتحرك بنعومة
-        // 300ms لما المستخدم يفتح/يقفل السايدبار يدويًا) من الاشتغال في
-        // نفس لحظة تنقل الـ htmx: بعد كل boosted swap، Alpine بيعيد بناء
-        // x-data من الصفر على المحتوى الجديد، وده بيخلي المتصفح يرسم فريم
-        // وسيط قبل ما class العرض يتطبّق، فالـ transition الأصلي بتاع
-        // السايدبار كان بيتفعّل هو كمان فوق فيد الصفحة — إحساس بحركتين
-        // مع بعض (انزلاق واضح من اليمين للشمال + فيد) بدل فيد بس. الحل:
-        // نلغي كل الـ transitions مؤقتًا من أول ما الطلب يتبعت لحد ما
-        // الاستقرار (settle) يخلص، وترجع الحركة اليدوية (زرار الفتح/القفل)
-        // سلسة زي ما هي لأنها مش بتعدي على أي htmx swap.
-        document.body.addEventListener('htmx:beforeRequest', () => {
-            document.body.classList.add('htmx-swap-nofx');
-        });
-        document.body.addEventListener('htmx:afterSettle', () => {
-            requestAnimationFrame(() => {
-                document.body.classList.remove('htmx-swap-nofx');
-            });
-        });
-        // شريط تحميل رفيع فوق الصفحة (زي يوتيوب) بيظهر فورًا وقت الضغط على أي
-        // رابط ويكبر تدريجيًا لحد ما الرد يوصل، عشان تبقى في إشارة بصرية
-        // فورية إن حاجة بتحصل من لحظة الضغط، مش بس فيد في الآخر.
-        const pageProgress = document.getElementById('page-progress');
-        document.body.addEventListener('htmx:beforeRequest', () => {
-            pageProgress.style.transition = 'none';
-            pageProgress.style.transform = 'scaleX(0)';
-            pageProgress.style.opacity = '1';
-            void pageProgress.offsetWidth; // إجبار إعادة رسم قبل التحريك
-            pageProgress.style.transition = 'transform 4s cubic-bezier(0.1,0.4,0.1,1)';
-            pageProgress.style.transform = 'scaleX(0.85)';
-        });
-        document.body.addEventListener('htmx:afterSettle', () => {
-            pageProgress.style.transition = 'transform 0.2s ease-out';
-            pageProgress.style.transform = 'scaleX(1)';
-            setTimeout(() => {
-                pageProgress.style.transition = 'opacity 0.3s ease-out';
-                pageProgress.style.opacity = '0';
-            }, 150);
-        });
-    </script>
+    <!-- سكريبت htmx/Alpine الرئيسي اتنقل لآخر الصفحة (قبل </body>) — كان
+         هنا في الأصل بس بيتنفذ وهو لسه بيحلّل <head>، يعني قبل ما <body>
+         نفسه يتعمل، فـdocument.body وdocument.getElementById('page-progress')
+         كانوا بيرجعوا null وبيرموا "Cannot read properties of null" ويوقفوا
+         السكريبت كله (ومعاه أي event listener لـhtmx) من غير ما يكمل. -->
     <style>
         ::view-transition-old(root),
         ::view-transition-new(root) {
@@ -228,5 +171,67 @@
     </div>
 </main>
 {% endwith %}
+<script>
+    // htmx بيحتاج يبعت CSRF token في header يدويًا لأي POST مُعمول
+    // boost (زي فورم تسجيل الخروج)، لأنه مش فورم عادي بيتقرا من
+    // الـ input المخفي وقت الإرسال — بنقرأه من كوكي csrftoken.
+    function getCookie(name) {
+        const match = document.cookie.match('(^|;)\\s*' + name + '\\s*=\\s*([^;]+)');
+        return match ? decodeURIComponent(match.pop()) : null;
+    }
+    document.body.addEventListener('htmx:configRequest', (evt) => {
+        evt.detail.headers['X-CSRFToken'] = getCookie('csrftoken');
+    });
+    // Alpine.js بيبني تفاعليته وقت ما الصفحة تتحمّل أول مرة بس. لما
+    // htmx يستبدل جزء من الـ DOM (بعد أي boost)، العناصر الجديدة (رسائل
+    // التنبيه، الـ backdrop، إلخ) لازم Alpine يتعرف عليها يدويًا وإلا
+    // هتفضل بدون تفاعل (x-show/x-data مش هيشتغلوا).
+    document.body.addEventListener('htmx:afterSwap', (evt) => {
+        if (window.Alpine) window.Alpine.initTree(evt.detail.target);
+    });
+    // انتقال ناعم (fade) بين الصفحات لو المتصفح بيدعم View Transitions
+    // API (Chrome/Edge حاليًا). المتصفحات اللي مش بتدعمها (Firefox
+    // مثلًا) هتستبدل المحتوى فورًا زي أي وقت من غير أي انيميشن — مفيش
+    // كسر أو تعطل، بس مفيش الأنيميشن الإضافي دي بالذات.
+    htmx.config.globalViewTransitions = true;
+    // منع أي transition (زي عرض/هامش السايدبار اللي أصلاً بيتحرك بنعومة
+    // 300ms لما المستخدم يفتح/يقفل السايدبار يدويًا) من الاشتغال في
+    // نفس لحظة تنقل الـ htmx: بعد كل boosted swap، Alpine بيعيد بناء
+    // x-data من الصفر على المحتوى الجديد، وده بيخلي المتصفح يرسم فريم
+    // وسيط قبل ما class العرض يتطبّق، فالـ transition الأصلي بتاع
+    // السايدبار كان بيتفعّل هو كمان فوق فيد الصفحة — إحساس بحركتين
+    // مع بعض (انزلاق واضح من اليمين للشمال + فيد) بدل فيد بس. الحل:
+    // نلغي كل الـ transitions مؤقتًا من أول ما الطلب يتبعت لحد ما
+    // الاستقرار (settle) يخلص، وترجع الحركة اليدوية (زرار الفتح/القفل)
+    // سلسة زي ما هي لأنها مش بتعدي على أي htmx swap.
+    document.body.addEventListener('htmx:beforeRequest', () => {
+        document.body.classList.add('htmx-swap-nofx');
+    });
+    document.body.addEventListener('htmx:afterSettle', () => {
+        requestAnimationFrame(() => {
+            document.body.classList.remove('htmx-swap-nofx');
+        });
+    });
+    // شريط تحميل رفيع فوق الصفحة (زي يوتيوب) بيظهر فورًا وقت الضغط على أي
+    // رابط ويكبر تدريجيًا لحد ما الرد يوصل، عشان تبقى في إشارة بصرية
+    // فورية إن حاجة بتحصل من لحظة الضغط، مش بس فيد في الآخر.
+    const pageProgress = document.getElementById('page-progress');
+    document.body.addEventListener('htmx:beforeRequest', () => {
+        pageProgress.style.transition = 'none';
+        pageProgress.style.transform = 'scaleX(0)';
+        pageProgress.style.opacity = '1';
+        void pageProgress.offsetWidth; // إجبار إعادة رسم قبل التحريك
+        pageProgress.style.transition = 'transform 4s cubic-bezier(0.1,0.4,0.1,1)';
+        pageProgress.style.transform = 'scaleX(0.85)';
+    });
+    document.body.addEventListener('htmx:afterSettle', () => {
+        pageProgress.style.transition = 'transform 0.2s ease-out';
+        pageProgress.style.transform = 'scaleX(1)';
+        setTimeout(() => {
+            pageProgress.style.transition = 'opacity 0.3s ease-out';
+            pageProgress.style.opacity = '0';
+        }, 150);
+    });
+</script>
 </body>
 </html>

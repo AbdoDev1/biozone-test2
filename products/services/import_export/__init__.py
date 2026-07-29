@@ -20,6 +20,7 @@ from .common import (
     FUZZY_MATCH_THRESHOLD,
     REQUIRED_IMPORT_HEADERS,
     discount_col_name,
+    get_or_create_category,
     group_import_errors,
 )
 from .export import build_import_template_workbook, build_products_export_workbook
@@ -30,6 +31,7 @@ __all__ = [
     'DISCOUNT_COL_PREFIX',
     'REQUIRED_IMPORT_HEADERS',
     'discount_col_name',
+    'get_or_create_category',
     'group_import_errors',
     'parse_unit_row',
     'group_unit_rows',

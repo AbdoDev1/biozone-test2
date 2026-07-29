@@ -43,12 +43,13 @@ class ParseUnitRowTestCase(TestCase):
         self.assertIsNone(data)
 
     def test_unknown_category_slug_accepted_at_parse_time(self):
-        # القسم مش موجود لسه بس ده مبقاش خطأ وقت القراءة — commit.py هو
-        # اللي هيتكفّل بإنشاء القسم وقت الحفظ الفعلي (create=True).
-        row = ('شاش طبي', 'not-a-real-category', 'قطعة', 1, 2.5, 100)
+        # مرحلة القراءة "بدون حفظ" — مش بتتحقق إن القسم موجود فعلًا في
+        # القاعدة، لأن القسم غير الموجود هيتعمل تلقائيًا وقت الحفظ الفعلي
+        # (راجع CommitProductTestCase.test_creates_category_automatically_when_missing).
+        row = ('شاش طبي', 'قسم غير موجود أصلًا', 'قطعة', 1, 2.5, 100)
         data, error = svc.parse_unit_row(2, row, self.idx, {})
         self.assertIsNone(error)
-        self.assertEqual(data['category_slug'], 'not-a-real-category')
+        self.assertEqual(data['category_slug'], 'قسم غير موجود أصلًا')
 
 
 class GroupUnitRowsTestCase(TestCase):
@@ -164,19 +165,36 @@ class CommitProductTestCase(TestCase):
         self.assertEqual(product.inventory.quantity, 100)
         self.assertEqual(product.units.count(), 1)
 
-    def test_creates_missing_category_automatically(self):
+    def test_creates_category_automatically_when_missing(self):
         row_data = {
-            'category_slug': 'ضمادات مطاطية',  # قسم مش موجود، فيه مسافات مش شرطات
-            'name_ar': 'ضمادة مطاطية',
+            'category_slug': 'قسم جديد كليًا',
+            'name_ar': 'صنف قسمه جديد',
             'small': {'unit_name': 'قطعة', 'unit_price': 5.0, 'qty_in_small': 1, 'quantity': 10},
             'large': None,
             'discounts': {},
         }
-        svc.commit_product(row_data, target_pk=None, user=None, account_types_by_pk={})
+        self.assertFalse(Category.objects.filter(name='قسم جديد كليًا').exists())
+        created, restocked = svc.commit_product(row_data, target_pk=None, user=None, account_types_by_pk={})
+        self.assertTrue(created)
 
-        product = Product.objects.get(name_ar='ضمادة مطاطية')
-        self.assertEqual(product.category.name, 'ضمادات مطاطية')
-        self.assertEqual(product.category.slug, 'ضمادات-مطاطية')
+        category = Category.objects.get(name='قسم جديد كليًا')
+        product = Product.objects.get(name_ar='صنف قسمه جديد')
+        self.assertEqual(product.category_id, category.pk)
+
+    def test_category_cache_reused_across_rows_in_same_batch(self):
+        cache = {}
+        row1 = {
+            'category_slug': 'قسم مشترك', 'name_ar': 'صنف أول',
+            'small': None, 'large': None, 'discounts': {},
+        }
+        row2 = {
+            'category_slug': 'قسم مشترك', 'name_ar': 'صنف تاني',
+            'small': None, 'large': None, 'discounts': {},
+        }
+        svc.commit_product(row1, target_pk=None, user=None, account_types_by_pk={}, category_cache=cache)
+        svc.commit_product(row2, target_pk=None, user=None, account_types_by_pk={}, category_cache=cache)
+
+        self.assertEqual(Category.objects.filter(name='قسم مشترك').count(), 1)
 
     def test_create_without_category_raises(self):
         row_data = {

@@ -22,7 +22,7 @@ def discount_col_name(account_type):
     return f'{DISCOUNT_COL_PREFIX}{account_type.name}'
 
 
-def resolve_category(value, create=False):
+def resolve_category(value):
     """
     بتدوّر على القسم من قيمة عمود category_slug في ملف الإكسل — بتقبل إما
     الـslug الحقيقي (زي "عناية-بالاسنان") أو اسم القسم العادي بمسافات
@@ -33,11 +33,6 @@ def resolve_category(value, create=False):
     نحوّل القيمة نفسها لـslug (بنفس دالة توليد الـslug الأصلية) ونجرّب
     تاني — بيغطي حالة "القيمة فيها مسافات بس لو تحوّلت لslug هتطابق قسم
     موجود". بيرجّع الـCategory أو None لو مفيش تطابق بأي طريقة.
-
-    لو create=True ومفيش تطابق بأي طريقة، بينشئ قسم جديد بالاسم زي ما هو
-    مكتوب في الملف (والـslug الناتج من نفس دالة التطبيع اللي جرّبناها فوق)
-    بدل ما يرجّع None — مستخدم وقت الحفظ الفعلي (commit.py) عشان صنف جديد
-    له قسم مش موجود مايوقفش الاستيراد كله.
     """
     from products.models import Category
 
@@ -59,11 +54,48 @@ def resolve_category(value, create=False):
         if category:
             return category
 
-    if not create:
+    return None
+
+
+def get_or_create_category(value, cache=None):
+    """
+    زي resolve_category بالظبط، لكن لو مفيش قسم مطابق أصلًا بينشئه على
+    طول بدل ما يرجّع None — عشان ملف الإكسل يقدر "يستورد الأقسام" مش بس
+    الأصناف (الموظف مش مضطر يعمل كل قسم يدويًا قبل الاستيراد).
+
+    cache اختياري (dict بمفتاح القيمة الخام زي ما هي في الملف): بيتمرر من
+    commit_import_batch عشان ملف فيه مئات الصفوف بنفس القسم ميعملش
+    query/insert منفصل لكل صف — أول صف بيحل/بينشئ القسم وبيسجله في الـ
+    cache، والباقي بياخدوه من هناك على طول.
+
+    القسم الجديد بيتعمل بالاسم زي ما هو مكتوب في الملف بالظبط، والـslug
+    بيتولّد منه تلقائيًا (زي ما بيحصل لو الموظف عمل القسم يدويًا من شاشة
+    "إضافة قسم" وسايب الـslug فاضي — راجع products/forms.py).
+    """
+    from products.models import Category
+
+    value = (value or '').strip()
+    if not value:
         return None
 
-    slug = normalized_slug or value
-    category, _ = Category.objects.get_or_create(slug=slug, defaults={'name': value})
+    if cache is not None and value in cache:
+        return cache[value]
+
+    category = resolve_category(value)
+    if category is None:
+        # slugify بترجع فاضي لو القيمة كلها رموز/علامات مفيهاش حروف أو
+        # أرقام (حالة نادرة جدًا) — بنرجع للقيمة الخام نفسها كـslug عشان
+        # الـSlugField miss تقبلش None، لكن ده مش المسار المتوقع فعليًا.
+        slug = slugify(value, allow_unicode=True) or value
+        category, was_created = Category.objects.get_or_create(
+            slug=slug, defaults={'name': value},
+        )
+        # علامة داخلية بس (مش حقل في الموديل) عشان commit_import_batch
+        # يقدر يعد كام قسم جديد اتعمل خلال الدفعة دي من غير query إضافي.
+        category._import_created = was_created
+
+    if cache is not None:
+        cache[value] = category
     return category
 
 

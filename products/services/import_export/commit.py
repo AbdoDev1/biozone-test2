@@ -12,7 +12,7 @@ from activity.services import log_activity
 from inventory.models import Inventory, StockMovement
 from products.models import Product, ProductUnit, UnitDiscount
 
-from .common import resolve_category
+from .common import get_or_create_category
 
 __all__ = [
     'commit_product',
@@ -20,18 +20,24 @@ __all__ = [
 ]
 
 
-def commit_product(row_data, target_pk, user, account_types_by_pk):
+def commit_product(row_data, target_pk, user, account_types_by_pk, category_cache=None):
     """
     بيطبّق صنف واحد (وحدة أو وحدتين + خصوماته) فعليًا على قاعدة البيانات،
     بعد ما يبقى معروف بالظبط (من مرحلة المراجعة) هل ده تحديث لمنتج
     target_pk معين، ولا إضافة صنف جديد (target_pk=None). الكمية بتتسجل
     دايمًا كحركة "وارد" (IN) بتتضاف فوق الرصيد الحالي — مش استبدال له —
     سواء كانت "رصيد افتتاحي" لصنف جديد أو "تحديث كميات" لصنف موجود.
+
+    category_slug اللي مليهوش قسم مطابق في القاعدة بيتعمله قسم جديد على
+    طول (get_or_create_category) بدل ما يوقف الاستيراد — راجع common.py.
+    category_cache اختياري بيتمرر من commit_import_batch عشان ملف فيه
+    مئات الصفوف بنفس القسم الجديد ميعملش query/insert منفصل لكل صف.
+
     بيرجّع (created, restocked).
     """
     category = None
     if row_data['category_slug']:
-        category = resolve_category(row_data['category_slug'], create=True)
+        category = get_or_create_category(row_data['category_slug'], cache=category_cache)
 
     if target_pk:
         product = Product.objects.get(pk=target_pk)
@@ -115,9 +121,15 @@ def commit_import_batch(rows, decisions, user):
     """
     بتاخد قرارات الموظف على صفوف "المراجعة" (decisions: dict بمفتاح
     row_num وقيمة إما 'new' أو pk المنتج المستهدف) وتنفّذ الحفظ الفعلي
-    لكل صفوف الدفعة. بترجّع (created_count, updated_count, restocked_count).
+    لكل صفوف الدفعة. بترجّع
+    (created_count, updated_count, restocked_count, categories_created_count).
+
+    category_cache واحد بيتشارك بين كل صفوف الدفعة (مش بيتعمل من جديد
+    لكل صف) — عشان ملف فيه مئات الصفوف بنفس القسم الجديد يعمل query/insert
+    واحد بس لكل قسم مش واحد لكل صف.
     """
     account_types_by_pk = {at.pk: at for at in AccountType.objects.all()}
+    category_cache = {}
     created_count = updated_count = restocked_count = 0
     for row_data in rows:
         if row_data['action'] == 'review':
@@ -125,11 +137,14 @@ def commit_import_batch(rows, decisions, user):
             target_pk = int(decision) if decision != 'new' else None
         else:
             target_pk = row_data.get('match_pk')
-        created, restocked = commit_product(row_data, target_pk, user, account_types_by_pk)
+        created, restocked = commit_product(
+            row_data, target_pk, user, account_types_by_pk, category_cache=category_cache,
+        )
         if created:
             created_count += 1
         else:
             updated_count += 1
             if restocked:
                 restocked_count += 1
-    return created_count, updated_count, restocked_count
+    categories_created_count = sum(1 for c in category_cache.values() if getattr(c, '_import_created', False))
+    return created_count, updated_count, restocked_count, categories_created_count
