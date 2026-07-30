@@ -8,7 +8,7 @@ from django.views.decorators.http import require_POST
 from products.models import ProductUnit
 
 from ..cart import Cart
-from ..models import Cart as CartModel, SiteConfig
+from ..models import Cart as CartModel, get_effective_min_order_amount
 from .decorators import client_required
 
 __all__ = [
@@ -100,7 +100,7 @@ def cart_view(request):
     ده مشتت). كل تاب بيمثّل سلة، والتاب النشط هو اللي بيعرض أصنافه تحت،
     وهو نفسه اللي أي "أضف للسلة" جديد من المتجر بيروحله.
     """
-    config = SiteConfig.get_solo()
+    min_order_amount = get_effective_min_order_amount(getattr(request.user, 'client_profile', None))
     carts = list(
         CartModel.objects.filter(client=request.user)
         .prefetch_related('items')
@@ -116,7 +116,7 @@ def cart_view(request):
 
     cart = Cart(request)  # بيقرا نفس السلة النشطة (active_cart_obj) من غير ما ينشئ حاجة
     total = cart.get_total()
-    remaining = config.min_order_amount - total if config.min_order_amount else 0
+    remaining = min_order_amount - total if min_order_amount else 0
 
     # لو الطلبية فيها عدد كبير من الأصناف (مثلاً 30 صنف)، الجدول كان بيطول
     # من غير أي ترقيم أو تقسيم لصفحات. الإجمالي (total) بيتحسب على كل
@@ -131,7 +131,7 @@ def cart_view(request):
         'cart_items': items_page,
         'cart_items_count': len(all_items),
         'total': total,
-        'min_order_amount': config.min_order_amount,
+        'min_order_amount': min_order_amount,
         'remaining_to_min': remaining if remaining > 0 else 0,
         'below_min': remaining > 0,
     })

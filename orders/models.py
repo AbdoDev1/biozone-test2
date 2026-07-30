@@ -48,6 +48,19 @@ class SiteConfig(models.Model):
         return obj
 
 
+def get_effective_min_order_amount(client_profile):
+    """
+    الحد الأدنى الفعلي لقيمة الطلب لعميل معيّن (مرحلة 6 من ROADMAP.md):
+    لو ClientProfile.min_order_amount محدّد (مش None) يُستخدم هو، وإلا
+    القيمة العامة SiteConfig.min_order_amount كـ fallback — بكده تعديل
+    الحد الأدنى لعميل معيّن مايأثرش على باقي العملاء، وعميل من غير قيمة
+    مخصّصة يفضل شغال بالقيمة العامة القديمة زي ما كان بالظبط.
+    """
+    if client_profile is not None and client_profile.min_order_amount is not None:
+        return client_profile.min_order_amount
+    return SiteConfig.get_solo().min_order_amount
+
+
 class Order(models.Model):
     class Status(models.TextChoices):
         PENDING         = 'PENDING',         'في الانتظار'

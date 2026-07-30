@@ -7,7 +7,7 @@ from django.core.exceptions import ValidationError
 from django.utils import timezone
 from decimal import Decimal, InvalidOperation
 from accounts.models import User, ClientProfile, AccountType
-from orders.models import Order
+from orders.models import Order, SiteConfig, get_effective_min_order_amount
 from invoices.models import Invoice
 from accounting.models import AccountTransaction
 from staff.permissions import perm_required
@@ -82,6 +82,8 @@ def client_detail(request, pk):
 
     return render(request, 'staff/clients/detail.html', {
         'profile': profile,
+        'default_min_order_amount': SiteConfig.get_solo().min_order_amount,
+        'effective_min_order_amount': get_effective_min_order_amount(profile),
         'orders': orders_page,
         'orders_page_obj': orders_page,
         'total_orders': orders_paginator.count,
@@ -226,3 +228,40 @@ def client_reject(request, pk):
     log_activity(profile, ActivityLog.Event.UPDATED, user=request.user, changes_summary='رفض الحساب')
     messages.error(request, f'تم رفض حساب {profile.business_name}')
     return redirect('staff:clients')
+
+
+@perm_required('accounts.change_clientprofile')
+@require_POST
+def client_update_min_order(request, pk):
+    """
+    تعديل الحد الأدنى لقيمة الطلب الخاص بهذا العميل بالذات (مرحلة 6 من
+    ROADMAP.md) — مختلف عن SiteConfig.min_order_amount العام. حقل فاضي في
+    الفورم يعني "مفيش تخصيص" (يرجع يستخدم القيمة العامة تلقائيًا عبر
+    orders.models.get_effective_min_order_amount)، مش صفر.
+    """
+    profile = get_object_or_404(ClientProfile, pk=pk)
+    raw_value = request.POST.get('min_order_amount', '').strip()
+
+    if raw_value == '':
+        new_value = None
+    else:
+        try:
+            new_value = Decimal(raw_value)
+            if new_value < 0:
+                raise InvalidOperation
+        except InvalidOperation:
+            messages.error(request, 'الحد الأدنى يجب أن يكون رقمًا غير سالب، أو فارغًا لاستخدام القيمة العامة.')
+            return redirect('staff:client_detail', pk=pk)
+
+    if new_value != profile.min_order_amount:
+        profile.min_order_amount = new_value
+        profile.save(update_fields=['min_order_amount'])
+        summary = (
+            f'تعديل الحد الأدنى لقيمة الطلب الخاص بالعميل إلى {new_value} ج.م'
+            if new_value is not None else
+            'إلغاء تخصيص الحد الأدنى لقيمة الطلب (رجوع للقيمة العامة)'
+        )
+        log_activity(profile, ActivityLog.Event.UPDATED, user=request.user, changes_summary=summary)
+        messages.success(request, 'تم تحديث الحد الأدنى لقيمة الطلب لهذا العميل.')
+
+    return redirect('staff:client_detail', pk=pk)

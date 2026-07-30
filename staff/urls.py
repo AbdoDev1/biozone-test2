@@ -23,6 +23,7 @@ urlpatterns = [
     path('clients/<int:pk>/', clients.client_detail, name='client_detail'),
     path('clients/<int:pk>/approve/', clients.client_approve, name='client_approve'),
     path('clients/<int:pk>/reject/', clients.client_reject, name='client_reject'),
+    path('clients/<int:pk>/min-order/', clients.client_update_min_order, name='client_update_min_order'),
     path('clients/<int:pk>/payments/add/', clients.client_add_payment, name='client_add_payment'),
     path('clients/<int:pk>/adjustments/add/', clients.client_add_adjustment, name='client_add_adjustment'),
     path('categories/', products.category_list, name='category_list'),

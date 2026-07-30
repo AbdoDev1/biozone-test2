@@ -5,7 +5,7 @@ from django.shortcuts import redirect, render
 from inventory.models import Inventory
 
 from ..cart import Cart
-from ..models import Order, OrderItem, SiteConfig
+from ..models import Order, OrderItem, get_effective_min_order_amount
 from .decorators import client_required
 
 __all__ = ['checkout']
@@ -20,14 +20,14 @@ def checkout(request):
         messages.warning(request, 'سلة المشتريات فارغة.')
         return redirect('orders:cart')
 
-    config = SiteConfig.get_solo()
+    min_order_amount = get_effective_min_order_amount(getattr(request.user, 'client_profile', None))
     total = cart.get_total()
 
-    if config.min_order_amount and total < config.min_order_amount:
+    if min_order_amount and total < min_order_amount:
         messages.error(
             request,
-            f'الحد الأدنى لإجمالي الطلب هو {config.min_order_amount} ج.م. '
-            f'إجمالي سلتك الحالي {total} ج.م، يلزم إضافة {config.min_order_amount - total} ج.م إضافية.'
+            f'الحد الأدنى لإجمالي الطلب هو {min_order_amount} ج.م. '
+            f'إجمالي سلتك الحالي {total} ج.م، يلزم إضافة {min_order_amount - total} ج.م إضافية.'
         )
         return redirect('orders:cart')
 

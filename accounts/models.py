@@ -139,6 +139,23 @@ class ClientProfile(models.Model):
     address = models.TextField()
     phone = models.CharField(max_length=20)
     verified_at = models.DateTimeField(null=True, blank=True)
+    # حد أدنى لقيمة الطلب خاص بهذا العميل بالذات — مختلف عن
+    # SiteConfig.min_order_amount العام لكل العملاء. null يعني "مفيش تخصيص"،
+    # مش صفر (صفر قيمة فعلية معناها "بدون حد أدنى لهذا العميل تحديدًا"،
+    # وده مختلف عن "استخدم القيمة العامة"). راجع orders.models.get_effective_min_order_amount
+    # لمنطق الحساب الفعلي (fallback للقيمة العامة لو فاضي).
+    min_order_amount = models.DecimalField(
+        max_digits=10,
+        decimal_places=2,
+        null=True,
+        blank=True,
+        verbose_name='الحد الأدنى لقيمة الطلب (مخصّص)',
+        help_text=(
+            'لو محدّد، يُستخدم بدل القيمة العامة للموقع لهذا العميل فقط. '
+            'اتركه فارغًا لاستخدام القيمة العامة (SiteConfig)، أو صفر لإلغاء '
+            'الحد الأدنى لهذا العميل تحديدًا.'
+        ),
+    )
 
     def __str__(self):
         return f"{self.business_name} - {self.user.username}"
