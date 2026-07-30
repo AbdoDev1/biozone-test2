@@ -8,7 +8,7 @@ hx-on:cartUpdated="htmx.ajax('GET','{% url 'orders:cart_badge' %}',{target:'#car
 
 {% block content %}
 
-<div class="max-w-5xl mx-auto px-4 py-8">
+<div class="max-w-6xl mx-auto px-4 py-8">
 
     <!-- Breadcrumb -->
     <div class="text-sm text-gray-400 mb-6">
@@ -19,123 +19,141 @@ hx-on:cartUpdated="htmx.ajax('GET','{% url 'orders:cart_badge' %}',{target:'#car
       <span class="text-gray-600">{{ product.name_ar }}</span>
     </div>
 
-    <div class="bg-white rounded-2xl shadow-sm p-6 flex gap-8 flex-col md:flex-row">
+    <!-- الشبكة الرئيسية: كارت منتج مدمج (يفضل ظاهر وقت السكرول) + عمود
+         أعرض جنبه للمنتجات المشابهة/المكمّلة، بدل ما المنتج ياخد عرض
+         الصفحة كله في صف لوحده وباقي الصفحة تتلخّص في مسافة فاضية. -->
+    <div class="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
 
-      <!-- صورة -->
-      <div class="w-full md:w-72 shrink-0">
-        {% if product.image %}
-          <img src="{{ product.image.url }}" alt="{{ product.name_ar }}"
-               class="w-full rounded-xl object-cover aspect-square">
-        {% else %}
-          <div class="w-full aspect-square bg-gray-100 rounded-xl flex items-center justify-center text-gray-300">
-            <svg class="w-20 h-20" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5"
-                    d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10"/>
-            </svg>
-          </div>
-        {% endif %}
-      </div>
+      <!-- كارت المنتج المدمج -->
+      <div class="lg:col-span-4 lg:sticky lg:top-6">
+        <div class="bg-white rounded-2xl shadow-sm p-4">
 
-      <!-- بيانات -->
-      <div class="flex-1">
-        <p class="text-primary-600 text-sm mb-1">{{ product.category.name }}</p>
-        <h1 class="text-2xl font-bold text-gray-800 mb-1">{{ product.name_ar }}</h1>
-        {% if product.size %}
-          <span class="inline-block bg-gray-100 text-gray-600 text-xs font-semibold px-2 py-0.5 rounded-full mb-2">
-            مقاس {{ product.size }}
-          </span>
-        {% endif %}
-        {% if product.name_en %}
-          <p class="text-gray-400 text-sm mb-2">{{ product.name_en }}</p>
-        {% endif %}
-        {% if product.manufacturer %}
-          <p class="text-sm text-gray-500 mb-4">الشركة المصنعة: <span class="font-medium">{{ product.manufacturer }}</span></p>
-        {% endif %}
-        {% if product.description %}
-          <p class="text-gray-600 text-sm leading-relaxed mb-6">{{ product.description }}</p>
-        {% endif %}
-
-        {% if variant_siblings %}
-        <div class="mb-6">
-          <p class="text-sm font-semibold text-gray-700 mb-2">المقاسات المتاحة</p>
-          <div class="flex flex-wrap gap-2">
-            {# المقاس الحالي (غير قابل للضغط) #}
-            <span class="px-3 py-1.5 rounded-lg text-sm font-semibold bg-primary-600 text-white">
-              {{ product.size|default:"الحالي" }}
-            </span>
-            {% for sibling in variant_siblings %}
-              {% with sibling_available=sibling.inventory.is_available %}
-              {% if sibling_available %}
-                <a href="{% url 'store:product_detail' sibling.pk %}"
-                   class="px-3 py-1.5 rounded-lg text-sm font-medium bg-gray-100 text-gray-700 hover:bg-gray-200 transition">
-                  {{ sibling.size|default:sibling.name_ar }}
-                </a>
-              {% else %}
-                {# متاح دايمًا في الشاشة (مش مخفي)، بس معطّل بصريًا لو مفيش رصيد #}
-                <span title="غير متوفر حاليًا"
-                      class="px-3 py-1.5 rounded-lg text-sm font-medium bg-gray-50 text-gray-300 line-through cursor-not-allowed">
-                  {{ sibling.size|default:sibling.name_ar }}
-                </span>
-              {% endif %}
-              {% endwith %}
-            {% endfor %}
-          </div>
-        </div>
-        {% endif %}
-
-
-        <!-- الوحدات والأسعار -->
-        <div class="space-y-3">
-          <h2 class="font-bold text-gray-700">الوحدات المتاحة</h2>
-          {% load cart_tags %}
-          {% for unit in units %}
-          <div class="border border-gray-200 rounded-xl p-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-            <div>
-              <p class="font-semibold text-gray-800">{{ unit.name }}</p>
-            </div>
-
-            {% if not request.user.is_authenticated %}
-              {# لا يظهر السعر أو خيار الشراء قبل تسجيل الدخول #}
-              <a href="{% url 'accounts:register' %}"
-                 class="bg-primary-600 hover:bg-primary-700 text-white text-sm px-4 py-2 rounded-lg transition text-center">
-                يرجى تسجيل الدخول لعرض السعر وإتمام الطلب
-              </a>
+          <!-- صورة -->
+          <div class="w-full sm:max-w-[200px] sm:mx-auto mb-4">
+            {% if product.image %}
+              <img src="{{ product.image.url }}" alt="{{ product.name_ar }}"
+                   class="w-full rounded-xl object-cover aspect-square">
             {% else %}
-              <!-- السعر + الكمية -->
-              <div class="flex flex-row-reverse sm:flex-row items-center justify-between sm:justify-start gap-4">
-                <div class="text-right">
-                  <p class="text-gray-800 font-bold text-lg">{{ unit.unit_price }} ج.م</p>
-                  {% if site_config.show_discounted_prices %}
-                    {% with price=unit|price_for_client:request.user %}
-                      <p class="text-green-700 font-bold text-sm">{{ price }} ج.م <span class="text-gray-400 font-normal text-xs">سعرك بعد الخصم</span></p>
-                    {% endwith %}
-                  {% endif %}
-                </div>
-
-                {% if request.user.role == 'CLIENT' and request.user.status == 'ACTIVE' %}
-                  {% with inv=product.inventory %}
-                  {% if inv and inv.is_available %}
-                    {% with quantity=cart_quantities|get_item:unit.pk %}
-                      {% include "orders/partials/cart_controls.html" with unit_id=unit.pk quantity=quantity|default:0 %}
-                    {% endwith %}
-                  {% else %}
-                    <button disabled class="mt-2 bg-gray-100 text-gray-400 text-xs py-2 px-4 rounded-lg cursor-not-allowed">
-                      غير متوفر حالياً
-                    </button>
-                  {% endif %}
-                  {% endwith %}
-                {% endif %}
+              <div class="w-full aspect-square bg-gray-100 rounded-xl flex items-center justify-center text-gray-300">
+                <svg class="w-12 h-12" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5"
+                        d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10"/>
+                </svg>
               </div>
             {% endif %}
           </div>
-          {% endfor %}
+
+          <!-- بيانات -->
+          <p class="text-primary-600 text-sm mb-1">{{ product.category.name }}</p>
+          <h1 class="text-xl font-bold text-gray-800 mb-1">{{ product.name_ar }}</h1>
+          {% if product.size %}
+            <span class="inline-block bg-gray-100 text-gray-600 text-xs font-semibold px-2 py-0.5 rounded-full mb-2">
+              مقاس {{ product.size }}
+            </span>
+          {% endif %}
+          {% if product.name_en %}
+            <p class="text-gray-400 text-sm mb-2">{{ product.name_en }}</p>
+          {% endif %}
+          {% if product.manufacturer %}
+            <p class="text-sm text-gray-500 mb-4">الشركة المصنعة: <span class="font-medium">{{ product.manufacturer }}</span></p>
+          {% endif %}
+          {% if product.description %}
+            <p class="text-gray-600 text-sm leading-relaxed mb-6">{{ product.description }}</p>
+          {% endif %}
+
+          {% if variant_siblings %}
+          <div class="mb-6">
+            <p class="text-sm font-semibold text-gray-700 mb-2">المقاسات المتاحة</p>
+            <div class="flex flex-wrap gap-2">
+              {# المقاس الحالي (غير قابل للضغط) #}
+              <span class="px-3 py-1.5 rounded-lg text-sm font-semibold bg-primary-600 text-white">
+                {{ product.size|default:"الحالي" }}
+              </span>
+              {% for sibling in variant_siblings %}
+                {% with sibling_available=sibling.inventory.is_available %}
+                {% if sibling_available %}
+                  <a href="{% url 'store:product_detail' sibling.pk %}"
+                     class="px-3 py-1.5 rounded-lg text-sm font-medium bg-gray-100 text-gray-700 hover:bg-gray-200 transition">
+                    {{ sibling.size|default:sibling.name_ar }}
+                  </a>
+                {% else %}
+                  {# متاح دايمًا في الشاشة (مش مخفي)، بس معطّل بصريًا لو مفيش رصيد #}
+                  <span title="غير متوفر حاليًا"
+                        class="px-3 py-1.5 rounded-lg text-sm font-medium bg-gray-50 text-gray-300 line-through cursor-not-allowed">
+                    {{ sibling.size|default:sibling.name_ar }}
+                  </span>
+                {% endif %}
+                {% endwith %}
+              {% endfor %}
+            </div>
+          </div>
+          {% endif %}
+
+          <!-- الوحدات والأسعار -->
+          <div class="space-y-3">
+            <h2 class="font-bold text-gray-700">الوحدات المتاحة</h2>
+            {% load cart_tags %}
+            {% for unit in units %}
+            <div class="border border-gray-200 rounded-xl p-4 flex flex-col gap-3">
+              <p class="font-semibold text-gray-800">{{ unit.name }}</p>
+
+              {% if not request.user.is_authenticated %}
+                {# لا يظهر السعر أو خيار الشراء قبل تسجيل الدخول #}
+                <a href="{% url 'accounts:register' %}"
+                   class="bg-primary-600 hover:bg-primary-700 text-white text-sm px-4 py-2 rounded-lg transition text-center">
+                  يرجى تسجيل الدخول لعرض السعر وإتمام الطلب
+                </a>
+              {% else %}
+                <!-- السعر + الكمية -->
+                <div class="flex flex-row-reverse items-center justify-between gap-4">
+                  <div class="text-right">
+                    <p class="text-gray-800 font-bold text-lg">{{ unit.unit_price }} ج.م</p>
+                    {% if site_config.show_discounted_prices %}
+                      {% with price=unit|price_for_client:request.user %}
+                        <p class="text-green-700 font-bold text-sm">{{ price }} ج.م <span class="text-gray-400 font-normal text-xs">سعرك بعد الخصم</span></p>
+                      {% endwith %}
+                    {% endif %}
+                  </div>
+
+                  {% if request.user.role == 'CLIENT' and request.user.status == 'ACTIVE' %}
+                    {% with inv=product.inventory %}
+                    {% if inv and inv.is_available %}
+                      {% with quantity=cart_quantities|get_item:unit.pk %}
+                        {% include "orders/partials/cart_controls.html" with unit_id=unit.pk quantity=quantity|default:0 %}
+                      {% endwith %}
+                    {% else %}
+                      <button disabled class="mt-2 bg-gray-100 text-gray-400 text-xs py-2 px-4 rounded-lg cursor-not-allowed">
+                        غير متوفر حالياً
+                      </button>
+                    {% endif %}
+                    {% endwith %}
+                  {% endif %}
+                </div>
+              {% endif %}
+            </div>
+            {% endfor %}
+          </div>
+
         </div>
-
       </div>
-    </div>
 
-    {% include "store/partials/related_products_carousel.html" with products=similar_products heading="منتجات مشابهة" %}
-    {% include "store/partials/related_products_carousel.html" with products=complementary_products heading="غالبًا ما يُطلب معه" %}
+      <!-- عمود الروابط: منتجات مشابهة/مكمّلة — منظّمة جنب المنتج بدل ما
+           تتلخّص أسفل الصفحة بعد مسافة فاضية طويلة. -->
+      <div class="lg:col-span-8 space-y-8">
+        {% include "store/partials/related_products_carousel.html" with products=similar_products heading="منتجات مشابهة" %}
+        {% include "store/partials/related_products_carousel.html" with products=complementary_products heading="غالبًا ما يُطلب معه" %}
+        {% if not similar_products and not complementary_products %}
+        <div class="bg-white rounded-2xl shadow-sm p-6 text-center">
+          <p class="text-gray-500 text-sm mb-3">مفيش منتجات مقترحة لهذا الصنف حاليًا</p>
+          <a href="{% url 'store:home' %}?category={{ product.category.slug }}"
+             class="inline-block bg-primary-600 hover:bg-primary-700 text-white text-sm px-4 py-2 rounded-lg transition">
+            تصفح باقي {{ product.category.name }}
+          </a>
+        </div>
+        {% endif %}
+      </div>
+
+    </div>
 
 </div>
 
