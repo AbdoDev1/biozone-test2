@@ -27,13 +27,11 @@ def commit_product(row_data, target_pk, user, account_types_by_pk, category_cach
     target_pk معين، ولا إضافة صنف جديد (target_pk=None). الكمية بتتسجل
     دايمًا كحركة "وارد" (IN) بتتضاف فوق الرصيد الحالي — مش استبدال له —
     سواء كانت "رصيد افتتاحي" لصنف جديد أو "تحديث كميات" لصنف موجود.
-
-    category_slug اللي مليهوش قسم مطابق في القاعدة بيتعمله قسم جديد على
-    طول (get_or_create_category) بدل ما يوقف الاستيراد — راجع common.py.
-    category_cache اختياري بيتمرر من commit_import_batch عشان ملف فيه
-    مئات الصفوف بنفس القسم الجديد ميعملش query/insert منفصل لكل صف.
-
     بيرجّع (created, restocked).
+
+    category_cache (اختياري): مُمرَّر من commit_import_batch ومُشترك بين
+    كل صفوف نفس الدفعة، عشان لو قسم جديد اتكرر في أكتر من صف يتعمل مرة
+    واحدة بس بدل ما كل صف يحاول ينشئه لوحده. راجع get_or_create_category.
     """
     category = None
     if row_data['category_slug']:
@@ -121,14 +119,13 @@ def commit_import_batch(rows, decisions, user):
     """
     بتاخد قرارات الموظف على صفوف "المراجعة" (decisions: dict بمفتاح
     row_num وقيمة إما 'new' أو pk المنتج المستهدف) وتنفّذ الحفظ الفعلي
-    لكل صفوف الدفعة. بترجّع
-    (created_count, updated_count, restocked_count, categories_created_count).
-
-    category_cache واحد بيتشارك بين كل صفوف الدفعة (مش بيتعمل من جديد
-    لكل صف) — عشان ملف فيه مئات الصفوف بنفس القسم الجديد يعمل query/insert
-    واحد بس لكل قسم مش واحد لكل صف.
+    لكل صفوف الدفعة. بترجّع (created_count, updated_count, restocked_count).
     """
     account_types_by_pk = {at.pk: at for at in AccountType.objects.all()}
+    # كاش مشترك بين كل صفوف الدفعة: لو أكتر من صف بيحتاج نفس القسم الجديد
+    # (زي صنف بوحدتين، أو أكتر من صنف واقع في نفس القسم غير الموجود)،
+    # القسم بينشأ مرة واحدة بس ويتعاد استخدامه، بدل ما كل صف يحاول ينشئه
+    # بنفسه ويضرب IntegrityError من تعارض الـslug مع الصف اللي قبله.
     category_cache = {}
     created_count = updated_count = restocked_count = 0
     for row_data in rows:
@@ -137,14 +134,11 @@ def commit_import_batch(rows, decisions, user):
             target_pk = int(decision) if decision != 'new' else None
         else:
             target_pk = row_data.get('match_pk')
-        created, restocked = commit_product(
-            row_data, target_pk, user, account_types_by_pk, category_cache=category_cache,
-        )
+        created, restocked = commit_product(row_data, target_pk, user, account_types_by_pk, category_cache=category_cache)
         if created:
             created_count += 1
         else:
             updated_count += 1
             if restocked:
                 restocked_count += 1
-    categories_created_count = sum(1 for c in category_cache.values() if getattr(c, '_import_created', False))
-    return created_count, updated_count, restocked_count, categories_created_count
+    return created_count, updated_count, restocked_count

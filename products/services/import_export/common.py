@@ -59,18 +59,17 @@ def resolve_category(value):
 
 def get_or_create_category(value, cache=None):
     """
-    زي resolve_category بالظبط، لكن لو مفيش قسم مطابق أصلًا بينشئه على
-    طول بدل ما يرجّع None — عشان ملف الإكسل يقدر "يستورد الأقسام" مش بس
-    الأصناف (الموظف مش مضطر يعمل كل قسم يدويًا قبل الاستيراد).
+    زي resolve_category فوق، لكن بدل ما ترجع None لو مفيش قسم مطابق،
+    بتنشئ قسم جديد بنفس القيمة (اسم + slug مشتق منها) وترجعه. ده اللي
+    بيسمح لملف الإكسل إنه "يضيف" أقسام جديدة تلقائيًا وقت الاستيراد بدل
+    ما يرفض أي صف قسمه لسه مش موجود في القاعدة.
 
-    cache اختياري (dict بمفتاح القيمة الخام زي ما هي في الملف): بيتمرر من
-    commit_import_batch عشان ملف فيه مئات الصفوف بنفس القسم ميعملش
-    query/insert منفصل لكل صف — أول صف بيحل/بينشئ القسم وبيسجله في الـ
-    cache، والباقي بياخدوه من هناك على طول.
-
-    القسم الجديد بيتعمل بالاسم زي ما هو مكتوب في الملف بالظبط، والـslug
-    بيتولّد منه تلقائيًا (زي ما بيحصل لو الموظف عمل القسم يدويًا من شاشة
-    "إضافة قسم" وسايب الـslug فاضي — راجع products/forms.py).
+    cache (اختياري): dict بمفتاح القيمة الأصلية زي ما هي مكتوبة في
+    الملف، بيتمرر من commit_import_batch ويتشارك بين كل صفوف نفس الدفعة.
+    من غيره، لو نفس القسم الجديد اتكرر في أكتر من صف (زي الحالة العادية:
+    نفس الصنف بوحدتين، أو أكتر من صنف في نفس القسم الجديد)، كل صف كان
+    هيحاول ينشئ القسم بنفسه فيضرب IntegrityError على القيد unique للـslug
+    من الصف التاني. الكاش بيضمن إن القسم بينشأ مرة واحدة بس لكل دفعة.
     """
     from products.models import Category
 
@@ -83,16 +82,10 @@ def get_or_create_category(value, cache=None):
 
     category = resolve_category(value)
     if category is None:
-        # slugify بترجع فاضي لو القيمة كلها رموز/علامات مفيهاش حروف أو
-        # أرقام (حالة نادرة جدًا) — بنرجع للقيمة الخام نفسها كـslug عشان
-        # الـSlugField miss تقبلش None، لكن ده مش المسار المتوقع فعليًا.
-        slug = slugify(value, allow_unicode=True) or value
-        category, was_created = Category.objects.get_or_create(
+        slug = slugify(value, allow_unicode=True) or slugify(value)
+        category, _ = Category.objects.get_or_create(
             slug=slug, defaults={'name': value},
         )
-        # علامة داخلية بس (مش حقل في الموديل) عشان commit_import_batch
-        # يقدر يعد كام قسم جديد اتعمل خلال الدفعة دي من غير query إضافي.
-        category._import_created = was_created
 
     if cache is not None:
         cache[value] = category
