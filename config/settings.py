@@ -76,6 +76,7 @@ INSTALLED_APPS = [
     'notifications',
     'activity',
     'tags',
+    'followups',
     'channels',
 ]
 

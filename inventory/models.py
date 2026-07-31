@@ -58,6 +58,23 @@ class Inventory(models.Model):
     def is_low(self):
         return self.available <= self.min_quantity
 
+    @property
+    def suggested_reorder_qty(self):
+        """
+        الكمية المقترح توريدها بالقطعة — الفرق بين الحد الأدنى والمتاح
+        فعليًا، وصفر لو الصنف مش تحت الحد الأدنى أصلًا. بتُستخدم في صفحة
+        "مقترحات التوريد" (مرحلة 7 من ROADMAP.md) — حساب بسيط على حقول
+        محمّلة بالفعل (مفيش استعلام إضافي)، مش اقتراح ذكي أو تنبؤ بالطلب.
+        """
+        if not self.is_low:
+            return 0
+        return max(self.min_quantity - self.available, 0)
+
+    @property
+    def suggested_reorder_display(self):
+        """الكمية المقترح توريدها معروضة بالوحدة الكبرى — لعرضها في صفحة مقترحات التوريد."""
+        return self._format_in_large_unit(self.suggested_reorder_qty)
+
     def _format_in_large_unit(self, pieces):
         """
         بيحوّل رصيد بالقطعة لعرض بالوحدة الكبرى (كرتونة مثلًا) + الباقي

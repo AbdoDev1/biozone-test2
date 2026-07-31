@@ -1,5 +1,5 @@
 from django.urls import path
-from staff.views import dashboard, inventory, clients, products, orders, accounting, employees, account_types, reports, tags, activity
+from staff.views import dashboard, inventory, clients, products, orders, accounting, employees, account_types, reports, tags, activity, followups
 
 app_name = 'staff'
 
@@ -68,4 +68,6 @@ urlpatterns = [
     path('tags/<int:pk>/edit/', tags.tag_edit, name='tag_edit'),
     path('tags/<int:pk>/delete/', tags.tag_delete, name='tag_delete'),
     path('activity/', activity.activity_list, name='activity_list'),
+    path('followups/', followups.followup_list, name='followup_list'),
+    path('reports/supply-suggestions/', reports.supply_suggestions, name='reports_supply_suggestions'),
 ]

@@ -123,6 +123,16 @@ PERMISSION_SECTIONS = [
             ('activity', 'activitylog', 'view', 'عرض سجل الأنشطة'),
         ],
     },
+    {
+        'key': 'followups',
+        'label': '📅 المتابعات',
+        'perms': [
+            ('followups', 'followup', 'view', 'عرض المتابعات'),
+            ('followups', 'followup', 'add', 'جدولة متابعة'),
+            ('followups', 'followup', 'change', 'تحديث حالة متابعة (تسجيلها منجزة)'),
+            ('followups', 'followup', 'delete', 'إلغاء متابعة'),
+        ],
+    },
 ]
 
 

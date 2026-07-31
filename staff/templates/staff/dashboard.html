@@ -5,7 +5,8 @@
 
 {% url 'staff:order_list' as order_list_url %}
 {% url 'staff:inventory' as inventory_url %}
-{% with inventory_low_url=inventory_url|add:"?low=1" %}
+{% url 'staff:reports_supply_suggestions' as supply_suggestions_url %}
+{% with inventory_low_url=supply_suggestions_url %}
 {% if perms.accounts.view_clientprofile %}{% url 'staff:clients' as clients_url %}{% endif %}
 
 <!-- شريط حالة مختصر أعلى الصفحة — بديل لشبكة الكروت الكبيرة الأربعة
@@ -121,7 +122,7 @@
     </table>
     </div>
     {% if low_stock_count > low_stock|length %}
-    <a href="{% url 'staff:inventory' %}?low=1"
+    <a href="{% url 'staff:reports_supply_suggestions' %}"
        class="mt-4 inline-block text-sm text-primary-600 hover:underline">
         عرض كل الأصناف المنخفضة ({{ low_stock_count }}) ←
     </a>

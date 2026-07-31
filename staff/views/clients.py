@@ -13,6 +13,7 @@ from accounting.models import AccountTransaction
 from staff.permissions import perm_required
 from activity.models import ActivityLog
 from activity.services import log_activity
+from followups.services import open_followups_count_for
 
 STAFF_LIST_PAGE_SIZE = 30
 CLIENT_ORDERS_PAGE_SIZE = 20
@@ -98,6 +99,7 @@ def client_detail(request, pk):
         'activity_count': ActivityLog.objects.filter(
             content_type=ContentType.objects.get_for_model(ClientProfile), object_id=profile.pk,
         ).count(),
+        'open_followups_count': open_followups_count_for(profile),
     })
 
 

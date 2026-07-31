@@ -1,0 +1,88 @@
+{% load static %}
+<div class="space-y-6">
+
+    <!-- جدولة متابعة جديدة -->
+    <form method="post" hx-push-url="false"
+          action="{% url 'followups:followup_add' app_label model_name object_id %}"
+          class="border border-gray-100 rounded-xl p-4">
+        {% csrf_token %}
+        <input type="hidden" name="next" value="{{ request.get_full_path }}">
+        <label class="block text-sm font-semibold text-gray-700 mb-2">جدولة متابعة جديدة</label>
+        <div class="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-3">
+            <div>
+                <label class="text-xs text-gray-500 block mb-1">نوع المتابعة</label>
+                <select name="activity_type" required
+                        class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm outline-none focus:border-primary-400">
+                    {% for value, display in activity_type_choices %}
+                    <option value="{{ value }}">{{ display }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div>
+                <label class="text-xs text-gray-500 block mb-1">تاريخ الاستحقاق</label>
+                <input type="date" name="due_date" required
+                       class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm outline-none focus:border-primary-400">
+            </div>
+            <div>
+                <label class="text-xs text-gray-500 block mb-1">الموظف المسؤول</label>
+                <select name="assigned_to" required
+                        class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm outline-none focus:border-primary-400">
+                    <option value="">اختر موظفًا...</option>
+                    {% for emp in employees %}
+                    <option value="{{ emp.pk }}" {% if emp.pk == request.user.pk %}selected{% endif %}>{{ emp.username }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+        </div>
+        <label class="text-xs text-gray-500 block mb-1">تفاصيل (اختياري)</label>
+        <textarea name="note" rows="2" maxlength="255" placeholder="مثال: متابعة سداد باقي فاتورة شهر يوليو"
+                  class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm outline-none focus:border-primary-400"></textarea>
+        <button type="submit"
+                class="mt-3 bg-primary-600 hover:bg-primary-700 text-white text-sm font-semibold px-5 py-2 rounded-lg transition">
+            جدولة المتابعة
+        </button>
+    </form>
+
+    <!-- قائمة المتابعات (مفتوحة أولًا) -->
+    <div class="space-y-3">
+        {% for f in followups %}
+        <div class="text-sm border-b border-gray-100 pb-3 last:border-0 flex items-start justify-between gap-3">
+            <div>
+                <p class="text-gray-700">
+                    <span class="font-semibold">{{ f.get_activity_type_display }}</span>
+                    {% if f.note %} — {{ f.note }}{% endif %}
+                </p>
+                <p class="text-xs text-gray-400 mt-1">
+                    استحقاق: {{ f.due_date|date:"Y-m-d" }} — مسؤول: {{ f.assigned_to.username }}
+                    {% if f.is_done %}
+                    <span class="inline-block bg-green-100 text-green-700 rounded-full px-2 py-0.5 mr-1">تم في {{ f.done_at|date:"Y-m-d" }}{% if f.done_by %} بواسطة {{ f.done_by.username }}{% endif %}</span>
+                    {% elif f.is_overdue %}
+                    <span class="inline-block bg-red-100 text-red-700 rounded-full px-2 py-0.5 mr-1">متأخرة</span>
+                    {% elif f.is_due_today %}
+                    <span class="inline-block bg-orange-100 text-orange-700 rounded-full px-2 py-0.5 mr-1">مستحقة اليوم</span>
+                    {% else %}
+                    <span class="inline-block bg-gray-100 text-gray-500 rounded-full px-2 py-0.5 mr-1">قادمة</span>
+                    {% endif %}
+                </p>
+            </div>
+            {% if not f.is_done %}
+            <div class="flex items-center gap-2 shrink-0">
+                <form method="post" action="{% url 'followups:followup_done' f.pk %}">
+                    {% csrf_token %}
+                    <input type="hidden" name="next" value="{{ request.get_full_path }}">
+                    <button type="submit" class="text-xs text-green-600 hover:underline font-semibold">تم الإنجاز</button>
+                </form>
+                <form method="post" action="{% url 'followups:followup_delete' f.pk %}"
+                      data-confirm="إلغاء هذه المتابعة نهائيًا؟" data-confirm-type="warning">
+                    {% csrf_token %}
+                    <input type="hidden" name="next" value="{{ request.get_full_path }}">
+                    <button type="submit" class="text-xs text-red-500 hover:underline">إلغاء</button>
+                </form>
+            </div>
+            {% endif %}
+        </div>
+        {% empty %}
+        <p class="text-gray-400 text-sm py-6 text-center">لا توجد متابعات مجدولة على هذا العميل حتى الآن.</p>
+        {% endfor %}
+    </div>
+</div>

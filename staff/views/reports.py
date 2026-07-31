@@ -278,6 +278,63 @@ def stagnant_products(request):
     return render(request, 'staff/reports/stagnant.html', context)
 
 
+# =====================================================================
+# مقترحات التوريد (مرحلة 7 من ROADMAP.md)
+# =====================================================================
+@perm_required('inventory.view_inventory')
+def supply_suggestions(request):
+    """
+    تجميع كل الأصناف تحت الحد الأدنى (min_quantity) في صفحة واحدة بدل
+    تنبيه متفرق (كارت "مخزون منخفض" في لوحة التحكم، فلتر "?low=1" في
+    صفحة المخزون) — البيانات جاهزة أصلًا (Inventory.low_stock() من
+    مرحلة 3)، والإضافة هنا كمية مقترح توريدها لكل صنف
+    (Inventory.suggested_reorder_qty) عشان الصفحة تبقى قابلة للتنفيذ
+    مباشرة (كام قطعة يتوّرد) مش بس تنبيه.
+    """
+    items_qs = Inventory.objects.low_stock().select_related(
+        'product__category'
+    ).prefetch_related('product__units').order_by('quantity')
+
+    category_id = request.GET.get('category', '').strip() or None
+    if category_id:
+        items_qs = items_qs.filter(product__category_id=category_id)
+
+    if request.GET.get('export') == 'excel':
+        return _export_supply_suggestions_excel(items_qs)
+
+    paginator = Paginator(items_qs, STAFF_LIST_PAGE_SIZE)
+    page_obj = paginator.get_page(request.GET.get('page'))
+
+    from products.models import Category
+    return render(request, 'staff/reports/supply_suggestions.html', {
+        'items': page_obj,
+        'page_obj': page_obj,
+        'categories': Category.objects.filter(is_active=True).order_by('name'),
+        'selected_category': category_id or '',
+        'total_low_count': items_qs.count(),
+    })
+
+
+def _export_supply_suggestions_excel(items_qs):
+    data_rows = []
+    for item in items_qs:
+        data_rows.append([
+            item.product.code,
+            item.product.display_name,
+            item.product.category.name if item.product.category_id else '—',
+            item.available_display,
+            item.min_quantity,
+            item.suggested_reorder_display,
+        ])
+    wb = build_simple_workbook(
+        sheet_title='مقترحات التوريد',
+        headers=['كود الصنف', 'اسم المنتج', 'القسم', 'المتاح حاليًا', 'الحد الأدنى (بالقطعة)', 'الكمية المقترح توريدها'],
+        rows=data_rows,
+        column_width=24,
+    )
+    return workbook_response(wb, 'biozone_supply_suggestions.xlsx')
+
+
 def _export_stagnant_excel(rows):
     data_rows = []
     for r in rows:

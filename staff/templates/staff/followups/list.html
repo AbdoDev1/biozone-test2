@@ -1,0 +1,124 @@
+{% extends 'staff/base.html' %}
+{% load staff_ui %}
+{% block title %}المتابعات — Biozone{% endblock %}
+{% block breadcrumbs %}
+<nav class="flex items-center text-sm text-gray-500 mb-4">
+    {% crumb "الرئيسية" "staff:dashboard" %}
+    {% crumb "المتابعات" %}
+</nav>
+{% endblock %}
+{% block content %}
+
+<div class="mb-4">
+    <h1 class="text-2xl font-bold text-gray-800">المتابعات</h1>
+    <p class="text-gray-500 text-sm mt-1">
+        متابعات مجدولة (اتصال، زيارة، متابعة سداد...) — الجدولة والإنجاز الفعليين بيحصلوا من
+        تاب "المتابعات" في صفحة العميل نفسها، الصفحة دي للمتابعة اليومية بس.
+    </p>
+</div>
+
+<!-- فلاتر -->
+<form method="GET" class="bg-white rounded-2xl shadow-sm p-4 mb-6 flex flex-wrap gap-3 items-end">
+    <div class="w-full sm:w-48">
+        <label class="text-xs text-gray-500 mb-1 block">النطاق</label>
+        <select name="scope" class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm outline-none focus:border-primary-400">
+            <option value="mine" {% if scope == 'mine' %}selected{% endif %}>متابعاتي أنا</option>
+            <option value="all" {% if scope == 'all' %}selected{% endif %}>كل المتابعات</option>
+        </select>
+    </div>
+    <div class="w-full sm:w-48">
+        <label class="text-xs text-gray-500 mb-1 block">الحالة</label>
+        <select name="status" class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm outline-none focus:border-primary-400">
+            <option value="open" {% if status == 'open' %}selected{% endif %}>مفتوحة</option>
+            <option value="overdue" {% if status == 'overdue' %}selected{% endif %}>متأخرة فقط</option>
+            <option value="done" {% if status == 'done' %}selected{% endif %}>منجزة</option>
+            <option value="all" {% if status == 'all' %}selected{% endif %}>الكل</option>
+        </select>
+    </div>
+    <button type="submit" class="bg-gray-800 text-white text-sm px-4 py-2 rounded-lg hover:bg-gray-700 transition">تطبيق</button>
+</form>
+
+<div class="bg-white rounded-2xl shadow-sm overflow-x-auto">
+    <table class="w-full text-sm min-w-[720px]">
+        <thead class="bg-gray-50 text-gray-600">
+            <tr>
+                <th class="px-4 py-3 text-right">النوع</th>
+                <th class="px-4 py-3 text-right">مرتبطة بـ</th>
+                <th class="px-4 py-3 text-right">تفاصيل</th>
+                <th class="px-4 py-3 text-right">تاريخ الاستحقاق</th>
+                <th class="px-4 py-3 text-right">المسؤول</th>
+                <th class="px-4 py-3 text-right">الحالة</th>
+                <th class="px-4 py-3"></th>
+            </tr>
+        </thead>
+        <tbody class="divide-y divide-gray-100">
+            {% for f in followups %}
+            <tr class="hover:bg-gray-50 {% if f.is_overdue %}bg-red-50/60{% endif %}">
+                <td class="px-4 py-3 text-gray-700">{{ f.get_activity_type_display }}</td>
+                <td class="px-4 py-3">
+                    {% if f.target_url %}
+                    <a href="{{ f.target_url }}" class="text-primary-600 hover:underline">{{ f.target_label }}</a>
+                    {% else %}
+                    <span class="text-gray-500">{{ f.target_label }}</span>
+                    {% endif %}
+                </td>
+                <td class="px-4 py-3 text-gray-500">{{ f.note|default:"—" }}</td>
+                <td class="px-4 py-3 text-gray-600">{{ f.due_date|date:"Y-m-d" }}</td>
+                <td class="px-4 py-3 text-gray-600">{{ f.assigned_to.username }}</td>
+                <td class="px-4 py-3">
+                    {% if f.is_done %}
+                    {% status_badge "منجزة" color="green" %}
+                    {% elif f.is_overdue %}
+                    {% status_badge "متأخرة" color="red" %}
+                    {% elif f.is_due_today %}
+                    {% status_badge "مستحقة اليوم" color="orange" %}
+                    {% else %}
+                    {% status_badge "قادمة" color="gray" %}
+                    {% endif %}
+                </td>
+                <td class="px-4 py-3 whitespace-nowrap">
+                    {% if not f.is_done %}
+                    <div class="flex items-center gap-3">
+                        {% if perms.followups.change_followup %}
+                        <form method="post" action="{% url 'followups:followup_done' f.pk %}">
+                            {% csrf_token %}
+                            <input type="hidden" name="next" value="{{ request.get_full_path }}">
+                            <button type="submit" class="text-green-600 hover:underline text-xs font-semibold">تم الإنجاز</button>
+                        </form>
+                        {% endif %}
+                        {% if perms.followups.delete_followup %}
+                        <form method="post" action="{% url 'followups:followup_delete' f.pk %}"
+                              data-confirm="إلغاء هذه المتابعة نهائيًا؟" data-confirm-type="warning">
+                            {% csrf_token %}
+                            <input type="hidden" name="next" value="{{ request.get_full_path }}">
+                            <button type="submit" class="text-red-500 hover:underline text-xs">إلغاء</button>
+                        </form>
+                        {% endif %}
+                    </div>
+                    {% endif %}
+                </td>
+            </tr>
+            {% empty %}
+            <tr>
+                <td colspan="7" class="px-4 py-8 text-center text-gray-400">لا توجد متابعات مطابقة لهذا الفلتر.</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+
+{% if page_obj.paginator.num_pages > 1 %}
+<div class="flex items-center justify-center gap-2 mt-4 text-sm">
+    {% if page_obj.has_previous %}
+    <a href="?{{ request.GET|without_page }}&page={{ page_obj.previous_page_number }}"
+       class="px-3 py-2 rounded-lg bg-white shadow-sm hover:bg-primary-50 text-gray-600">السابق</a>
+    {% endif %}
+    <span class="text-gray-500 px-2">صفحة {{ page_obj.number }} من {{ page_obj.paginator.num_pages }}</span>
+    {% if page_obj.has_next %}
+    <a href="?{{ request.GET|without_page }}&page={{ page_obj.next_page_number }}"
+       class="px-3 py-2 rounded-lg bg-white shadow-sm hover:bg-primary-50 text-gray-600">التالي</a>
+    {% endif %}
+</div>
+{% endif %}
+
+{% endblock %}
