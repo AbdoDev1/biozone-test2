@@ -45,9 +45,8 @@
 <div class="bg-amber-50 border border-amber-200 text-amber-800 rounded-xl px-4 py-3 mb-6 text-sm flex items-center gap-1.5">
     <svg class="w-4 h-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="1.8"><path stroke-linecap="round" stroke-linejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z"/></svg>
     <span>
-        إجمالي هذا الطلب ({{ order.total }} ج.م) أقل من الحد الأدنى المطلوب لهذا العميل
-        ({{ order.min_order_amount_snapshot }} ج.م). الطلب اترسل عادي ومفيش داعي يترفض —
-        تقدر تكمّله زي ما هو، أو تضيف "مصاريف توصيل" من أسفل قائمة الأصناف لتغطية الفرق.
+        إجمالي الطلب ({{ order.total }} ج.م) أقل من الحد الأدنى ({{ order.min_order_amount_snapshot }} ج.م).
+        تقدر تكمّله زي ما هو، أو تضيف "مصاريف توصيل".
     </span>
 </div>
 {% endif %}
@@ -150,7 +149,7 @@
         {% csrf_token %}
         <input type="hidden" name="action" value="add_service_fee">
         <span class="text-sm text-gray-600 font-medium">إضافة مصاريف توصيل:</span>
-        <input type="number" name="amount" step="0.01" min="0.01" required placeholder="القيمة بالجنيه"
+        <input type="number" name="amount" id="service-fee-amount" step="0.01" min="0.01" required placeholder="القيمة بالجنيه"
                class="w-36 border border-gray-200 rounded-lg px-3 py-1.5 text-sm outline-none focus:border-primary-400">
         <button type="submit"
                 class="bg-gray-700 hover:bg-gray-800 text-white text-xs font-semibold px-4 py-2 rounded-lg transition">
@@ -171,11 +170,48 @@
 <div class="bg-white rounded-2xl shadow-sm p-4 mb-6 flex flex-wrap gap-3">
 
     {% if order.status == 'PENDING' %}
-    <form method="post" hx-push-url="false">
+    <form method="post" hx-push-url="false" id="confirm-order-form">
         {% csrf_token %}
         <input type="hidden" name="action" value="confirm">
         {% btn "تأكيد الطلب (كل الكميات متوفرة)" type="submit" variant="success" icon="check" %}
     </form>
+    {% if order.is_below_min_order %}
+    <script>
+    (function () {
+        var form = document.getElementById('confirm-order-form');
+        if (!form) return;
+        form.addEventListener('submit', function (e) {
+            if (form.dataset.confirmed) return;
+            e.preventDefault();
+            e.stopPropagation();
+            showConfirmToast(
+                [
+                    'إجمالي الطلب {{ order.total }} ج.م أقل من الحد الأدنى {{ order.min_order_amount_snapshot }} ج.م.',
+                    'هل تريد إضافة مصاريف توصيل؟'
+                ],
+                function () {
+                    // نعم: نوديه لحقل إضافة مصاريف التوصيل عشان يضيفها الأول، من غير ما نأكد الطلب
+                    var feeInput = document.getElementById('service-fee-amount');
+                    if (feeInput) {
+                        feeInput.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                        feeInput.focus();
+                    }
+                },
+                {
+                    type: 'warning',
+                    confirmLabel: 'نعم',
+                    cancelLabel: 'لا',
+                    onCancel: function () {
+                        // لا: يكمّل تأكيد الطلب زي ما هو
+                        form.dataset.confirmed = '1';
+                        if (form.requestSubmit) { form.requestSubmit(); } else { form.submit(); }
+                    }
+                }
+            );
+        }, true);
+    })();
+    </script>
+    {% endif %}
     {% endif %}
 
     {% if order.status == 'CONFIRMED' %}
