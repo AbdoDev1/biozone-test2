@@ -15,8 +15,8 @@
         {% for item in items %}
         <div class="flex justify-between text-sm border-b pb-3">
           <div>
-            <p class="font-medium text-gray-800">{{ item.product_unit.product.name_ar }}</p>
-            <p class="text-gray-400 text-xs">{{ item.product_unit.name }} × {{ item.quantity }}</p>
+            <p class="font-medium text-gray-800">{{ item.display_name }}</p>
+            <p class="text-gray-400 text-xs">{% if not item.is_service_fee %}{{ item.unit_display_label }} × {% endif %}{{ item.quantity }}</p>
             <p class="text-gray-400 text-xs mt-0.5">
               السعر: {{ item.public_price }} ج.م
               {% if item.discount_percent %}<span class="text-green-600">(خصم {{ item.discount_percent }}%)</span>{% endif %}

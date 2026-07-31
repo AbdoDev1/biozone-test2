@@ -78,6 +78,18 @@ class Order(models.Model):
     # بيُستخدم في الصفحة الرئيسية للوحة التحكم لعرض عدد الطلبات "لسه ماتفتحتش"،
     # عشان الموظف يعرف بسرعة إيه الجديد من غير ما يفوّته وسط باقي الطلبات.
     viewed_by_staff = models.BooleanField(default=False, db_index=True)
+    # نسخة (snapshot) من الحد الأدنى الفعلي لإجمالي الطلب وقت إنشائه
+    # (get_effective_min_order_amount وقت checkout) — null لو مفيش حد أدنى
+    # مفعّل أصلًا وقتها. الطلب مبقاش بيترفض تلقائيًا لو إجماليه أقل من الحد
+    # الأدنى (زي ما كان قبل كده)؛ بدل كده بيتبعت عادي للمخزن مع تنبيه واضح
+    # (راجع is_below_min_order)، والمخزن يقدر يكمّل الطلب زي ما هو أو يضيف
+    # "مصاريف توصيل" (add_service_fee) لتغطية الفرق. القيمة بتفضل ثابتة حتى
+    # لو الحد الأدنى للعميل اتغيّر بعد إنشاء الطلب، عشان التنبيه يفضل معبّر
+    # عن الوضع وقت إرسال الطلب فعليًا.
+    min_order_amount_snapshot = models.DecimalField(
+        max_digits=10, decimal_places=2, null=True, blank=True,
+        verbose_name='الحد الأدنى وقت إرسال الطلب',
+    )
 
     class Meta:
         verbose_name = 'طلب'
@@ -98,6 +110,19 @@ class Order(models.Model):
     @property
     def is_amended(self):
         return any(item.is_amended for item in self.items.all())
+
+    @property
+    def is_below_min_order(self):
+        """
+        True لو إجمالي الطلب الحالي لسه أقل من الحد الأدنى المسجّل وقت
+        الإرسال. بيتحسب على total (مش على snapshot ثابت) عشان لو المخزن
+        ضاف "مصاريف توصيل" (add_service_fee) وغطى الفرق، التنبيه يختفي
+        تلقائيًا من غير أي تدخل يدوي تاني.
+        """
+        return (
+            self.min_order_amount_snapshot is not None
+            and self.total < self.min_order_amount_snapshot
+        )
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -187,13 +212,17 @@ class Order(models.Model):
             raise ValidationError('الطلب ده اتسلّم بالفعل، لا يمكن تكرار التسليم.')
 
         items = list(self.items.select_related('product_unit').all())
-        product_ids = [item.product_unit.product_id for item in items]
+        product_ids = [item.product_unit.product_id for item in items if not item.is_service_fee]
         locked_inventories = {
             inv.product_id: inv
             for inv in Inventory.objects.select_for_update().filter(product_id__in=product_ids)
         }
 
         for item in items:
+            if item.is_service_fee:
+                # صنف خدمي (زي مصاريف التوصيل) — مالوش منتج ولا تأثير على
+                # المخزون خالص، فبيتجاوز هنا تمامًا.
+                continue
             inv = locked_inventories.get(item.product_unit.product_id)
             if inv:
                 out_movement = StockMovement(
@@ -222,6 +251,9 @@ class Order(models.Model):
         بيغيّر بس بيانات الطلب — مفيش أي تأثير على المخزون (لا حجز ولا فك)،
         لأن الخصم الفعلي بيحصل بس وقت التسليم (mark_delivered).
         """
+        if item.is_service_fee:
+            raise ValueError('مينفعش تتعدّل كمية صنف خدمي زي "مصاريف التوصيل".')
+
         from inventory.models import Inventory
         old_quantity = item.quantity
         diff = new_quantity - old_quantity
@@ -280,9 +312,72 @@ class Order(models.Model):
         """العميل رفض التعديل — الطلب بالكامل يترفض."""
         self.reject(actor=actor, reason='العميل رفض التعديل المقترح من المخزن.')
 
+    DEFAULT_SERVICE_FEE_NAME = 'مصاريف توصيل'
+
+    @transaction.atomic
+    def add_service_fee(self, amount, actor=None, name=None):
+        """
+        إضافة صنف خدمي للطلب (افتراضيًا "مصاريف توصيل") — بدون منتج ولا أي
+        تأثير على المخزون، وبدون خصم أو كمية (بتتثبت على قطعة واحدة). القيمة
+        بتدخل يدويًا من المخزن، وربحيتها 100% لأنها مالهاش سعر تكلفة أصلًا.
+        بيُستخدم عادة لتغطية الفرق لما إجمالي الطلب أقل من الحد الأدنى
+        المسموح للعميل (Order.is_below_min_order) بدل رفض الطلب بالكامل، لكنه
+        مش مقصور على الحالة دي — أي طلب لسه مش DELIVERED/REJECTED ممكن يتضاف
+        له.
+        """
+        if self.status in (self.Status.DELIVERED, self.Status.REJECTED):
+            raise ValueError('مينفعش تضيف مصاريف توصيل لطلب اتسلّم أو اترفض بالفعل.')
+        if amount is None or amount <= 0:
+            raise ValueError('قيمة مصاريف التوصيل لازم تكون أكبر من صفر.')
+
+        fee_name = name or self.DEFAULT_SERVICE_FEE_NAME
+        item = OrderItem.objects.create(
+            order=self,
+            product_unit=None,
+            is_service_fee=True,
+            service_name=fee_name,
+            quantity=1,
+            public_price=amount,
+            discount_percent=0,
+            unit_price=amount,
+        )
+        OrderLog.objects.create(
+            order=self,
+            event=OrderLog.Event.NOTE,
+            note=f'تمت إضافة "{fee_name}" بقيمة {amount} ج.م للطلب.',
+            created_by=actor,
+        )
+        return item
+
+    @transaction.atomic
+    def remove_service_fee(self, item, actor=None):
+        """حذف صنف خدمي (زي مصاريف التوصيل) اتضاف بالغلط أو محتاج يتشال."""
+        if self.status in (self.Status.DELIVERED, self.Status.REJECTED):
+            raise ValueError('مينفعش تعدّل طلب اتسلّم أو اترفض بالفعل.')
+        if not item.is_service_fee or item.order_id != self.pk:
+            raise ValueError('الصنف ده مش صنف خدمي تابع للطلب ده.')
+
+        fee_name = item.service_name
+        amount = item.unit_price
+        item.delete()
+        OrderLog.objects.create(
+            order=self,
+            event=OrderLog.Event.NOTE,
+            note=f'تم حذف "{fee_name}" (كانت بقيمة {amount} ج.م) من الطلب.',
+            created_by=actor,
+        )
+
+
 class OrderItem(models.Model):
     order        = models.ForeignKey(Order, on_delete=models.CASCADE, related_name='items')
-    product_unit = models.ForeignKey(ProductUnit, on_delete=models.PROTECT)
+    # null بس لما is_service_fee=True (صنف خدمي زي "مصاريف توصيل" — مالوش
+    # منتج فعلي، فمفيش داعي لسجل ProductUnit؛ راجع service_name تحت).
+    product_unit = models.ForeignKey(ProductUnit, on_delete=models.PROTECT, null=True, blank=True)
+    # صنف خدمي (بدون منتج/مخزون) — بيتضاف من المخزن بس (مثلاً "مصاريف
+    # توصيل" لما إجمالي الطلب أقل من الحد الأدنى)، ربحيته 100% لأنه مالوش
+    # سعر تكلفة، وبدون خصم ولا تعديل كمية. راجع Order.add_service_fee.
+    is_service_fee = models.BooleanField(default=False, verbose_name='صنف خدمي (بدون مخزون)')
+    service_name = models.CharField(max_length=150, blank=True, verbose_name='اسم الخدمة')
     quantity     = models.PositiveIntegerField()
     # سعر الجمهور ونسبة الخصم وقت الطلب — Snapshot لا يتغيّر حتى لو الأدمن
     # عدّل قائمة الخصومات بعد كده. unit_price = السعر الفعلي بعد الخصم
@@ -298,21 +393,42 @@ class OrderItem(models.Model):
         verbose_name_plural = 'أصناف الطلب'
 
     def __str__(self):
+        if self.is_service_fee:
+            return f'{self.service_name} x{self.quantity}'
         return f'{self.product_unit.name} x{self.quantity}'
+
+    @property
+    def display_name(self):
+        """اسم الصنف المعروض — اسم المنتج للأصناف العادية، أو اسم الخدمة (زي "مصاريف توصيل") للأصناف الخدمية."""
+        if self.is_service_fee:
+            return self.service_name or 'خدمة'
+        return self.product_unit.product.display_name
 
     @property
     def stock_qty(self):
         """
         الكمية الفعلية بالقطعة اللي اتحجزت/اتطرحت من رصيد المخزون — تحويل
         quantity (بوحدة الطلب: كرتونة للجملة أو قطعة للقطاعي) بمعامل qty_in_small.
+        صفر دايمًا للأصناف الخدمية لأنها مالهاش تأثير على المخزون أصلًا.
         """
+        if self.is_service_fee:
+            return 0
         return self.quantity * self.product_unit.qty_in_small
 
     @property
     def unit_display_label(self):
+        if self.is_service_fee:
+            return '—'
         return self.product_unit.name
 
     def save(self, *args, **kwargs):
+        # سطر واحد بس إما صنف منتج فعلي (له product_unit ومفيش service_name)
+        # أو صنف خدمي (is_service_fee=True، مالوش product_unit) — مايتلخبطش.
+        if self.is_service_fee:
+            if self.product_unit_id is not None:
+                raise ValueError('صنف خدمي مينفعش يتربط بمنتج فعلي (product_unit).')
+        elif self.product_unit_id is None:
+            raise ValueError('صنف الطلب لازم يكون له منتج فعلي (product_unit) إلا لو صنف خدمي.')
         # أول مرة بس بنحفظ نسخة من الكمية/السعر الأصلي قبل أي تعديل من المخزن
         if self.original_quantity is None:
             self.original_quantity = self.quantity

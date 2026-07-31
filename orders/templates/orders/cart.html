@@ -69,8 +69,7 @@
     <div class="bg-amber-50 border border-amber-200 text-amber-800 rounded-2xl px-5 py-4 mb-6 text-sm flex items-center gap-2">
       <svg class="w-5 h-5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="1.8"><path stroke-linecap="round" stroke-linejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z"/></svg>
       <span>
-        الحد الأدنى لإجمالي الطلب هو <strong>{{ min_order_amount }} ج.م</strong>.
-        يلزم إضافة <strong>{{ remaining_to_min }} ج.م</strong> أخرى لإتمام الطلب.
+        قيمة طلبك أقل من الحد الأدنى، وسيتم إضافة مصاريف توصيل بسيطة لإتمامه فورًا.
       </span>
     </div>
     {% endif %}
@@ -161,16 +160,10 @@
            class="text-center border border-gray-200 text-gray-600 px-6 py-3 rounded-xl hover:bg-gray-50 transition text-sm">
           متابعة التسوق
         </a>
-        {% if below_min %}
-        <span class="text-center bg-gray-200 text-gray-400 px-6 py-3 rounded-xl text-sm font-semibold cursor-not-allowed">
-          إتمام الطلب
-        </span>
-        {% else %}
         <a href="{% url 'orders:checkout' %}"
            class="text-center bg-primary-600 hover:bg-primary-700 text-white px-6 py-3 rounded-xl transition text-sm font-semibold">
           إتمام الطلب
         </a>
-        {% endif %}
       </div>
     </div>
 

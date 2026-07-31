@@ -45,6 +45,9 @@
             <tr class="hover:bg-gray-50">
                 <td class="px-4 py-3 font-medium sticky-col">
                     #{{ order.pk }}
+                    {% if order.is_below_min_order %}
+                    <span class="inline-block bg-amber-100 text-amber-700 text-[10px] font-semibold px-2 py-0.5 rounded-full mr-1" title="أقل من الحد الأدنى">أقل من الحد الأدنى</span>
+                    {% endif %}
                     {% tag_badges_small order.tag_list %}
                 </td>
                 <td class="px-4 py-3">{{ order.client.username }}</td>

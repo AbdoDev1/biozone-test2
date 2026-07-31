@@ -105,10 +105,13 @@ class Invoice(models.Model):
         invoice.save()
 
         for item in order.items.all():
+            # الصنف الخدمي (زي "مصاريف توصيل") مالوش product_unit خالص —
+            # بناخد الاسم والوحدة من item.display_name/service_name بدل ما
+            # نعتمد على المنتج (راجع OrderItem.is_service_fee).
             InvoiceItem.objects.create(
                 invoice=invoice,
-                product_name=item.product_unit.product.display_name,
-                unit_name=item.product_unit.name,
+                product_name=item.display_name,
+                unit_name='—' if item.is_service_fee else item.product_unit.name,
                 quantity=item.quantity,
                 public_price=item.public_price,
                 discount_percent=item.discount_percent,

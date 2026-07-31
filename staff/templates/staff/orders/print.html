@@ -92,12 +92,13 @@
                 <tr class="border-b border-gray-100 {% if item.is_amended %}bg-orange-50{% endif %}">
                     <td class="py-2 text-gray-400">{{ item.display_index }}</td>
                     <td class="py-2">
-                        {{ item.product_unit.product.display_name }}
+                        {{ item.display_name }}
+                        {% if item.is_service_fee %}<span class="text-[10px] text-blue-600">(خدمة)</span>{% endif %}
                         {% if item.is_amended %}
                         <p class="text-xs text-orange-600">كانت: {{ item.original_quantity }}</p>
                         {% endif %}
                     </td>
-                    <td class="py-2 text-gray-500">{{ item.product_unit.name }}</td>
+                    <td class="py-2 text-gray-500">{{ item.unit_display_label }}</td>
                     <td class="py-2 font-medium">{{ item.quantity }}</td>
                     <td class="py-2 no-print">
                         <span class="inline-block w-4 h-4 border border-gray-400 rounded-sm"></span>

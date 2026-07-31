@@ -1,3 +1,5 @@
+from decimal import Decimal, InvalidOperation
+
 from django.contrib import messages
 from django.core.exceptions import ValidationError
 from django.core.paginator import Paginator
@@ -126,6 +128,30 @@ def order_detail(request, pk):
             else:
                 order.confirm(actor=request.user)
                 messages.success(request, f'تم تأكيد الطلب #{order.pk}.')
+            return redirect('staff:order_detail', pk=order.pk)
+
+        elif action == 'add_service_fee':
+            raw_amount = request.POST.get('amount', '').strip()
+            try:
+                amount = Decimal(raw_amount)
+            except (InvalidOperation, TypeError):
+                messages.error(request, 'قيمة مصاريف التوصيل غير صحيحة.')
+                return redirect('staff:order_detail', pk=order.pk)
+            try:
+                order.add_service_fee(amount, actor=request.user)
+                messages.success(request, 'تمت إضافة مصاريف التوصيل للطلب.')
+            except ValueError as e:
+                messages.error(request, str(e))
+            return redirect('staff:order_detail', pk=order.pk)
+
+        elif action == 'remove_service_fee':
+            item_id = request.POST.get('item_id')
+            item = get_object_or_404(OrderItem, pk=item_id, order=order)
+            try:
+                order.remove_service_fee(item, actor=request.user)
+                messages.success(request, 'تم حذف الصنف الخدمي من الطلب.')
+            except ValueError as e:
+                messages.error(request, str(e))
             return redirect('staff:order_detail', pk=order.pk)
 
         elif action == 'reject':

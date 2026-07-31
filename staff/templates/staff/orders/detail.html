@@ -41,6 +41,17 @@
 <!-- شريط حالة الطلب المرئي (مرحلة 4) -->
 {% include 'staff/orders/partials/status_bar.html' %}
 
+{% if order.is_below_min_order %}
+<div class="bg-amber-50 border border-amber-200 text-amber-800 rounded-xl px-4 py-3 mb-6 text-sm flex items-center gap-1.5">
+    <svg class="w-4 h-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="1.8"><path stroke-linecap="round" stroke-linejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z"/></svg>
+    <span>
+        إجمالي هذا الطلب ({{ order.total }} ج.م) أقل من الحد الأدنى المطلوب لهذا العميل
+        ({{ order.min_order_amount_snapshot }} ج.م). الطلب اترسل عادي ومفيش داعي يترفض —
+        تقدر تكمّله زي ما هو، أو تضيف "مصاريف توصيل" من أسفل قائمة الأصناف لتغطية الفرق.
+    </span>
+</div>
+{% endif %}
+
 {% if order.status == 'NEEDS_APPROVAL' %}
 <div class="bg-orange-50 border border-orange-200 text-orange-800 rounded-xl px-4 py-3 mb-6 text-sm">
     <span class="inline-flex items-center gap-1.5"><svg class="w-4 h-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="1.8"><path stroke-linecap="round" stroke-linejoin="round" d="M12 6v6h4.5m4.5 0a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>تم تعديل هذا الطلب وهو بانتظار موافقة العميل. لا يمكن تأكيده أو تسليمه قبل موافقة العميل على التعديل.</span>
@@ -63,10 +74,15 @@
         </thead>
         <tbody class="divide-y divide-gray-100">
             {% for item in items_page %}
-            <tr class="{% if item.is_amended %}bg-orange-50{% endif %}">
+            <tr class="{% if item.is_amended %}bg-orange-50{% elif item.is_service_fee %}bg-blue-50{% endif %}">
                 <td class="px-4 py-3 sticky-col">
-                    <p class="font-medium text-gray-800">{{ item.product_unit.product.display_name }}</p>
-                    <p class="text-xs text-gray-400">{{ item.product_unit.name }}</p>
+                    <p class="font-medium text-gray-800">
+                        {{ item.display_name }}
+                        {% if item.is_service_fee %}
+                        <span class="inline-block bg-blue-100 text-blue-700 text-[10px] font-semibold px-2 py-0.5 rounded-full mr-1 align-middle">خدمة</span>
+                        {% endif %}
+                    </p>
+                    {% if not item.is_service_fee %}<p class="text-xs text-gray-400">{{ item.product_unit.name }}</p>{% endif %}
                     {% if item.is_amended %}
                     <p class="text-xs mt-1 {% if item.amendment_direction == 'increase' %}text-green-700{% else %}text-orange-600{% endif %}">
                         {% if item.amendment_direction == 'increase' %}▲ اتزودت من{% elif item.amendment_direction == 'decrease' %}▼ اتقللت من{% else %}الكمية السابقة:{% endif %}
@@ -75,17 +91,31 @@
                     {% endif %}
                 </td>
                 <td class="px-4 py-3">
+                    {% if item.is_service_fee %}
+                    <span class="text-gray-400">—</span>
+                    {% else %}
                     {% with inv=item.product_unit.product.inventory %}
                     <span class="{% if inv and inv.available < item.stock_qty %}text-red-600 font-bold{% else %}text-gray-600{% endif %}">
                         {% if inv %}{% widthratio inv.available item.product_unit.qty_in_small 1 %} {{ item.product_unit.name }}{% else %}—{% endif %}
                     </span>
                     {% endwith %}
+                    {% endif %}
                 </td>
                 <td class="px-4 py-3">
                     <span class="font-medium">{{ item.quantity }}</span>
                 </td>
                 <td class="px-4 py-3 text-gray-600">{{ item.unit_price }} ج.م</td>
-                <td class="px-4 py-3 font-bold text-gray-800">{{ item.subtotal }} ج.م</td>
+                <td class="px-4 py-3 font-bold text-gray-800">
+                    {{ item.subtotal }} ج.م
+                    {% if item.is_service_fee and order.status not in 'DELIVERED,REJECTED' %}
+                    <form method="post" hx-push-url="false" class="inline" data-confirm="هل تريد حذف {{ item.display_name }}؟">
+                        {% csrf_token %}
+                        <input type="hidden" name="action" value="remove_service_fee">
+                        <input type="hidden" name="item_id" value="{{ item.pk }}">
+                        <button type="submit" class="text-red-500 hover:underline text-xs mr-2">حذف</button>
+                    </form>
+                    {% endif %}
+                </td>
             </tr>
             {% endfor %}
         </tbody>
@@ -110,6 +140,23 @@
            class="px-3 py-1.5 rounded-lg bg-white border border-gray-200 hover:bg-primary-50 text-gray-600">التالي</a>
         {% endif %}
     </div>
+    {% endif %}
+
+    <!-- إضافة صنف خدمي (مصاريف توصيل) تحت آخر صنف — بدون منتج/مخزون، بدون
+         خصم ولا كمية، القيمة بتدخل يدويًا من المخزن. متاحة لأي طلب لسه مش
+         مسلَّم/مرفوض، مش مقصورة على حالة "أقل من الحد الأدنى" فقط. -->
+    {% if order.status not in 'DELIVERED,REJECTED' %}
+    <form method="post" hx-push-url="false" class="flex flex-wrap items-center gap-2 px-4 py-3 border-t bg-gray-50">
+        {% csrf_token %}
+        <input type="hidden" name="action" value="add_service_fee">
+        <span class="text-sm text-gray-600 font-medium">إضافة مصاريف توصيل:</span>
+        <input type="number" name="amount" step="0.01" min="0.01" required placeholder="القيمة بالجنيه"
+               class="w-36 border border-gray-200 rounded-lg px-3 py-1.5 text-sm outline-none focus:border-primary-400">
+        <button type="submit"
+                class="bg-gray-700 hover:bg-gray-800 text-white text-xs font-semibold px-4 py-2 rounded-lg transition">
+            إضافة
+        </button>
+    </form>
     {% endif %}
 </div>
 

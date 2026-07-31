@@ -22,14 +22,10 @@ def checkout(request):
 
     min_order_amount = get_effective_min_order_amount(getattr(request.user, 'client_profile', None))
     total = cart.get_total()
-
-    if min_order_amount and total < min_order_amount:
-        messages.error(
-            request,
-            f'الحد الأدنى لإجمالي الطلب هو {min_order_amount} ج.م. '
-            f'إجمالي سلتك الحالي {total} ج.م، يلزم إضافة {min_order_amount - total} ج.م إضافية.'
-        )
-        return redirect('orders:cart')
+    # الطلب مبقاش بيترفض هنا لو إجماليه أقل من الحد الأدنى — بيتبعت عادي
+    # للمخزن كطلبية زي أي طلبية تانية، مع تنبيه واضح في صفحة الطلب بالمخزن
+    # (Order.is_below_min_order) بدل ما نمنع العميل من الإرسال خالص. المخزن
+    # بعد كده يقدر يكمّل الطلب زي ما هو أو يضيف "مصاريف توصيل" لتغطية الفرق.
 
     if request.method == 'POST':
         # ملحوظة: الطلب هنا لا يحجز ولا يخصم أي كمية من المخزون — بيتسجّل بس
@@ -61,6 +57,7 @@ def checkout(request):
             order = Order.objects.create(
                 client=request.user,
                 notes=request.POST.get('notes', ''),
+                min_order_amount_snapshot=min_order_amount or None,
             )
             for item in items:
                 OrderItem.objects.create(
