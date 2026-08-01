@@ -113,7 +113,7 @@
                     <td class="py-1.5 px-2 border-l border-gray-200 text-center text-gray-500 num">{{ item.display_index }}</td>
                     <td class="py-1.5 px-2 border-l border-gray-200">
                         {{ item.display_name }}
-                        <span class="text-gray-400 text-xs">({{ item.unit_display_label }})</span>
+                        {% if not item.is_service_fee %}<span class="text-gray-400 text-xs">({{ item.unit_display_label }})</span>{% endif %}
                     </td>
                     <td class="py-1.5 px-2 border-l border-gray-200 text-center num">{{ item.quantity }}</td>
                     <td class="py-1.5 px-2 border-l border-gray-200 text-center text-gray-500 num">{{ item.public_price|floatformat:-2 }}</td>

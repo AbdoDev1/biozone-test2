@@ -22,6 +22,7 @@ from .crud import (
     product_edit,
     product_delete,
     product_duplicate,
+    product_discounts_save,
 )
 
 from .categories import (
@@ -69,6 +70,7 @@ __all__ = [
     'product_edit',
     'product_delete',
     'product_duplicate',
+    'product_discounts_save',
     'RELATION_FIELDS',
     'product_relation_search',
     'product_relation_add',

@@ -8,18 +8,20 @@ from decimal import Decimal, InvalidOperation
 
 from django.core.paginator import Paginator
 from django.shortcuts import render, redirect, get_object_or_404
+from django.urls import reverse
 from django.contrib import messages
 from django.db import IntegrityError, transaction
 from django.db.models import ProtectedError, Q, F, Value, OuterRef, Subquery
 from django.db.models.functions import Coalesce
 from django.views.decorators.http import require_POST
 
-from products.models import Product, Category, ProductUnit
+from products.models import Product, Category, ProductUnit, UnitDiscount
 from products.forms import ProductForm, ProductUnitFormSet
 from products.pricing import autofill_small_unit_price
 from products.matching import normalize_name
 from products.services import stock_setup
-from staff.permissions import perm_required
+from accounts.models import AccountType, User
+from staff.permissions import perm_required, admin_required
 from staff.utils import list_qs, url_with_qs, redirect_with_qs
 from django.contrib.contenttypes.models import ContentType
 from activity.models import ActivityLog
@@ -294,8 +296,8 @@ def _product_related_orders(product, limit=8):
 # الحقول اللي بتتراقب على كل وحدة (ProductUnit) — السعر مش موجود على
 # Product نفسه (شوف PRODUCT_TRACKED_FIELDS فوق)، فمحتاج تتبع منفصل هنا
 # وإلا تغيير السعر مايتسجلش خالص في تايم لاين النشاط.
-UNIT_TRACKED_FIELDS = ['unit_price', 'cost_price']
-UNIT_FIELD_LABELS = {'unit_price': 'سعر الجمهور', 'cost_price': 'سعر التكلفة'}
+UNIT_TRACKED_FIELDS = ['unit_price']
+UNIT_FIELD_LABELS = {'unit_price': 'سعر الجمهور'}
 
 
 def _snapshot_unit_prices(product):
@@ -334,6 +336,39 @@ def _unit_prices_diff_summary(old_snapshot, product):
             parts.append(f'تم حذف وحدة ({old["name"]})')
 
     return '، '.join(parts)
+
+
+def _discount_context_for_product(product):
+    """
+    تجهيز بيانات محرر الخصومات المصغّر جوه تاب "الوحدات والأسعار" في صفحة
+    تعديل المنتج — نفس منطق account_type_discounts (شاشة "أنواع الحسابات")
+    لكن مقلوب: هنا المنتج ثابت وبنلف على كل أنواع الحسابات، مش العكس.
+    كل نوع حساب بياخد unit_rows: صف لكل وحدة من وحدات المنتج، فيه هل
+    الوحدة قابلة للتعديل (مش وحدة كبرى ليها صغرى بتحسبلها تلقائي)، نسبة
+    الخصم الحالية لو موجودة، والسعر بعد الخصم.
+    """
+    units = list(product.units.all())
+    sizes_present = {u.size for u in units}
+    editable_by_unit = {
+        u.pk: not (u.size == ProductUnit.Size.LARGE and ProductUnit.Size.SMALL in sizes_present)
+        for u in units
+    }
+    account_types = list(AccountType.objects.filter(is_active=True).order_by('name'))
+    discounts_map = {
+        (d.account_type_id, d.unit_id): d.discount_percent
+        for d in UnitDiscount.objects.filter(unit__product=product, account_type__in=account_types)
+    }
+    for at in account_types:
+        at.unit_rows = [
+            {
+                'unit': u,
+                'is_editable': editable_by_unit.get(u.pk, True),
+                'current_discount': discounts_map.get((at.pk, u.pk)),
+                'price_after_discount': u.get_price_for_account_type(at),
+            }
+            for u in units
+        ]
+    return account_types
 
 
 @perm_required('products.change_product')
@@ -439,7 +474,81 @@ def product_edit(request, pk):
         'similar_search_url': url_with_qs(request, 'staff:product_relation_search', pk=product.pk, relation='similar'),
         'complementary_search_url': url_with_qs(request, 'staff:product_relation_search', pk=product.pk, relation='complementary'),
         'variant_search_url': url_with_qs(request, 'staff:product_variant_search', pk=product.pk),
+        'discount_account_types': _discount_context_for_product(product) if request.user.role == User.Role.ADMIN else [],
     })
+
+
+@require_POST
+@admin_required
+def product_discounts_save(request, pk):
+    """
+    حفظ الخصومات من محرر "الوحدات والأسعار" داخل صفحة تعديل المنتج —
+    نفس منطق account_type_discounts (شاشة أنواع الحسابات) بالظبط، لكن من
+    اتجاه معاكس: هنا بنلف على كل أنواع الحسابات لمنتج واحد بدل كل المنتجات
+    لنوع حساب واحد. مقصورة على الأدمن زي الشاشة الأصلية (نفس حساسية التسعير).
+    مفصولة عن فورم بيانات/وحدات المنتج نفسه (فورم مستقل بـ action مختلف)
+    لأن HTML مايسمحش بـ <form> جوه <form>.
+    """
+    product = get_object_or_404(Product.objects.prefetch_related('units'), pk=pk)
+    sizes_present = {u.size for u in product.units.all()}
+    units_by_id = {u.pk: u for u in product.units.all()}
+    changed = []
+
+    with transaction.atomic():
+        for key, raw_value in request.POST.items():
+            if not key.startswith('discount_'):
+                continue
+            try:
+                _, account_type_id, unit_id = key.split('_', 2)
+                unit = units_by_id[int(unit_id)]
+            except (ValueError, KeyError):
+                continue
+            try:
+                account_type = AccountType.objects.get(pk=account_type_id)
+            except (AccountType.DoesNotExist, ValueError):
+                continue
+
+            is_editable = not (
+                unit.size == ProductUnit.Size.LARGE and ProductUnit.Size.SMALL in sizes_present
+            )
+            unit_label = f'{unit.get_size_display()} ({unit.name}) — {account_type.name}'
+            existing = UnitDiscount.objects.filter(unit=unit, account_type=account_type).first()
+            old_percent = existing.discount_percent if existing else None
+
+            if not is_editable:
+                continue  # سعرها بيتحسب تلقائيًا من الوحدة الصغرى، مفيش خصم منفصل يتسجّل ليها
+
+            value = raw_value.strip()
+            if value == '':
+                if existing:
+                    existing.delete()
+                    changed.append(f'{unit_label}: {old_percent}% → بدون خصم')
+                continue
+
+            try:
+                discount_percent = Decimal(value)
+            except InvalidOperation:
+                messages.warning(request, f'قيمة خصم غير صالحة تم تجاهلها ({unit_label}).')
+                continue
+            if discount_percent < 0 or discount_percent > 100:
+                messages.warning(request, f'نسبة الخصم يجب أن تكون بين 0 و100 ({unit_label}) — تم تجاهلها.')
+                continue
+
+            if old_percent != discount_percent:
+                old_label = f'{old_percent}%' if old_percent is not None else 'بدون خصم'
+                changed.append(f'{unit_label}: {old_label} → {discount_percent}%')
+
+            UnitDiscount.objects.update_or_create(
+                unit=unit, account_type=account_type, defaults={'discount_percent': discount_percent},
+            )
+
+    if changed:
+        log_activity(product, ActivityLog.Event.UPDATED, user=request.user, changes_summary='، '.join(changed))
+        messages.success(request, 'تم حفظ تعديلات الخصومات.')
+    else:
+        messages.info(request, 'لا توجد تعديلات جديدة على الخصومات.')
+
+    return redirect(f"{reverse('staff:product_edit', args=[product.pk])}?tab=units")
 
 
 @perm_required('products.add_product')
@@ -479,7 +588,6 @@ def product_duplicate(request, pk):
                     name=unit.name,
                     qty_in_small=unit.qty_in_small,
                     unit_price=unit.unit_price,
-                    cost_price=unit.cost_price,
                 )
             log_activity(
                 new_product, ActivityLog.Event.CREATED, user=request.user,

@@ -30,11 +30,11 @@ class ProductDuplicateTestCase(TestCase):
         )
         self.small_unit = ProductUnit.objects.create(
             product=self.source, size='S', name='قطعة', qty_in_small=1,
-            unit_price=Decimal('10.00'), cost_price=Decimal('7.00'),
+            unit_price=Decimal('10.00'),
         )
         self.large_unit = ProductUnit.objects.create(
             product=self.source, size='L', name='كرتونة', qty_in_small=20,
-            unit_price=Decimal('180.00'), cost_price=Decimal('130.00'),
+            unit_price=Decimal('180.00'),
         )
 
     def test_get_shows_confirmation_page_without_creating_anything(self):
@@ -55,7 +55,6 @@ class ProductDuplicateTestCase(TestCase):
         self.assertEqual(copy.units.count(), 2)
         copy_small = copy.units.get(size='S')
         self.assertEqual(copy_small.unit_price, self.small_unit.unit_price)
-        self.assertEqual(copy_small.cost_price, self.small_unit.cost_price)
 
         # يفوز الرد بالتوجيه لصفحة تعديل النسخة الجديدة مباشرة
         self.assertRedirects(response, reverse('staff:product_edit', args=[copy.pk]))

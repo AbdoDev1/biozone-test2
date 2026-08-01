@@ -338,7 +338,10 @@ class Order(models.Model):
         """
         إضافة صنف خدمي للطلب (افتراضيًا "مصاريف توصيل") — بدون منتج ولا أي
         تأثير على المخزون، وبدون خصم أو كمية (بتتثبت على قطعة واحدة). القيمة
-        بتدخل يدويًا من المخزن، وربحيتها 100% لأنها مالهاش سعر تكلفة أصلًا.
+        بتدخل يدويًا من المخزن، ومساهمتها في تقارير الربح = صفر (public_price
+        و unit_price بيتسجّلوا بنفس القيمة، فمفيش "فرق خصم" يُحسب منها —
+        راجع staff.reports_queries — لأنها مصاريف بتتحصّل وتتحوّل زي ما هي،
+        مش هامش ربح فعلي على صنف).
         بيُستخدم عادة لتغطية الفرق لما إجمالي الطلب أقل من الحد الأدنى
         المسموح للعميل (Order.is_below_min_order) بدل رفض الطلب بالكامل، لكنه
         مش مقصور على الحالة دي — أي طلب لسه مش DELIVERED/REJECTED ممكن يتضاف
@@ -396,8 +399,9 @@ class OrderItem(models.Model):
     # منتج فعلي، فمفيش داعي لسجل ProductUnit؛ راجع service_name تحت).
     product_unit = models.ForeignKey(ProductUnit, on_delete=models.PROTECT, null=True, blank=True)
     # صنف خدمي (بدون منتج/مخزون) — بيتضاف من المخزن بس (مثلاً "مصاريف
-    # توصيل" لما إجمالي الطلب أقل من الحد الأدنى)، ربحيته 100% لأنه مالوش
-    # سعر تكلفة، وبدون خصم ولا تعديل كمية. راجع Order.add_service_fee.
+    # توصيل" لما إجمالي الطلب أقل من الحد الأدنى)، ومساهمته في تقارير
+    # الربح = صفر (public_price = unit_price دايمًا لصنف خدمي، فمفيش
+    # فرق خصم يتحسب منه)، وبدون خصم ولا تعديل كمية. راجع Order.add_service_fee.
     is_service_fee = models.BooleanField(default=False, verbose_name='صنف خدمي (بدون مخزون)')
     service_name = models.CharField(max_length=150, blank=True, verbose_name='اسم الخدمة')
     quantity     = models.PositiveIntegerField()

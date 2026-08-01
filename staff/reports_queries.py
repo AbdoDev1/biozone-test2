@@ -4,9 +4,16 @@
 المصدر الأساسي لكل تقارير المبيعات/الربح هنا هو orders.OrderItem بس مقصور
 على الطلبات المُسلَّمة (Order.Status.DELIVERED) واللي ليها فاتورة فعلاً —
 دي أصناف مبيعات حقيقية فعلية (مش مجرد طلب في السلة لسه ماتاكدش)، ومحتفظة
-بكل الـ FK اللازمة للفلترة (المنتج، القسم، العميل) ولحساب الربح
-(product_unit.cost_price) بعكس invoices.InvoiceItem اللي بياخد Snapshot
-نصّي بس (product_name كنص) بدون FK حقيقي نقدر نفلتر أو نجمّع بيه.
+بكل الـ FK اللازمة للفلترة (المنتج، القسم، العميل) بعكس invoices.InvoiceItem
+اللي بياخد Snapshot نصّي بس (product_name كنص) بدون FK حقيقي نقدر نفلتر أو
+نجمّع بيه.
+
+الربح هنا مش "إيراد − تكلفة شراء" (النظام مالوش سعر تكلفة مسجَّل خالص — كان
+فيه حقل cost_price يدوي واتشال بالكامل لأنه كان بيتسجّل نادرًا ويطلّع أرقام
+ربح وهمية). بدل منه، الربح بيتحسب من الفرق بين سعر الجمهور (public_price،
+سعر البيع الرسمي المُسجَّل وقت البيع) وسعر البيع الفعلي بعد خصم نوع حساب
+العميل (unit_price) — الاتنين محفوظين على كل OrderItem وقت البيع، فمش
+محتاجين أي إدخال يدوي إضافي.
 
 تاريخ البيع المعتمد في كل الفلاتر = invoice.issued_at (لحظة تسليم الطلب
 الفعلية وإصدار فاتورته) — أدق من order.created_at لأن الطلب ممكن يفضل فترة
@@ -170,28 +177,35 @@ class ReportFilters:
 
 
 def item_annotations(qs):
-    """يضيف مجاميع الإيراد/التكلفة/الربح لكل صف مُجمَّع (annotate) من OrderItem."""
+    """
+    يضيف مجاميع الإيراد والربح لكل صف مُجمَّع (annotate) من OrderItem.
+    _revenue = المبلغ الفعلي المحصَّل (unit_price × الكمية).
+    _profit = الفرق بين سعر الجمهور وسعر البيع الفعلي بعد الخصم، مضروبًا في
+    الكمية — أي "قيمة الخصم الممنوح" مقلوبة، وهي المؤشر المتاح فعليًا لقياس
+    هامش الربح من غير الاعتماد على سعر تكلفة يدوي (راجع docstring الملف).
+    """
     revenue_expr = ExpressionWrapper(F('unit_price') * F('quantity'), output_field=MONEY)
-    cost_expr = ExpressionWrapper(F('product_unit__cost_price') * F('quantity'), output_field=MONEY)
-    return qs.annotate(_revenue=revenue_expr, _cost=cost_expr)
+    profit_expr = ExpressionWrapper(
+        (F('public_price') - F('unit_price')) * F('quantity'), output_field=MONEY,
+    )
+    return qs.annotate(_revenue=revenue_expr, _profit=profit_expr)
 
 
 def totals_for_items(qs):
-    """إجماليات عامة (إيراد/تكلفة/ربح/عدد قطع) لمجموعة أصناف مبيعات."""
+    """إجماليات عامة (إيراد/ربح/هامش/عدد قطع) لمجموعة أصناف مبيعات."""
     qs = item_annotations(qs)
     agg = qs.aggregate(
         revenue=Sum('_revenue'),
-        cost=Sum('_cost'),
+        profit=Sum('_profit'),
         qty=Sum('quantity'),
     )
     revenue = agg['revenue'] or Decimal('0')
-    cost = agg['cost'] or Decimal('0')
+    profit = agg['profit'] or Decimal('0')
     return {
         'revenue': revenue,
-        'cost': cost,
-        'profit': revenue - cost,
+        'profit': profit,
         'qty': agg['qty'] or 0,
-        'margin_percent': (((revenue - cost) / revenue) * 100) if revenue else Decimal('0'),
+        'margin_percent': ((profit / revenue) * 100) if revenue else Decimal('0'),
     }
 
 
@@ -206,11 +220,18 @@ def sales_summary(invoice_qs):
 
 def products_sold_report(item_qs, order_by='revenue'):
     """
-    تجميع أصناف المبيعات حسب المنتج: الكمية، الإيراد، التكلفة، الربح، ونسبة
+    تجميع أصناف المبيعات حسب المنتج: الكمية، الإيراد، الربح، ونسبة
     مساهمته في إجمالي المبيعات المفلترة.
     order_by: 'revenue' | 'qty' | 'profit'
+
+    الأصناف الخدمية (زي "مصاريف توصيل") مستبعدة هنا صراحةً — مالهاش
+    product_unit أصلًا (None)، فبدون الاستبعاد ده كانت هتتجمّع في صف
+    "منتج" وهمي فاضي الاسم (فَرقها عن باقي أصناف التقرير: التجميع هنا
+    بيبقى بمنتج/فئة/كود، وده مش منطقي لصنف مالوش منتج من الأساس). ده
+    مش هيأثر على إجمالي الإيراد/الربح المعروض في باقي التقارير (زي
+    totals_for_items) لأنها بتحسب على مستوى الطلب ككل مش مقسّمة بالمنتج.
     """
-    qs = item_annotations(item_qs).values(
+    qs = item_annotations(item_qs.exclude(is_service_fee=True)).values(
         'product_unit__product_id',
         'product_unit__product__name_ar',
         'product_unit__product__name_en',
@@ -219,9 +240,7 @@ def products_sold_report(item_qs, order_by='revenue'):
     ).annotate(
         total_qty=Sum('quantity'),
         total_revenue=Sum('_revenue'),
-        total_cost=Sum('_cost'),
-    ).annotate(
-        total_profit=ExpressionWrapper(F('total_revenue') - F('total_cost'), output_field=MONEY),
+        total_profit=Sum('_profit'),
     )
 
     order_map = {
@@ -338,7 +357,7 @@ def daily_sales_for_dashboard(days=30):
 
 
 def monthly_profit_series(months=6):
-    """آخر N شهر: إيراد/تكلفة/ربح لكل شهر — لرسم بياني الأرباح الشهرية في لوحة المؤشرات."""
+    """آخر N شهر: إيراد/ربح لكل شهر — لرسم بياني الأرباح الشهرية في لوحة المؤشرات."""
     now = timezone.localtime()
     series = []
     for i in range(months - 1, -1, -1):
@@ -365,7 +384,6 @@ def monthly_profit_series(months=6):
         series.append({
             'label': start.strftime('%Y-%m'),
             'revenue': totals['revenue'],
-            'cost': totals['cost'],
             'profit': totals['profit'],
         })
     return series

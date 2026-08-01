@@ -9,21 +9,17 @@
     <div class="mb-4">
         <h1 class="text-2xl font-bold text-gray-800">تقرير الأرباح</h1>
         <p class="text-gray-500 text-sm mt-1">
-            الإيرادات وتكلفة البضاعة المباعة والربح الإجمالي حسب الفترة المختارة.
-            <span class="text-gray-400">(الربح هنا إجمالي = الإيراد − تكلفة الشراء المسجّلة لكل منتج، ولا يشمل مصروفات تشغيل عامة لأن النظام لا يتتبعها حاليًا.)</span>
+            الإيرادات والربح الإجمالي حسب الفترة المختارة.
+            <span class="text-gray-400">(الربح هنا = الفرق بين سعر الجمهور وسعر البيع الفعلي بعد خصم نوع حساب العميل، وليس إيراد − تكلفة شراء. النظام لا يتتبع سعر تكلفة يدوي، ولا مصروفات تشغيل عامة.)</span>
         </p>
     </div>
 
     {% include 'staff/reports/_filters.html' %}
 
-    <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+    <div class="grid grid-cols-2 md:grid-cols-3 gap-4 mb-6">
         <div class="bg-white rounded-2xl shadow-sm p-5">
             <p class="text-xs text-gray-500 mb-1">إجمالي الإيرادات</p>
             <p class="text-xl font-bold text-gray-800">{{ totals.revenue|floatformat:2 }} ج.م</p>
-        </div>
-        <div class="bg-white rounded-2xl shadow-sm p-5">
-            <p class="text-xs text-gray-500 mb-1">تكلفة البضاعة المباعة</p>
-            <p class="text-xl font-bold text-gray-800">{{ totals.cost|floatformat:2 }} ج.م</p>
         </div>
         <div class="bg-white rounded-2xl shadow-sm p-5">
             <p class="text-xs text-gray-500 mb-1">الربح الإجمالي</p>
@@ -48,7 +44,6 @@
                     <tr class="text-right text-gray-500 border-b">
                         <th class="py-2 px-3">الشهر</th>
                         <th class="py-2 px-3">الإيرادات</th>
-                        <th class="py-2 px-3">التكلفة</th>
                         <th class="py-2 px-3">الربح</th>
                     </tr>
                 </thead>
@@ -57,7 +52,6 @@
                     <tr class="border-b last:border-0 hover:bg-gray-50">
                         <td class="py-2 px-3 font-medium">{{ m.label }}</td>
                         <td class="py-2 px-3">{{ m.revenue|floatformat:2 }} ج.م</td>
-                        <td class="py-2 px-3 text-gray-500">{{ m.cost|floatformat:2 }} ج.م</td>
                         <td class="py-2 px-3 font-semibold {% if m.profit >= 0 %}text-green-600{% else %}text-red-600{% endif %}">{{ m.profit|floatformat:2 }} ج.م</td>
                     </tr>
                     {% endfor %}
@@ -70,7 +64,6 @@
 <script>
     const labels = [{% for m in monthly_series %}"{{ m.label }}",{% endfor %}];
     const revenue = [{% for m in monthly_series %}{{ m.revenue|floatformat:2 }},{% endfor %}];
-    const cost = [{% for m in monthly_series %}{{ m.cost|floatformat:2 }},{% endfor %}];
     const profit = [{% for m in monthly_series %}{{ m.profit|floatformat:2 }},{% endfor %}];
     new Chart(document.getElementById('profitChart'), {
         type: 'bar',
@@ -78,7 +71,6 @@
             labels: labels,
             datasets: [
                 { label: 'الإيرادات', data: revenue, backgroundColor: '#2563eb' },
-                { label: 'التكلفة', data: cost, backgroundColor: '#f97316' },
                 { label: 'الربح', data: profit, backgroundColor: '#16a34a' },
             ]
         },

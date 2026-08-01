@@ -230,12 +230,12 @@ def profit_report(request):
 
 
 def _export_profit_excel(monthly_series, totals):
-    data_rows = [[m['label'], float(m['revenue']), float(m['cost']), float(m['profit'])] for m in monthly_series]
-    data_rows.append(['', '', '', ''])
-    data_rows.append(['الإجمالي (الفترة المختارة)', float(totals['revenue']), float(totals['cost']), float(totals['profit'])])
+    data_rows = [[m['label'], float(m['revenue']), float(m['profit'])] for m in monthly_series]
+    data_rows.append(['', '', ''])
+    data_rows.append(['الإجمالي (الفترة المختارة)', float(totals['revenue']), float(totals['profit'])])
     wb = build_simple_workbook(
         sheet_title='تقرير الأرباح',
-        headers=['الشهر', 'الإيرادات (ج.م)', 'تكلفة البضاعة (ج.م)', 'الربح الإجمالي (ج.م)'],
+        headers=['الشهر', 'الإيرادات (ج.م)', 'الربح الإجمالي (ج.م)'],
         rows=data_rows,
     )
     return workbook_response(wb, 'biozone_profit_report.xlsx')

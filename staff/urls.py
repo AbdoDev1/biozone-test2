@@ -35,6 +35,7 @@ urlpatterns = [
     path('products/units/<int:unit_pk>/quick-price/', products.product_quick_update_price, name='product_quick_price'),
     path('products/add/', products.product_add, name='product_add'),
     path('products/<int:pk>/edit/', products.product_edit, name='product_edit'),
+    path('products/<int:pk>/discounts/', products.product_discounts_save, name='product_discounts_save'),
     path('products/<int:pk>/duplicate/', products.product_duplicate, name='product_duplicate'),
     path('products/<int:pk>/relations/<str:relation>/search/', products.product_relation_search, name='product_relation_search'),
     path('products/<int:pk>/relations/<str:relation>/add/', products.product_relation_add, name='product_relation_add'),

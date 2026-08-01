@@ -17,7 +17,7 @@
        class="text-sm text-gray-500 hover:text-primary-600">← قائمة المنتجات</a>
 </div>
 
-<div x-data="{ tab: '{% if formset.is_bound and not formset.is_valid %}units{% else %}info{% endif %}' }">
+<div x-data="{ tab: '{% if formset.is_bound and not formset.is_valid %}units{% elif request.GET.tab == 'units' %}units{% else %}info{% endif %}' }">
 
 <div class="bg-white rounded-2xl shadow overflow-hidden mb-6">
     <div class="flex border-b overflow-x-auto text-sm">
@@ -252,14 +252,6 @@
                             <p class="text-red-500 text-xs mt-1">{{ unit_form.qty_in_small.errors.0 }}</p>
                         {% endif %}
                     </div>
-                    <div>
-                        <label class="text-sm font-medium text-gray-700 mb-1 block">{{ unit_form.cost_price.label }}</label>
-                        {{ unit_form.cost_price }}
-                        <p class="text-[11px] text-gray-400 mt-1">اختياري — يُستخدم لحساب الربح في قسم التقارير</p>
-                        {% if unit_form.cost_price.errors %}
-                            <p class="text-red-500 text-xs mt-1">{{ unit_form.cost_price.errors.0 }}</p>
-                        {% endif %}
-                    </div>
                     {% if not unit_form.instance.pk %}
                     <div>
                         <label class="text-sm font-medium text-gray-700 mb-1 block">{{ unit_form.initial_stock.label }}</label>
@@ -308,11 +300,6 @@
                         <p class="text-[11px] text-gray-400 mt-1">القطعة = 1، والكرتونة = عدد القطع التي تحتويها</p>
                     </div>
                     <div>
-                        <label class="text-sm font-medium text-gray-700 mb-1 block">سعر التكلفة</label>
-                        {{ formset.empty_form.cost_price }}
-                        <p class="text-[11px] text-gray-400 mt-1">اختياري — يُستخدم لحساب الربح في قسم التقارير</p>
-                    </div>
-                    <div>
                         <label class="text-sm font-medium text-gray-700 mb-1 block">الكمية الابتدائية</label>
                         {{ formset.empty_form.initial_stock }}
                     </div>
@@ -338,6 +325,80 @@
     </div>
 
 </form>
+
+{% if is_edit and discount_account_types %}
+<!-- خصومات أنواع الحسابات — جوه نفس تاب "الوحدات والأسعار"، فورم مستقل
+     لأنه مش ممكن يبقى جوه فورم بيانات/وحدات المنتج (HTML مايسمحش <form> جوه <form>). -->
+<div x-show="tab === 'units'" class="bg-white rounded-2xl shadow-sm p-6 mb-6">
+    <div class="flex justify-between items-center mb-1 pb-2 border-b border-gray-100">
+        <h2 class="font-bold text-gray-700">خصومات أنواع الحسابات</h2>
+        <a href="{% url 'staff:account_types' %}" class="text-xs text-gray-400 hover:text-primary-600">إدارة أنواع الحسابات ←</a>
+    </div>
+    <p class="text-xs text-gray-500 mb-4 mt-2">
+        نسبة الخصم (لو موجودة) لكل نوع حساب، تُطرح من سعر الجمهور. الخصم يتحدد يدويًا على الوحدة الصغرى (قطعة) بس،
+        أو الكبرى لو المنتج مالوش وحدة صغرى — سعر أي وحدة كبرى معاها صغرى بيتحسب تلقائيًا من سعر القطعة بعد الخصم.
+    </p>
+    <form method="post" action="{% url 'staff:product_discounts_save' product.pk %}">
+        {% csrf_token %}
+        <div class="overflow-x-auto">
+            <table class="w-full text-sm">
+                <thead class="bg-gray-50 text-gray-600">
+                    <tr>
+                        <th class="px-3 py-2 text-start">نوع الحساب</th>
+                        {% for row in discount_account_types.0.unit_rows %}
+                        <th class="px-3 py-2 text-start" colspan="2">{{ row.unit.name }} ({{ row.unit.get_size_display }})</th>
+                        {% endfor %}
+                    </tr>
+                </thead>
+                <tbody class="divide-y divide-gray-100">
+                    {% for at in discount_account_types %}
+                    <tr class="hover:bg-gray-50">
+                        <td class="px-3 py-2 font-medium whitespace-nowrap">{{ at.name }}</td>
+                        {% for row in at.unit_rows %}
+                        {% if row.is_editable %}
+                        <td class="px-3 py-2"
+                            x-data="{
+                                price: {{ row.unit.unit_price }},
+                                discount: '{{ row.current_discount|default:'' }}',
+                                get finalPrice() {
+                                    const d = parseFloat(this.discount);
+                                    if (isNaN(d)) return this.price.toFixed(2);
+                                    return (this.price * (1 - d / 100)).toFixed(2);
+                                }
+                            }">
+                            <input type="number" step="0.01" min="0" max="100"
+                                   name="discount_{{ at.pk }}_{{ row.unit.pk }}"
+                                   x-model="discount"
+                                   placeholder="بدون خصم"
+                                   class="w-20 border border-gray-200 rounded-lg px-2 py-1 text-sm outline-none focus:border-primary-400">
+                        </td>
+                        <td class="px-3 py-2 text-gray-500 whitespace-nowrap" x-data="{
+                                price: {{ row.unit.unit_price }},
+                                discount: '{{ row.current_discount|default:'' }}',
+                                get finalPrice() {
+                                    const d = parseFloat(this.discount);
+                                    if (isNaN(d)) return this.price.toFixed(2);
+                                    return (this.price * (1 - d / 100)).toFixed(2);
+                                }
+                            }" x-text="finalPrice + ' ج.م'"></td>
+                        {% else %}
+                        <td class="px-3 py-2 text-gray-400 text-xs">تلقائي</td>
+                        <td class="px-3 py-2 text-gray-500 whitespace-nowrap">{{ row.price_after_discount }} ج.م</td>
+                        {% endif %}
+                        {% endfor %}
+                    </tr>
+                    {% empty %}
+                    <tr><td class="px-3 py-4 text-center text-gray-400">لا يوجد أنواع حسابات نشطة بعد.</td></tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        <div class="mt-4">
+            {% btn "حفظ الخصومات" type="submit" variant="secondary" rounded="xl" %}
+        </div>
+    </form>
+</div>
+{% endif %}
 
 </div>
 
