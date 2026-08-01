@@ -8,6 +8,7 @@ from django.shortcuts import render, redirect, get_object_or_404
 from django.urls import reverse
 
 from orders.models import Order, OrderItem
+from invoices.utils import amount_to_arabic_words
 from staff.permissions import perm_required
 from tags.services import tags_for_many
 
@@ -73,6 +74,46 @@ def order_print(request, pk):
 
 
 @perm_required('orders.view_order')
+def order_confirmed_invoice_print(request, pk):
+    """
+    "فاتورة قبل نهائية" — بتظهر بس للطلبات في حالة CONFIRMED (بعد التأكيد
+    وقبل التسليم). مختلفة تمامًا عن order_print (نسخة تجهيز بدون أسعار):
+    دي بشكل رسمي فيه الأسعار والخصومات والإجمالي (زي شكل invoices/print.html
+    بالظبط)، لكن بدون رقم فاتورة رسمي ولا حركة حساب، وموضّح عليها بوضوح إنها
+    مش نهائية وإن رقم الفاتورة الحقيقي هيتولّد بس لحظة التسليم الفعلي
+    (Invoice.issue_for_order عن طريق Order.mark_delivered).
+
+    لو الطلب لسه مش CONFIRMED (أو خلاص اتسلّم وبقى له فاتورة حقيقية)، مفيش
+    داعي للمستند المؤقت ده — بنرجّع الموظف لصفحة تفاصيل الطلب بدل ما نعرض
+    مستند مش مناسب لحالته الحالية.
+    """
+    order = get_object_or_404(
+        Order.objects.select_related('client', 'client__client_profile'),
+        pk=pk,
+    )
+    if order.status != Order.Status.CONFIRMED:
+        messages.info(request, 'الفاتورة قبل النهائية متاحة فقط للطلبات المؤكدة بانتظار التسليم.')
+        return redirect('staff:order_detail', pk=order.pk)
+
+    all_items = list(order.items.select_related('product_unit').order_by('pk'))
+    for idx, item in enumerate(all_items, start=1):
+        item.display_index = idx
+    public_total = sum((item.public_price * item.quantity for item in all_items), Decimal('0'))
+    item_pages = [
+        all_items[i:i + ITEMS_PER_PRINT_PAGE]
+        for i in range(0, len(all_items), ITEMS_PER_PRINT_PAGE)
+    ] or [[]]
+
+    return render(request, 'staff/orders/confirmed_invoice_print.html', {
+        'order': order,
+        'item_pages': item_pages,
+        'item_count': len(all_items),
+        'public_total': public_total,
+        'amount_in_words': amount_to_arabic_words(order.total),
+    })
+
+
+@perm_required('orders.view_order')
 def order_detail(request, pk):
     order = get_object_or_404(
         Order.objects.select_related('client').prefetch_related('items__product_unit__product__inventory'),
@@ -95,6 +136,9 @@ def order_detail(request, pk):
         action = request.POST.get('action')
 
         if action == 'update_quantities':
+            if order.status not in (Order.Status.PENDING, Order.Status.NEEDS_APPROVAL):
+                messages.error(request, 'لا يمكن تعديل كميات طلب تم تأكيده بالفعل.')
+                return redirect('staff:order_detail', pk=order.pk)
             any_changed = False
             for item in order.items.all():
                 field_name = f'quantity_{item.pk}'
@@ -183,10 +227,19 @@ def order_detail(request, pk):
     # (نسخة المراجعة اليدوية + الفاتورة) متبعثرة في أماكن مختلفة من
     # الصفحة، دلوقتي مجمّعة في قائمة منسدلة واحدة.
     order_actions = []
-    if order.status in (Order.Status.PENDING, Order.Status.NEEDS_APPROVAL, Order.Status.CONFIRMED):
+    if order.status in (Order.Status.PENDING, Order.Status.NEEDS_APPROVAL):
         order_actions.append({
             'label': 'طباعة الطلب للمراجعة اليدوية',
             'href': reverse('staff:order_print', args=[order.pk]),
+            'icon': 'printer',
+            'target': '_blank',
+        })
+    if order.status == Order.Status.CONFIRMED:
+        # بعد التأكيد، نسخة المراجعة اليدوية (بدون أسعار) مبقتش مناسبة —
+        # الطلب بقى في مرحلة "قبل نهائية" وعايز مستند رسمي يوضّح ده.
+        order_actions.append({
+            'label': 'طباعة الفاتورة (قبل نهائية)',
+            'href': reverse('staff:order_confirmed_invoice_print', args=[order.pk]),
             'icon': 'printer',
             'target': '_blank',
         })

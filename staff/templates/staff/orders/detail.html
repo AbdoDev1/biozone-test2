@@ -106,7 +106,7 @@
                 <td class="px-4 py-3 text-gray-600">{{ item.unit_price }} ج.م</td>
                 <td class="px-4 py-3 font-bold text-gray-800">
                     {{ item.subtotal }} ج.م
-                    {% if item.is_service_fee and order.status not in 'DELIVERED,REJECTED' %}
+                    {% if item.is_service_fee and order.status in 'PENDING,NEEDS_APPROVAL' %}
                     <form method="post" hx-push-url="false" class="inline" data-confirm="هل تريد حذف {{ item.display_name }}؟">
                         {% csrf_token %}
                         <input type="hidden" name="action" value="remove_service_fee">
@@ -144,7 +144,7 @@
     <!-- إضافة صنف خدمي (مصاريف توصيل) تحت آخر صنف — بدون منتج/مخزون، بدون
          خصم ولا كمية، القيمة بتدخل يدويًا من المخزن. متاحة لأي طلب لسه مش
          مسلَّم/مرفوض، مش مقصورة على حالة "أقل من الحد الأدنى" فقط. -->
-    {% if order.status not in 'DELIVERED,REJECTED' %}
+    {% if order.status in 'PENDING,NEEDS_APPROVAL' %}
     <form method="post" hx-push-url="false" class="flex flex-wrap items-center gap-2 px-4 py-3 border-t bg-gray-50">
         {% csrf_token %}
         <input type="hidden" name="action" value="add_service_fee">
@@ -156,6 +156,10 @@
             إضافة
         </button>
     </form>
+    {% elif order.status == 'CONFIRMED' %}
+    <div class="px-4 py-3 border-t bg-gray-50 text-xs text-gray-500">
+        الطلب مؤكد ولا يمكن تعديل مصاريف التوصيل أو الأصناف بعد الآن.
+    </div>
     {% endif %}
 </div>
 

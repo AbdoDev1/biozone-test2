@@ -70,6 +70,14 @@ def order_reorder(request, pk):
     added_count = 0
     skipped = []
     for item in order.items.select_related('product_unit__product'):
+        if item.is_service_fee:
+            # الأصناف الخدمية (زي "مصاريف توصيل" لطلبات أقل من الحد الأدنى)
+            # مالهاش product_unit ولا وجود في المتجر أصلًا — إعادة الطلب
+            # بتقتصر على الأصناف الفعلية بس، وأي مصاريف توصيل هتتحدد من
+            # جديد على الطلب الجديد لو لزم الأمر. من غير الاستثناء ده،
+            # cart.add(None, ...) كان بيرجع False ووصولنا للـ else بعد كده
+            # كان بيفجّر خطأ 500 (item.product_unit كان None).
+            continue
         if cart.add(item.product_unit_id, item.quantity):
             added_count += 1
         else:

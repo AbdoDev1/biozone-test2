@@ -112,16 +112,29 @@ class Order(models.Model):
         return any(item.is_amended for item in self.items.all())
 
     @property
+    def has_service_fee(self):
+        """True لو الطلب عنده أي صنف خدمي (زي "مصاريف توصيل") مُضاف بالفعل."""
+        return any(item.is_service_fee for item in self.items.all())
+
+    @property
     def is_below_min_order(self):
         """
         True لو إجمالي الطلب الحالي لسه أقل من الحد الأدنى المسجّل وقت
-        الإرسال. بيتحسب على total (مش على snapshot ثابت) عشان لو المخزن
-        ضاف "مصاريف توصيل" (add_service_fee) وغطى الفرق، التنبيه يختفي
-        تلقائيًا من غير أي تدخل يدوي تاني.
+        الإرسال، *ومفيش* أي صنف خدمي (مصاريف توصيل) اتضاف للطلب لسه.
+
+        الغرض الوحيد من هذا التنبيه هو التأكد إن المخزن "اطّلع" على إن
+        الطلب أقل من الحد الأدنى وقرر بشأنه — مش فرض إن القيمة المضافة
+        تساوي أو تغطي الفرق بالكامل. المخزن ممكن يضيف مصاريف توصيل بقيمة
+        أقل من الفرق عمدًا (أو حتى لا تغطيه خالص) ويكون ده قراره، فأول ما
+        أي صنف خدمي يتضاف، التنبيه لازم يختفي فورًا بدل ما يفضل ملّح على
+        المخزن يزوّد القيمة أكتر. لو المخزن شال الصنف الخدمي تاني
+        (remove_service_fee) والطلب لسه أقل من الحد الأدنى، التنبيه
+        هيرجع يظهر تلقائيًا لأن الغرض (التأكد من وجود قرار) لسه ماتحققش.
         """
         return (
             self.min_order_amount_snapshot is not None
             and self.total < self.min_order_amount_snapshot
+            and not self.has_service_fee
         )
 
     def __init__(self, *args, **kwargs):
@@ -253,6 +266,12 @@ class Order(models.Model):
         """
         if item.is_service_fee:
             raise ValueError('مينفعش تتعدّل كمية صنف خدمي زي "مصاريف التوصيل".')
+        if self.status not in (self.Status.PENDING, self.Status.NEEDS_APPROVAL):
+            # بعد التأكيد (CONFIRMED) وقبل التسليم، الطلب بيتحوّل لمرحلة
+            # "فاتورة قبل نهائية" (راجع staff:order_confirmed_invoice_print)
+            # ومينفعش تتعدّل كمياته تاني — أي تصحيح لازم يبقى برفض الطلب
+            # وإنشاء واحد جديد، مش تعديل صامت على طلب اتأكد بالفعل.
+            raise ValueError('لا يمكن تعديل كميات طلب تم تأكيده بالفعل.')
 
         from inventory.models import Inventory
         old_quantity = item.quantity
@@ -325,8 +344,11 @@ class Order(models.Model):
         مش مقصور على الحالة دي — أي طلب لسه مش DELIVERED/REJECTED ممكن يتضاف
         له.
         """
-        if self.status in (self.Status.DELIVERED, self.Status.REJECTED):
-            raise ValueError('مينفعش تضيف مصاريف توصيل لطلب اتسلّم أو اترفض بالفعل.')
+        if self.status not in (self.Status.PENDING, self.Status.NEEDS_APPROVAL):
+            # بعد التأكيد (CONFIRMED)، الطلب بقى في مرحلة "فاتورة قبل نهائية"
+            # ومينفعش يتعدّل خالص (لا كميات ولا صنف خدمي) — لازم القرار بشأن
+            # مصاريف التوصيل يتاخد قبل التأكيد، مش بعده.
+            raise ValueError('لا يمكن إضافة مصاريف توصيل بعد تأكيد الطلب.')
         if amount is None or amount <= 0:
             raise ValueError('قيمة مصاريف التوصيل لازم تكون أكبر من صفر.')
 
@@ -352,8 +374,8 @@ class Order(models.Model):
     @transaction.atomic
     def remove_service_fee(self, item, actor=None):
         """حذف صنف خدمي (زي مصاريف التوصيل) اتضاف بالغلط أو محتاج يتشال."""
-        if self.status in (self.Status.DELIVERED, self.Status.REJECTED):
-            raise ValueError('مينفعش تعدّل طلب اتسلّم أو اترفض بالفعل.')
+        if self.status not in (self.Status.PENDING, self.Status.NEEDS_APPROVAL):
+            raise ValueError('لا يمكن تعديل مصاريف التوصيل بعد تأكيد الطلب.')
         if not item.is_service_fee or item.order_id != self.pk:
             raise ValueError('الصنف ده مش صنف خدمي تابع للطلب ده.')
 
