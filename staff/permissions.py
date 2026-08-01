@@ -124,6 +124,13 @@ PERMISSION_SECTIONS = [
         ],
     },
     {
+        'key': 'backup',
+        'label': '🗄️ النسخ الاحتياطي',
+        'perms': [
+            ('staff', 'backup', 'manage', 'تشغيل نسخة احتياطية يدويًا وعرض تفاصيل الأخطاء'),
+        ],
+    },
+    {
         'key': 'followups',
         'label': '📅 المتابعات',
         'perms': [

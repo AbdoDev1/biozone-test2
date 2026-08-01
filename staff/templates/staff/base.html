@@ -84,6 +84,24 @@
 <body class="bg-surface-page min-h-screen" hx-boost="true" x-data="{ sidebarOpen: window.innerWidth >= 768 }">
 <div id="page-progress" class="fixed top-0 inset-x-0 h-0.5 bg-primary-800 z-[9999]"></div>
 {% include 'partials/toast_core.html' %}
+
+<!-- شريط حالة النسخ الاحتياطي — بيظهر لحظة ما أي نسخة (تلقائية كل ساعة
+     أو يدوية) تبدأ، لكل الموظفين المتصلين حاليًا (شوف notifications/
+     partials/bell.html اللي بيستقبل رسايل backup_status من الـ WebSocket
+     الموجود أصلاً ويبعتها كـ CustomEvent، والسكريبت تحت في نص الصفحة
+     بيسمعه). بيختفي لوحده بعد النجاح، وعند الفشل بيتحول لـ toast عادي
+     (رسالة عامة غير تقنية) بدل ما يفضل ثابت في الشاشة. -->
+<div id="backup-status-bar"
+     class="fixed top-16 inset-x-0 z-[9998] flex justify-center px-4 opacity-0 pointer-events-none transition-opacity duration-200">
+    <div class="pointer-events-auto w-full max-w-sm bg-white rounded-xl shadow-lg border border-gray-100 px-4 py-2.5 flex items-center gap-3">
+        <span id="backup-status-icon" class="shrink-0 w-6 h-6 rounded-full flex items-center justify-center text-white bg-primary-600">
+            <svg class="w-3.5 h-3.5 animate-spin" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2.5">
+                <path stroke-linecap="round" d="M12 3a9 9 0 100 18"/>
+            </svg>
+        </span>
+        <span id="backup-status-text" class="text-sm text-gray-700 flex-1"></span>
+    </div>
+</div>
 {% with url_name=request.resolver_match.url_name %}
 <!-- Topbar -->
 <header class="fixed top-0 right-0 left-0 h-14 bg-primary-600 shadow z-30 flex items-center px-4 gap-4">
@@ -115,7 +133,7 @@
 <!-- Sidebar — بيظهر في أي صفحة غير الرئيسية بس (التنقل من الرئيسية بقى
      عن طريق شبكة أيقونات التطبيقات، زي Odoo — راجع staff/dashboard.html
      وstaff/navigation.py لمصدر عناصر التنقل المشترك بين الاتنين). -->
-<aside class="fixed top-14 bottom-0 right-0 bg-white shadow-md z-20 transition-all duration-300 overflow-hidden"
+<aside class="fixed top-14 bottom-0 right-0 bg-white shadow-md z-20 transition-all duration-300 overflow-y-auto overflow-x-hidden"
        :class="sidebarOpen ? 'w-64 md:w-56' : 'w-0'">
     <nav class="p-4 space-y-1 text-sm w-64 md:w-56">
         {% for item in staff_nav_items %}
@@ -234,6 +252,62 @@
                 pageProgress.style.opacity = '0';
             }, 150);
         });
+
+        // شريط حالة النسخ الاحتياطي — بيستقبل الحدث المبعوت من bell.html
+        // (شوف notifications/partials/bell.html: أي رسالة WebSocket نوعها
+        // مش 'new_notification' بتتبعت هنا كـ CustomEvent).
+        (function () {
+            const bar = document.getElementById('backup-status-bar');
+            const icon = document.getElementById('backup-status-icon');
+            const text = document.getElementById('backup-status-text');
+            if (!bar) return;
+            const canManageBackup = {{ perms.staff.manage_backup|yesno:"true,false" }};
+            const backupManualUrl = "{% url 'staff:backup_manual' %}";
+            let hideTimer = null;
+
+            const SPINNER = '<svg class="w-3.5 h-3.5 animate-spin" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2.5"><path stroke-linecap="round" d="M12 3a9 9 0 100 18"/></svg>';
+            const CHECK = '<svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="3"><path stroke-linecap="round" stroke-linejoin="round" d="M4.5 12.75l6 6 9-13.5"/></svg>';
+
+            function showBar() {
+                clearTimeout(hideTimer);
+                bar.classList.remove('opacity-0', 'pointer-events-none');
+            }
+            function hideBar() {
+                bar.classList.add('opacity-0', 'pointer-events-none');
+            }
+
+            window.addEventListener('biozone:ws-message', function (e) {
+                const data = e.detail;
+                if (data.event !== 'backup_status') return;
+
+                if (data.status === 'running') {
+                    icon.className = 'shrink-0 w-6 h-6 rounded-full flex items-center justify-center text-white bg-primary-600';
+                    icon.innerHTML = SPINNER;
+                    text.textContent = data.message;
+                    showBar();
+                } else if (data.status === 'success') {
+                    icon.className = 'shrink-0 w-6 h-6 rounded-full flex items-center justify-center text-white bg-emerald-500';
+                    icon.innerHTML = CHECK;
+                    text.textContent = data.message;
+                    showBar();
+                    hideTimer = setTimeout(hideBar, 4000);
+                } else if (data.status === 'error') {
+                    // الفشل مش هيفضل شريط ثابت في الشاشة — بيتحول لتوست
+                    // عادي بيختفي لوحده (نفس أسلوب باقي إشعارات النظام)،
+                    // مع رابط لصفحة إعادة المحاولة لمين عنده صلاحية بس.
+                    hideBar();
+                    showToast(
+                        data.message,
+                        {
+                            type: 'error',
+                            duration: 10000,
+                            actionHref: canManageBackup ? backupManualUrl : undefined,
+                            actionLabel: canManageBackup ? 'صفحة النسخ الاحتياطي' : undefined,
+                        }
+                    );
+                }
+            });
+        })();
     </script>
 </body>
 </html>
