@@ -53,6 +53,11 @@ services:
       - static_volume:/app/staticfiles
       - media_volume:/app/media
       - ./logs:/app/logs
+      # الحاوية بقت هي اللي بتعمل pg_dump فعليًا (زرار "تشغيل الآن" +
+      # run_backup عبر الكرون) وتكتب هنا مباشرة — مش read-only بقى.
+      # لو ./backups نفسه هو نقطة تركيب فلاشة خارجية على السيرفر (راجع
+      # تعليق الفلاشة في الرسائل السابقة)، الحاوية هتكتب فيها هي نفسها.
+      - ./backups:/app/backups
     depends_on:
       db:
         condition: service_healthy

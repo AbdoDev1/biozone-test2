@@ -25,8 +25,12 @@ ENV PYTHONUNBUFFERED=1
 WORKDIR /app
 
 # مكتبات نظام لازمة لـ psycopg2 و Pillow + curl لـ healthcheck
+# + postgresql-client (pg_dump) عشان زرار "تشغيل نسخة احتياطية الآن" في
+# لوحة الموظفين يقدر يعمل النسخة مباشرة من جوه الحاوية (اتصال شبكة عادي
+# بـ DB_HOST:DB_PORT، نفس الاتصال اللي Django نفسه بيستخدمه) من غير ما
+# يحتاج docker CLI ولا وصول لـ docker socket — راجع staff/services/backup.py
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    libpq-dev gcc curl \
+    libpq-dev gcc curl postgresql-client \
     && rm -rf /var/lib/apt/lists/*
 
 COPY requirements.txt .

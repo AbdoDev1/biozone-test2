@@ -76,7 +76,19 @@ function notificationBell(initialUnread) {
         connectWebSocket() {
             const protocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
             this.ws = new WebSocket(`${protocol}//${location.host}/ws/notifications/`);
-            this.ws.onmessage = () => this.refresh();
+            this.ws.onmessage = (e) => {
+                let data;
+                try { data = JSON.parse(e.data); } catch (err) { return; }
+                if (data.event === 'new_notification') {
+                    this.refresh();
+                } else {
+                    // أي نوع رسالة تاني (زي backup_status) مش شغل الجرس —
+                    // بنبعتها كحدث DOM عام عشان أي مكوّن تاني (زي شريط
+                    // النسخ الاحتياطي في staff/base.html) يسمعه من غير ما
+                    // يحتاج يفتح اتصال WebSocket منفصل بتاعه.
+                    window.dispatchEvent(new CustomEvent('biozone:ws-message', { detail: data }));
+                }
+            };
             this.ws.onclose = () => {
                 if (this.wsClosedByUs) return;
                 // إعادة محاولة الاتصال مع backoff تصاعدي (لحد 30 ثانية
