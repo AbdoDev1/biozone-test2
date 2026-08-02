@@ -204,8 +204,29 @@
         // htmx يستبدل جزء من الـ DOM (بعد أي boost)، العناصر الجديدة (رسائل
         // التنبيه، الـ backdrop، إلخ) لازم Alpine يتعرف عليها يدويًا وإلا
         // هتفضل بدون تفاعل (x-show/x-data مش هيشتغلوا).
+        //
+        // لكن أي عنصر معلّم بـ hx-preserve (زي #notification-bell في
+        // bell.html) مش بيتشال من الـ DOM أصلاً وقت الـ boost — htmx بيحتفظ
+        // بنفس العنصر القديم بكل الـ event listeners بتاعته. لو سبناه يمر
+        // على initTree هنا كمان، Alpine هيعيد تهيئة x-data عليه من غير ما
+        // يمسح التسجيل (binding) القديم، فبيبقى عندنا نسختين شغالتين بتردوا
+        // على نفس الضغطة (toggle() بيتنفذ مرتين = زي ما محصلش حاجة). الحل:
+        // نستثني أي عنصر hx-preserve من initTree صراحةً عن طريق x-ignore
+        // مؤقت وقت التهيئة بس، ثم نشيله فورًا عشان يرجع يشتغل عادي زي أي
+        // عنصر تاني (x-show, @click.outside... إلخ لسه شغالين عادي لأنهم
+        // اتسجلوا مرة واحدة بس من أول init).
         document.body.addEventListener('htmx:afterSwap', (evt) => {
-            if (window.Alpine) window.Alpine.initTree(evt.detail.target);
+            if (!window.Alpine) return;
+            const target = evt.detail.target;
+            if (!target || !target.querySelectorAll) return;
+
+            const preserved = target.matches && target.matches('[hx-preserve]')
+                ? [target]
+                : Array.from(target.querySelectorAll('[hx-preserve]'));
+
+            preserved.forEach((el) => el.setAttribute('x-ignore', ''));
+            window.Alpine.initTree(target);
+            preserved.forEach((el) => el.removeAttribute('x-ignore'));
         });
         // انتقال ناعم (fade) بين الصفحات لو المتصفح بيدعم View Transitions
         // API (Chrome/Edge حاليًا). المتصفحات اللي مش بتدعمها (Firefox

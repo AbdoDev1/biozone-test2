@@ -89,6 +89,17 @@ function notificationBell(initialUnread) {
         wsClosedByUs: false,
         visibilityHandler: null,
         init() {
+            // حارس أمان إضافي: لو نفس عنصر الـ DOM ده (hx-preserve) اتعامل
+            // معاه مرتين كـ "جديد" — مثلاً لو الـ MutationObserver بتاع
+            // Alpine شاف عملية الحفظ (remove ثم إعادة إضافة) في دفعتين
+            // منفصلتين بدل دفعة واحدة، فاعتبرها إزالة فعلية وأعاد التهيئة
+            // من الصفر — من غير الحارس ده كان هيبقى عندنا نسختين شغالتين
+            // بالتوازي (تايمرين + اتصالين WebSocket)، وده بالظبط اللي بيدي
+            // إحساس إن الجرس "بيتذبذب" بعد كذا تنقل. لو فيه نسخة شغالة
+            // بالفعل على نفس العنصر، منكملش تاني.
+            if (this.$el.__bellInstanceActive) return;
+            this.$el.__bellInstanceActive = true;
+
             this.refresh();
             // شبكة أمان بطيئة (دقيقة كاملة) بالتوازي مع WebSocket — راجع
             // التعليق أعلى الملف.
@@ -166,6 +177,7 @@ function notificationBell(initialUnread) {
         // نفس المبدأ هنا بننضفه لاتصال الـ WebSocket كمان (wsClosedByUs
         // بيمنع منطق إعادة الاتصال من الشغل بعد ما إحنا قفلناه عمدًا).
         destroy() {
+            this.$el.__bellInstanceActive = false;
             if (this.pollTimer) clearInterval(this.pollTimer);
             if (this.pingTimer) clearInterval(this.pingTimer);
             if (this.visibilityHandler) document.removeEventListener('visibilitychange', this.visibilityHandler);
