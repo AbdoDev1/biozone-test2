@@ -102,12 +102,21 @@
 </div>
 
 <div class="bg-white rounded-2xl shadow-sm p-6">
-    <h2 class="text-sm font-semibold text-gray-600 mb-3">آخر سجل للنسخ الاحتياطي</h2>
-    {% if log_lines %}
-    <pre class="bg-gray-900 text-gray-100 text-xs rounded-xl p-4 overflow-x-auto leading-relaxed" dir="ltr">{% for line in log_lines %}{{ line }}
-{% endfor %}</pre>
+    <h2 class="text-sm font-semibold text-gray-600 mb-3">آخر {{ recent_backups|length }} نسخ احتياطية موجودة</h2>
+    {% if recent_backups %}
+    <div class="divide-y divide-gray-100">
+        {% for b in recent_backups %}
+        <div class="flex items-center justify-between py-3">
+            <div>
+                <p class="text-sm font-semibold text-gray-800" dir="ltr">{{ b.name }}</p>
+                <p class="text-xs text-gray-400 mt-0.5">{{ b.created_at|date:"Y-m-d H:i" }}</p>
+            </div>
+            <span class="text-xs font-medium text-gray-500 shrink-0">{{ b.size_mb }} MB</span>
+        </div>
+        {% endfor %}
+    </div>
     {% else %}
-    <p class="text-sm text-gray-400">لا يوجد سجل بعد.</p>
+    <p class="text-sm text-gray-400">لا توجد نسخ احتياطية بعد.</p>
     {% endif %}
 </div>
 

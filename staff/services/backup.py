@@ -131,6 +131,32 @@ def backup_status():
     return status
 
 
+def recent_backups(limit=5):
+    """
+    بترجع آخر `limit` نسخة احتياطية **موجودة فعليًا على القرص دلوقتي**
+    (مش سطور من ملف log قديم ممكن يشاور على ملفات اتمسحت أو اتنقلت).
+    كل عنصر: {'name', 'size_mb', 'created_at'}، مرتبة من الأحدث للأقدم.
+    """
+    if not BACKUP_DIR.exists():
+        return []
+
+    files = sorted(
+        BACKUP_DIR.glob('biozone_*.sql.gz'),
+        key=lambda p: p.stat().st_mtime,
+        reverse=True,
+    )[:limit]
+
+    result = []
+    for f in files:
+        stat = f.stat()
+        result.append({
+            'name': f.name,
+            'size_mb': round(stat.st_size / (1024 ** 2), 1),
+            'created_at': datetime.fromtimestamp(stat.st_mtime),
+        })
+    return result
+
+
 def _preflight_checks():
     """بترجع رسالة خطأ (نص) لو فيه مشكلة تمنع البدء، أو None لو كله تمام."""
     BACKUP_DIR.mkdir(parents=True, exist_ok=True)
@@ -152,8 +178,17 @@ def _preflight_checks():
 def _run_pg_dump():
     """بتشغّل pg_dump فعليًا وتضغط الناتج. بترجع (success: bool, error_text: str)."""
     db = settings.DATABASES['default']
-    timestamp = datetime.now().strftime('%Y-%m-%d_%H%M%S')
-    backup_file = BACKUP_DIR / f'biozone_{timestamp}.sql.gz'
+    today = datetime.now().strftime('%Y-%m-%d')
+
+    # عداد تسلسلي لكل يوم: بنشوف كام نسخة موجودة بالفعل بنفس تاريخ
+    # النهاردة ونزود عليهم واحد. لو مفيش نسخ للنهاردة، بيبدأ من 1.
+    existing_today = list(BACKUP_DIR.glob(f'biozone_{today}_*.sql.gz'))
+    seq = len(existing_today) + 1
+    backup_file = BACKUP_DIR / f'biozone_{today}_{seq}.sql.gz'
+    # لو حصل تعارض نادر (نفس الرقم موجود فعلًا لأي سبب)، بنزود لحد ما نلاقي رقم فاضي
+    while backup_file.exists():
+        seq += 1
+        backup_file = BACKUP_DIR / f'biozone_{today}_{seq}.sql.gz'
 
     env = os.environ.copy()
     env['PGPASSWORD'] = db['PASSWORD']

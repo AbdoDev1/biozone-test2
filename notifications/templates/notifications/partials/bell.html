@@ -1,26 +1,29 @@
 {% comment %}
-جرس الإشعارات — Alpine.js component. المصدر الأساسي للتحديث دلوقتي هو
-اتصال WebSocket (notifications/consumers.py): أي إشعار جديد بيوصل فورًا
-من غير أي انتظار. الـ polling القديم (كل 15 ثانية) اتحوّل لشبكة أمان بس
-(كل دقيقة) — بيشتغل دايمًا بالتوازي، وده اللي بيغطي حالتين: (1) لو
-الـ WebSocket اتقطع مؤقتًا (شبكة ضعيفة، Redis واقع لحظيًا) قبل ما يعيد
-الاتصال، و(2) أي إشعار كان ممكن يتفوت في الثانية اللي بين قطع الاتصال
-وإعادة المحاولة.
+جرس الإشعارات. المصدر الأساسي للتحديث دلوقتي هو اتصال WebSocket
+(notifications/consumers.py): أي إشعار جديد بيوصل فورًا من غير أي انتظار.
+الـ polling القديم (كل 15 ثانية) اتحوّل لشبكة أمان بس (كل دقيقة) — بيشتغل
+دايمًا بالتوازي، وده اللي بيغطي حالتين: (1) لو الـ WebSocket اتقطع مؤقتًا
+(شبكة ضعيفة، Redis واقع لحظيًا) قبل ما يعيد الاتصال، و(2) أي إشعار كان
+ممكن يتفوت في الثانية اللي بين قطع الاتصال وإعادة المحاولة.
 
-hx-preserve="true" (على الـ div تحت، لازم معاه id ثابت) مهم جدًا هنا —
-من غير ما، base.html بيضم الجرس ده جوه <body> اللي hx-boost بيستبدله
-بالكامل مع كل تنقل بين الصفحات، يعني الجرس كان بيتهدم ويتبني من الصفر
-(init() جديد) مع كل ضغطة على أي رابط في السايدبار: طلب bell_data إضافي
-+ Handshake WebSocket كامل من الأول (اتصال جديد بالسيرفر ثم group_add
-على Redis) في كل تنقل — تأخير حقيقي محسوس مع كل صفحة، وبيتفاقم أي وقت
-الشبكة بين المستخدم والسيرفر مش سريعة (زي المرور عبر نفق Cloudflare).
-hx-preserve بيخلي htmx يحتفظ بنفس عنصر الـ DOM (وبالتالي نفس اتصال
-WebSocket المفتوح بالفعل) عبر كل التنقلات، فمفيش أي إعادة اتصال إلا لما
-فعليًا يتقفل (شبكة واقعة، تحديث كامل للصفحة بـ F5، إلخ).
+معمارية مهمة (بعد تجربتين فشلوا مع hx-preserve): الحالة الحقيقية
+(unreadCount, items, اتصال WebSocket, التايمرات) بقت عايشة في كائن JS
+عادي واحد بس لكل الصفحة (window.__biozoneNotifState)، مش جوه x-data بتاع
+Alpine — وده مستقل تمامًا عن أي DOM element أو دورة حياة Alpine. الحارس
+`if (!window.__biozoneNotifState)` بيضمن إن الاتصال والتايمرات بيتعملوا
+مرة واحدة بس طول الجلسة (مش هتتكرر أو تتقفل غلط مع أي تنقّل htmx)، وبيرجع
+يتصفّر بس مع F5 حقيقي (تحميل كامل جديد للصفحة، وده صح ومنطقي).
+
+x-data="notificationBellView()" بقى مجرد "واجهة عرض" خفيفة بتشترك في
+تحديثات الحالة دي وتعرضها — آمن تمامًا إنها تتبنى من الصفر مع كل تنقّل
+htmx (زي أي Alpine component عادي تاني في الصفحة) لأنها مش شايلة أي حالة
+حقيقية أو اتصال شبكة بنفسها؛ كل اللي بيحصل عند إعادة البناء إنها بتاخد
+نسخة من آخر حالة معروفة وتسجّل نفسها كمستمع لأي تحديث جديد. من غير الحاجة
+لـ hx-preserve أصلاً، ومن غير أي استثناءات يدوية في afterSwap.
 {% endcomment %}
-<div id="notification-bell" hx-preserve="true"
+<div id="notification-bell"
      class="relative"
-     x-data="notificationBell({{ nav_unread_count|default:0 }})">
+     x-data="notificationBellView()">
 
     {% csrf_token %}
 
@@ -77,55 +80,69 @@ WebSocket المفتوح بالفعل) عبر كل التنقلات، فمفيش
 </div>
 
 <script>
-function notificationBell(initialUnread) {
-    return {
-        open: false,
-        unreadCount: initialUnread,
+// الحالة الحقيقية المشتركة — تتعمل مرة واحدة بس طول عمر الصفحة (الحارس
+// تحت بيمنع إعادة الإنشاء لو نفس الـ <script> ده اتنفذ تاني بعد أي تنقّل
+// htmx، لأن htmx بيعيد تنفيذ أي <script> جواه المحتوى المُستبدَل).
+if (!window.__biozoneNotifState) {
+    window.__biozoneNotifState = {
+        unreadCount: {{ nav_unread_count|default:0 }},
         items: [],
+        listeners: new Set(),
         pollTimer: null,
         pingTimer: null,
         ws: null,
         wsReconnectDelay: 1000,
         wsClosedByUs: false,
         visibilityHandler: null,
-        init() {
-            // حارس أمان إضافي: لو نفس عنصر الـ DOM ده (hx-preserve) اتعامل
-            // معاه مرتين كـ "جديد" — مثلاً لو الـ MutationObserver بتاع
-            // Alpine شاف عملية الحفظ (remove ثم إعادة إضافة) في دفعتين
-            // منفصلتين بدل دفعة واحدة، فاعتبرها إزالة فعلية وأعاد التهيئة
-            // من الصفر — من غير الحارس ده كان هيبقى عندنا نسختين شغالتين
-            // بالتوازي (تايمرين + اتصالين WebSocket)، وده بالظبط اللي بيدي
-            // إحساس إن الجرس "بيتذبذب" بعد كذا تنقل. لو فيه نسخة شغالة
-            // بالفعل على نفس العنصر، منكملش تاني.
-            if (this.$el.__bellInstanceActive) return;
-            this.$el.__bellInstanceActive = true;
 
-            this.refresh();
-            // شبكة أمان بطيئة (دقيقة كاملة) بالتوازي مع WebSocket — راجع
-            // التعليق أعلى الملف.
-            this.pollTimer = setInterval(() => this.refresh(), 60000);
-            this.connectWebSocket();
-
-            // متصفحات الموبايل (خصوصًا لما التطبيق يبقى في الخلفية — تبديل
-            // تطبيق، قفل الشاشة) بتوقف/تبطّئ setInterval والاتصالات الشبكية
-            // من غير ما تسكّر الصفحة فعليًا، وده بيخلي اتصال الـ WebSocket
-            // يموت بصمت (خصوصًا مع Cloudflare اللي بيقفل اتصالات WebSocket
-            // ساكنة/من غير حركة تلقائيًا بعد فترة) من غير ما الـ onclose
-            // يتنفذ فورًا أو الـ pollTimer يكمل زي ما المفروض. لما التطبيق
-            // يرجع للواجهة (visibilitychange -> visible)، بنجيب أحدث حالة
-            // فورًا وبنتأكد إن الاتصال شغال، بدل ما نستنى الـ poll الجاي
-            // (اللي ممكن ياخد وقت أطول من دقيقة فعليًا لو كان متأخر من
-            // الخلفية) أو الـ backoff بتاع إعادة الاتصال.
-            this.visibilityHandler = () => {
-                if (document.visibilityState !== 'visible') return;
-                this.refresh();
-                if (!this.ws || this.ws.readyState === WebSocket.CLOSED || this.ws.readyState === WebSocket.CLOSING) {
-                    this.wsReconnectDelay = 1000;
-                    this.connectWebSocket();
-                }
-            };
-            document.addEventListener('visibilitychange', this.visibilityHandler);
+        // أي "واجهة عرض" (Alpine component) بتسجل نفسها هنا وقت init()
+        // بتاعتها، عشان تتحدث أول ما الحالة الحقيقية تتغيّر (استجابة
+        // لرسالة WebSocket أو نتيجة poll)، وتشيل تسجيلها وقت destroy().
+        subscribe(fn) {
+            this.listeners.add(fn);
+            return () => this.listeners.delete(fn);
         },
+        _notify() {
+            this.listeners.forEach((fn) => fn());
+        },
+
+        async refresh() {
+            try {
+                const res = await fetch("{% url 'notifications:bell_data' %}", {
+                    headers: { 'X-Requested-With': 'XMLHttpRequest' },
+                });
+                if (!res.ok) return;
+                const data = await res.json();
+                this.unreadCount = data.unread_count;
+                this.items = data.items;
+                this._notify();
+            } catch (e) {
+                // فشل مؤقت في الشبكة — نتجاهله ونحاول تاني في الـ poll الجاي
+            }
+        },
+
+        async markAllRead(token) {
+            try {
+                const res = await fetch("{% url 'notifications:mark_all_read' %}", {
+                    method: 'POST',
+                    headers: { 'X-CSRFToken': token, 'X-Requested-With': 'XMLHttpRequest' },
+                });
+                if (!res.ok) {
+                    // الطلب فشل فعليًا (مثلاً CSRF منتهي أو خطأ سيرفر) — منعملش
+                    // تحديث وهمي للواجهة، ونسيب العداد الحقيقي زي ما هو عشان
+                    // ميختفيش العداد وهو أصلاً لسه فيه إشعارات غير مقروءة.
+                    return;
+                }
+                // بعد النجاح، بنجيب الحالة الحقيقية من السيرفر بدل ما نفترض
+                // إن كل الإشعارات المعروضة (8 بس) هي كل الإشعارات الموجودة —
+                // ده بالظبط اللي كان بيسبب رجوع العداد لما الإشعارات تتراكم
+                // فوق الـ 8 المعروضة في القائمة.
+                await this.refresh();
+            } catch (e) {
+                // فشل شبكة — العداد الحقيقي هيرجع يتصحح لوحده في الـ poll الجاي
+            }
+        },
+
         connectWebSocket() {
             const protocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
             this.ws = new WebSocket(`${protocol}//${location.host}/ws/notifications/`);
@@ -165,65 +182,65 @@ function notificationBell(initialUnread) {
                 if (this.ws && this.ws.readyState === WebSocket.OPEN) this.ws.send('ping');
             }, 45000);
         },
-        // Alpine بينادي destroy() تلقائيًا (زي init()) وقت ما العنصر
-        // بتاع الـ component يتشال من الـ DOM — وده بيحصل على كل تنقل
-        // boosted بتاع htmx (الصفحة بتتبدّل بالكامل، يعني الجرس القديم
-        // بيتشال والجرس الجديد بيتبني من الصفر). من غير الـ cleanup ده،
-        // الـ setInterval القديم كان فاضل شغال في الخلفية لنفس التوقيت
-        // (يعادي عليه Alpine مش بيقفله تلقائيًا)، وبيحاول يحدّث حالة
-        // component بقى منفصل عن الـ DOM الفعلي — وده اللي كان بيظهر في
-        // الكونسول كـ "n is not defined" بعد كذا تنقل، لأن كل تنقل جديد
-        // كان بيضيف تايمر تاني فوق اللي قبله من غير ما يقفل القديم.
-        // نفس المبدأ هنا بننضفه لاتصال الـ WebSocket كمان (wsClosedByUs
-        // بيمنع منطق إعادة الاتصال من الشغل بعد ما إحنا قفلناه عمدًا).
+
+        init() {
+            this.refresh();
+            // شبكة أمان بطيئة (دقيقة كاملة) بالتوازي مع WebSocket — راجع
+            // التعليق أعلى الملف.
+            this.pollTimer = setInterval(() => this.refresh(), 60000);
+            this.connectWebSocket();
+
+            // متصفحات الموبايل (خصوصًا لما التطبيق يبقى في الخلفية — تبديل
+            // تطبيق، قفل الشاشة) بتوقف/تبطّئ setInterval والاتصالات الشبكية
+            // من غير ما تسكّر الصفحة فعليًا، وده بيخلي اتصال الـ WebSocket
+            // يموت بصمت (خصوصًا مع Cloudflare اللي بيقفل اتصالات WebSocket
+            // ساكنة/من غير حركة تلقائيًا بعد فترة) من غير ما الـ onclose
+            // يتنفذ فورًا أو الـ pollTimer يكمل زي ما المفروض. لما التطبيق
+            // يرجع للواجهة (visibilitychange -> visible)، بنجيب أحدث حالة
+            // فورًا وبنتأكد إن الاتصال شغال، بدل ما نستنى الـ poll الجاي
+            // (اللي ممكن ياخد وقت أطول من دقيقة فعليًا لو كان متأخر من
+            // الخلفية) أو الـ backoff بتاع إعادة الاتصال.
+            this.visibilityHandler = () => {
+                if (document.visibilityState !== 'visible') return;
+                this.refresh();
+                if (!this.ws || this.ws.readyState === WebSocket.CLOSED || this.ws.readyState === WebSocket.CLOSING) {
+                    this.wsReconnectDelay = 1000;
+                    this.connectWebSocket();
+                }
+            };
+            document.addEventListener('visibilitychange', this.visibilityHandler);
+        },
+    };
+    window.__biozoneNotifState.init();
+}
+
+// واجهة العرض الخفيفة — آمن إنها تتبنى وتتهدم مع كل تنقّل htmx، لأن مفيش
+// أي حالة حقيقية أو اتصال شبكة جواها؛ كل اللي بتعمله إنها تعرض آخر حالة
+// معروفة من window.__biozoneNotifState وتتحدث لحظيًا مع أي تغيير فيها.
+function notificationBellView() {
+    return {
+        open: false,
+        unreadCount: window.__biozoneNotifState.unreadCount,
+        items: window.__biozoneNotifState.items,
+        _unsubscribe: null,
+        init() {
+            this.unreadCount = window.__biozoneNotifState.unreadCount;
+            this.items = window.__biozoneNotifState.items;
+            this._unsubscribe = window.__biozoneNotifState.subscribe(() => {
+                this.unreadCount = window.__biozoneNotifState.unreadCount;
+                this.items = window.__biozoneNotifState.items;
+            });
+        },
         destroy() {
-            this.$el.__bellInstanceActive = false;
-            if (this.pollTimer) clearInterval(this.pollTimer);
-            if (this.pingTimer) clearInterval(this.pingTimer);
-            if (this.visibilityHandler) document.removeEventListener('visibilitychange', this.visibilityHandler);
-            if (this.ws) {
-                this.wsClosedByUs = true;
-                this.ws.close();
-            }
+            if (this._unsubscribe) this._unsubscribe();
         },
         toggle() {
             this.open = !this.open;
-            if (this.open) this.refresh();
+            if (this.open) window.__biozoneNotifState.refresh();
         },
-        async refresh() {
-            try {
-                const res = await fetch("{% url 'notifications:bell_data' %}", {
-                    headers: { 'X-Requested-With': 'XMLHttpRequest' },
-                });
-                if (!res.ok) return;
-                const data = await res.json();
-                this.unreadCount = data.unread_count;
-                this.items = data.items;
-            } catch (e) {
-                // فشل مؤقت في الشبكة — نتجاهله ونحاول تاني في الـ poll الجاي
-            }
-        },
-        async markAllRead() {
+        markAllRead() {
             const token = this.$el.querySelector('[name=csrfmiddlewaretoken]').value;
-            try {
-                const res = await fetch("{% url 'notifications:mark_all_read' %}", {
-                    method: 'POST',
-                    headers: { 'X-CSRFToken': token, 'X-Requested-With': 'XMLHttpRequest' },
-                });
-                if (!res.ok) {
-                    // الطلب فشل فعليًا (مثلاً CSRF منتهي أو خطأ سيرفر) — منعملش
-                    // تحديث وهمي للواجهة، ونسيب العداد الحقيقي زي ما هو عشان
-                    // ميختفيش العداد وهو أصلاً لسه فيه إشعارات غير مقروءة.
-                    return;
-                }
-                // بعد النجاح، بنجيب الحالة الحقيقية من السيرفر بدل ما نفترض
-                // إن كل الإشعارات المعروضة (8 بس) هي كل الإشعارات الموجودة —
-                // ده بالظبط اللي كان بيسبب رجوع العداد لما الإشعارات تتراكم
-                // فوق الـ 8 المعروضة في القائمة.
-                await this.refresh();
-            } catch (e) {
-                // فشل شبكة — العداد الحقيقي هيرجع يتصحح لوحده في الـ poll الجاي
-            }
+            window.__biozoneNotifState.markAllRead(token);
         },
     };
 }

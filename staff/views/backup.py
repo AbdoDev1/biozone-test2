@@ -3,18 +3,9 @@ from django.http import HttpResponse
 from django.shortcuts import redirect, render
 
 from staff.permissions import perm_required
-from staff.services.backup import LAST_ERROR_FILE, PROJECT_DIR, backup_status
+from staff.services.backup import LAST_ERROR_FILE, backup_status, recent_backups
 
-LOG_FILE = PROJECT_DIR / 'logs' / 'backup.log'
-LOG_TAIL_LINES = 15
-
-
-def _read_log_tail():
-    """آخر LOG_TAIL_LINES سطر من logs/backup.log، أو فاضي لو الملف مش موجود بعد."""
-    if not LOG_FILE.exists():
-        return []
-    lines = LOG_FILE.read_text(encoding='utf-8', errors='replace').splitlines()
-    return lines[-LOG_TAIL_LINES:]
+RECENT_BACKUPS_LIMIT = 5
 
 
 @perm_required('staff.manage_backup')
@@ -22,12 +13,14 @@ def backup_manual(request):
     """
     صفحة النسخ الاحتياطي اليدوي: بتعرض هل آخر محاولة (تلقائية أو يدوية)
     نجحت أو فشلت (وجود backups/last_error.txt = آخر محاولة فشلت)، آخر
-    أسطر من سجل النسخ، وزرار "تشغيل نسخة احتياطية الآن" بيشغّل نفس
-    السكريبت بشكل متزامن (staff/services/backup.py — perform_backup).
+    RECENT_BACKUPS_LIMIT نسخة **موجودة فعليًا على القرص دلوقتي** (مش
+    سطور من ملف log قديم ممكن يشاور على ملفات اتمسحت)، وزرار "تشغيل
+    نسخة احتياطية الآن" بيشغّل نفس السكريبت بشكل متزامن
+    (staff/services/backup.py — perform_backup).
     """
     return render(request, 'staff/backup.html', {
         'has_error': LAST_ERROR_FILE.exists(),
-        'log_lines': _read_log_tail(),
+        'recent_backups': recent_backups(limit=RECENT_BACKUPS_LIMIT),
         'status': backup_status(),
     })
 
