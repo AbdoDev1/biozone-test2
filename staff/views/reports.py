@@ -1,17 +1,19 @@
 from decimal import Decimal
 
 from django.core.paginator import Paginator
-from django.db.models import F, Sum
+from django.db.models import F, Sum, Subquery, OuterRef, DecimalField, ExpressionWrapper
 from django.shortcuts import render
 from django.utils import timezone
 
 from inventory.models import Inventory
 from orders.models import Order, OrderItem
+from products.models import ProductUnit
 from staff.permissions import perm_required
 from staff.excel_utils import build_simple_workbook, workbook_response
 from staff import reports_queries as rq
 
 STAFF_LIST_PAGE_SIZE = 50
+MONEY = DecimalField(max_digits=14, decimal_places=2)
 
 
 # =====================================================================
@@ -45,11 +47,23 @@ def dashboard(request):
     ).distinct().count()
 
     # قيمة المخزون الحالية = رصيد كل صنف (بالقطعة) × سعر جمهور أصغر وحدة له.
-    stock_value = Decimal('0')
-    for inv in inv_qs.prefetch_related('product__units'):
-        smallest = inv.product.smallest_unit
-        if smallest:
-            stock_value += Decimal(inv.quantity) * smallest.unit_price
+    # كان ده بيتحسب بلوب بايثون على كل أصناف المخزون (راجع نسخة قديمة في
+    # الـ git history) — بطيء تدريجيًا مع نمو الكتالوج لآلاف الأصناف رغم إنه
+    # مفيهوش N+1 (كان معمول له prefetch_related بالفعل). الاستعلام ده بيحسب
+    # نفس القيمة بالظبط بس جوه قاعدة البيانات بضربة واحدة: subquery بياخد
+    # unit_price لأصغر وحدة (أقل qty_in_small) لكل منتج، وSum() بيجمّع
+    # (الرصيد × السعر) على مستوى الداتابيز.
+    smallest_unit_price = Subquery(
+        ProductUnit.objects.filter(product_id=OuterRef('product_id'))
+        .order_by('qty_in_small')
+        .values('unit_price')[:1],
+        output_field=DecimalField(max_digits=10, decimal_places=2),
+    )
+    stock_value = inv_qs.annotate(smallest_unit_price=smallest_unit_price).aggregate(
+        total=Sum(
+            ExpressionWrapper(F('quantity') * F('smallest_unit_price'), output_field=MONEY)
+        )
+    )['total'] or Decimal('0')
 
     top_products = rq.products_sold_report(month_item_qs, order_by='revenue')[:5]
     top_customers = rq.top_customers_report(month_item_qs)[:5]

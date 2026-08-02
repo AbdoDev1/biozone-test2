@@ -35,6 +35,7 @@ hx-on:cartUpdated="htmx.ajax('GET','{% url 'orders:cart_badge' %}',{target:'#car
                 hx-target="#product-grid"
                 hx-include="#filter-form, #category-select"
                 hx-indicator="#search-spinner"
+                hx-sync="#product-grid:replace"
                 hx-swap="innerHTML"
             >
             <svg id="search-spinner" class="htmx-indicator animate-spin absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-primary-600"
@@ -54,6 +55,7 @@ hx-on:cartUpdated="htmx.ajax('GET','{% url 'orders:cart_badge' %}',{target:'#car
             hx-target="#product-grid"
             hx-include="#filter-form, #search-q"
             hx-indicator="#search-spinner"
+            hx-sync="#product-grid:replace"
             hx-swap="innerHTML">
             <option value="" {% if not selected_category %}selected{% endif %}>كل الأقسام</option>
             {% for cat in categories %}
@@ -88,6 +90,7 @@ hx-on:cartUpdated="htmx.ajax('GET','{% url 'orders:cart_badge' %}',{target:'#car
                         hx-target="#product-grid"
                         hx-include="#filter-form, #search-q, #category-select"
                         hx-indicator="#search-spinner"
+                        hx-sync="#product-grid:replace"
                         hx-swap="innerHTML">
 
                     <span class="text-sm text-gray-600 has-[:checked]:text-primary-700 has-[:checked]:font-semibold">
@@ -109,6 +112,7 @@ hx-on:cartUpdated="htmx.ajax('GET','{% url 'orders:cart_badge' %}',{target:'#car
                         hx-target="#product-grid"
                         hx-include="#filter-form, #search-q, #category-select"
                         hx-indicator="#search-spinner"
+                        hx-sync="#product-grid:replace"
                         hx-swap="innerHTML">
 
                     <span class="text-sm text-gray-600 has-[:checked]:text-primary-700 has-[:checked]:font-semibold">

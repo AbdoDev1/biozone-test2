@@ -15,15 +15,14 @@
     <!-- htmx: بيفعّل hx-boost على كل لوحة الموظفين (راجع body تحت) — التنقل
          بين الصفحات (سايدبار وأزرار) بقى AJAX ناعم بدل full page reload
          كامل، من غير ما نلمس أي view أو منطق سيرفر.
-         integrity/crossorigin (SRI): نفس السبب في templates/base.html —
-         حماية من تلاعب محتمل في محتوى الـ CDN، والإصدار مثبّت بالظبط
-         (مش @3.x.x ولا @4 عايمين) عشان الهاش يفضل صحيح. -->
-    <script src="https://unpkg.com/htmx.org@1.9.10"
-            integrity="sha384-D1Kt99CQMDuVetoL1lrYwg5t+9QdHe7NLX/SoJYkXDFfX37iInKRy5xLSi8nO7UC"
-            crossorigin="anonymous"></script>
-    <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.15.12/dist/cdn.min.js"
-            integrity="sha384-pb6hrQvo4s23cEUFtj0CZkzGE3jyK3pj26RIupXXxhSrrcUA/Cn0lZgcCrGH0t6L"
-            crossorigin="anonymous"></script>
+         بقى ملف محلي (static/js/) بدل تحميله من unpkg.com/cdn.jsdelivr.net
+         في كل صفحة — نفس النسخة بالظبط، بس من غير رحلة شبكة لدومين خارجي
+         (DNS + TLS handshake منفصلين) على كل زيارة للوحة الموظفين، ومستفيد
+         من نفس كاش سنة + gzip بتاع باقي static/. سايب هنا من غير defer
+         عمدًا (زي ما كان) لأن hx-boost والـ Chart.js تحت محتاجين يبقوا
+         جاهزين بالترتيب ده بالظبط. -->
+    <script src="{% static 'js/htmx.min.js' %}"></script>
+    <script defer src="{% static 'js/alpine.min.js' %}"></script>
     <!-- Chart.js: اتنقل هنا مركزيًا (بدل ما يتكرر جوه كل صفحة تقرير) عشان
          مشكلة حقيقية سببها hx-boost: أي <script src> بيتحقن ديناميكيًا وقت
          استبدال الـ body (بعد أي تنقل boosted) بيتحمّل async تلقائيًا من
@@ -32,10 +31,9 @@
          للصفحة عن طريق ضغطة رابط، مش عن طريق refresh يدوي. htmx بيدمج
          الـ head (مش بيستبدله) وبيلاحظ إن نفس الـ src موجود فمش بيعيد
          تحميله/تنفيذه تاني، فالتحميل هنا مرة واحدة بيضمن إن المكتبة
-         جاهزة قبل أي سكريبت رسم بياني في أي صفحة. -->
-    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.5.1/dist/chart.umd.min.js"
-            integrity="sha384-jb8JQMbMoBUzgWatfe6COACi2ljcDdZQ2OxczGA3bGNeWe+6DChMTBJemed7ZnvJ"
-            crossorigin="anonymous"></script>
+         جاهزة قبل أي سكريبت رسم بياني في أي صفحة. بقى ملف محلي برضه لنفس
+         سبب htmx فوق. -->
+    <script src="{% static 'js/chart.umd.min.js' %}"></script>
     <style>
         ::view-transition-old(root),
         ::view-transition-new(root) {

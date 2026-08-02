@@ -65,6 +65,10 @@ INSTALLED_APPS = [
     'django.contrib.messages',
     'django.contrib.staticfiles',
     'django.contrib.humanize',
+    # مطلوب لـ GinIndex في products/models.py (بحث المتجر اللايف — راجع
+    # ميجريشن products/0019). ميضيفش جداول ولا فيه أي views/models خاصة
+    # بيه إحنا مستخدمينها، هو بس بيسجّل الـ checks/features بتاعة Postgres.
+    'django.contrib.postgres',
     'accounts',
     'products',
     'inventory',
@@ -84,6 +88,7 @@ MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
     'django.middleware.csp.ContentSecurityPolicyMiddleware',
     'whitenoise.middleware.WhiteNoiseMiddleware',
+    'config.middleware.NoBrowserCacheMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
     'django.middleware.common.CommonMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',
@@ -269,6 +274,11 @@ FILE_UPLOAD_MAX_MEMORY_SIZE = 2 * 1024 * 1024  # فوق كده يتكتب لمل
 # على القيمة الافتراضية False عن طريق .env. لما يبقى عندك دومين + شهادة
 # فعلية على السيرفر الحقيقي، حط USE_HTTPS_SECURITY=True في .env بتاعه.
 USE_HTTPS_SECURITY = config('USE_HTTPS_SECURITY', default=False, cast=bool)
+# لازم يكون موجود قبل أي USE_HTTPS_SECURITY=True حقيقي: nginx بيبعت
+# X-Forwarded-Proto (راجع nginx/nginx.conf)، لكن Django مش بيثق فيه تلقائيًا.
+# من غير السطر ده، أول ما SECURE_SSL_REDIRECT يتفعّل، Django هيفتكر إن كل
+# طلب جاي http (حتى لو أصله https من كلودفلير) ويعمل redirect loop لا نهائي.
+SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
 SECURE_SSL_REDIRECT = USE_HTTPS_SECURITY
 SESSION_COOKIE_SECURE = USE_HTTPS_SECURITY
 CSRF_COOKIE_SECURE = USE_HTTPS_SECURITY
@@ -277,10 +287,10 @@ SECURE_HSTS_INCLUDE_SUBDOMAINS = USE_HTTPS_SECURITY
 SECURE_HSTS_PRELOAD = USE_HTTPS_SECURITY
 
 # Content-Security-Policy (Django 6 native دعم — راجع django.middleware.csp
-# و django.utils.csp.CSP فوق). القائمة دي مبنية على كل مصدر خارجي فعلي
-# بيتحمّل في templates/base.html و staff/templates/staff/base.html
-# (htmx/Alpine من unpkg وjsdelivr، خط Cairo من Google Fonts). لو ضفت CDN
-# جديد لأي صفحة، لازم يتضاف هنا برضه وإلا هيتحظر صامت من المتصفح.
+# و django.utils.csp.CSP فوق). htmx/Alpine/Chart.js وخط Cairo كلهم بقوا
+# ملفات محلية (static/js/, static/fonts/) بدل CDN خارجي، فمفيش أي مصدر
+# خارجي فعلي محتاج يتضاف هنا دلوقتي. لو ضفت CDN جديد لأي صفحة بعدين، لازم
+# يتضاف هنا برضه وإلا هيتحظر صامت من المتصفح.
 #
 # ملحوظتين مهمين عن التنازلات هنا:
 # 1) 'unsafe-inline' في script-src/style-src لسه موجودة لأن فيه <script>
@@ -294,9 +304,9 @@ SECURE_HSTS_PRELOAD = USE_HTTPS_SECURITY
 #    كل الاستخدامات الحالية البسيطة).
 SECURE_CSP = {
     "default-src": [CSP.SELF],
-    "script-src": [CSP.SELF, CSP.UNSAFE_INLINE, CSP.UNSAFE_EVAL, "https://unpkg.com", "https://cdn.jsdelivr.net"],
-    "style-src": [CSP.SELF, CSP.UNSAFE_INLINE, "https://fonts.googleapis.com"],
-    "font-src": [CSP.SELF, "https://fonts.gstatic.com"],
+    "script-src": [CSP.SELF, CSP.UNSAFE_INLINE, CSP.UNSAFE_EVAL],
+    "style-src": [CSP.SELF, CSP.UNSAFE_INLINE],
+    "font-src": [CSP.SELF],
     "img-src": [CSP.SELF, "data:"],
     "connect-src": [CSP.SELF],
     "object-src": [CSP.NONE],

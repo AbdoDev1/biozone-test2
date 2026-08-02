@@ -357,33 +357,47 @@ def daily_sales_for_dashboard(days=30):
 
 
 def monthly_profit_series(months=6):
-    """آخر N شهر: إيراد/ربح لكل شهر — لرسم بياني الأرباح الشهرية في لوحة المؤشرات."""
+    """
+    آخر N شهر: إيراد/ربح لكل شهر — لرسم بياني الأرباح الشهرية في لوحة المؤشرات.
+
+    استعلام واحد مجمَّع بـ TruncMonth (بدل ما كان بيعمل استعلام aggregate()
+    منفصل لكل شهر على حدة داخل for loop — يعني 6 أو 12 رحلة لقاعدة البيانات
+    لكل مرة الصفحة دي بتتفتح). نفس أسلوب daily_sales_for_dashboard فوق بالظبط.
+    """
+    from django.db.models.functions import TruncMonth
+
     now = timezone.localtime()
+    year = now.year
+    month = now.month - (months - 1)
+    while month <= 0:
+        month += 12
+        year -= 1
+    range_start = timezone.make_aware(timezone.datetime(year, month, 1))
+
+    item_qs = OrderItem.objects.filter(
+        order__status=Order.Status.DELIVERED,
+        order__invoice__isnull=False,
+        order__invoice__issued_at__gte=range_start,
+    )
+    rows = item_annotations(item_qs).annotate(
+        month_key=TruncMonth('order__invoice__issued_at'),
+    ).values('month_key').annotate(
+        revenue=Sum('_revenue'),
+        profit=Sum('_profit'),
+    )
+    by_month = {r['month_key'].strftime('%Y-%m'): r for r in rows}
+
     series = []
     for i in range(months - 1, -1, -1):
-        # نحسب أول يوم في الشهر i شهر قبل الحالي، وأول يوم في الشهر اللي بعده كحد أقصى.
-        year = now.year
-        month = now.month - i
-        while month <= 0:
-            month += 12
-            year -= 1
-        start = timezone.make_aware(timezone.datetime(year, month, 1))
-        if month == 12:
-            next_year, next_month = year + 1, 1
-        else:
-            next_year, next_month = year, month + 1
-        end = timezone.make_aware(timezone.datetime(next_year, next_month, 1))
-
-        item_qs = OrderItem.objects.filter(
-            order__status=Order.Status.DELIVERED,
-            order__invoice__isnull=False,
-            order__invoice__issued_at__gte=start,
-            order__invoice__issued_at__lt=end,
-        )
-        totals = totals_for_items(item_qs)
+        y, m = now.year, now.month - i
+        while m <= 0:
+            m += 12
+            y -= 1
+        label = f'{y:04d}-{m:02d}'
+        r = by_month.get(label)
         series.append({
-            'label': start.strftime('%Y-%m'),
-            'revenue': totals['revenue'],
-            'profit': totals['profit'],
+            'label': label,
+            'revenue': (r['revenue'] if r else None) or Decimal('0'),
+            'profit': (r['profit'] if r else None) or Decimal('0'),
         })
     return series

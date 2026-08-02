@@ -7,6 +7,7 @@ urlpatterns = [
     path('', dashboard.dashboard, name='dashboard'),
     path('login/', dashboard.staff_login, name='login'),
     path('logout/', dashboard.staff_logout, name='logout'),
+    path('test-error/', dashboard.trigger_test_error, name='test_error'),
     path('employees/', employees.employee_list, name='employees'),
     path('employees/add/', employees.employee_add, name='employee_add'),
     path('employees/<int:pk>/edit/', employees.employee_edit, name='employee_edit'),

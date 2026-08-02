@@ -1,5 +1,6 @@
 from decimal import Decimal, ROUND_HALF_UP
 
+from django.contrib.postgres.indexes import GinIndex
 from django.db import models
 from django.core.validators import FileExtensionValidator
 from django.utils import timezone
@@ -114,6 +115,18 @@ class Product(models.Model):
         verbose_name = 'منتج'
         verbose_name_plural = 'المنتجات'
         ordering = ['name_ar']
+        # index عادي (B-tree، حتى لو db_index=True على الحقل) مبيفدش في بحث
+        # icontains (LIKE '%...%' — % في الأول كمان)، وده بالظبط بحث المتجر
+        # اللايف (store/views.py: _apply_filters). GIN + pg_trgm بيسمح لـ
+        # icontains إنه يستخدم index حتى مع % في أول الكلمة، بدل full scan
+        # على كل منتج نشط في كل مرة العميل بيوقف عن الكتابة. محتاج إضافة
+        # extension pg_trgm على قاعدة البيانات (موجودة في الميجريشن التالية) —
+        # ميجريشن Postgres فقط، مش هتشتغل على SQLite.
+        indexes = [
+            GinIndex(fields=['name_ar'], name='product_name_ar_trgm', opclasses=['gin_trgm_ops']),
+            GinIndex(fields=['name_en'], name='product_name_en_trgm', opclasses=['gin_trgm_ops']),
+            GinIndex(fields=['name_key'], name='product_name_key_trgm', opclasses=['gin_trgm_ops']),
+        ]
 
     @property
     def display_name(self):

@@ -6,6 +6,7 @@ from inventory.models import Inventory
 from accounts.models import ClientProfile
 from accounts.security import is_login_blocked, record_failed_login, reset_login_attempts, LOGIN_BLOCKED_MESSAGE
 from orders.models import Order
+from staff.permissions import admin_required
 
 # أول قدر أصناف بيتعرضوا في كارت "مخزون منخفض" بلوحة التحكم — الباقي
 # يتشاف من صفحة المخزون كاملة (مرقّمة) عن طريق رابط "عرض الكل".
@@ -87,3 +88,17 @@ def dashboard(request):
         'active_orders_count': active_orders.count(),
     }
     return render(request, 'staff/dashboard.html', context)
+
+
+@admin_required
+def trigger_test_error(request):
+    """
+    مقصورة على الأدمن فقط، وغرضها الوحيد التحقق إن Sentry شغال فعليًا بعد
+    ما تحط SENTRY_DSN — بتعمل استثناء متعمد، والخطأ لازم يظهر في:
+    (1) لوحة تحكم Sentry (خلال ثواني)، و(2) logs/errors.log محليًا زي أي
+    خطأ حقيقي (الاستثناء بيوصل للـ logging العادي كمان، مش بديل عنه —
+    راجع تعليق SENTRY_DSN في settings.py). محدش هيوصلها بالغلط لأنها
+    مش مربوطة بأي رابط ظاهر في أي تمبلت — لازم تفتحها يدويًا:
+    /staff/test-error/
+    """
+    raise Exception('اختبار متعمد لخدمة تقرير الأخطاء — تجاهله لو شفته في Sentry أو في logs/errors.log')
