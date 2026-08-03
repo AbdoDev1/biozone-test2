@@ -235,3 +235,44 @@ class CommitProductTestCase(TestCase):
         product.refresh_from_db()
         self.assertEqual(product.name_ar, 'شاش قديم محدّث')
         self.assertEqual(product.inventory.quantity, 70)  # 50 + 20 مش استبدال
+
+
+class CommitImportBatchTestCase(TestCase):
+    """اختبار سريع للتأكد إن الجلب الجماعي (product_cache/inventory_cache)
+    في commit_import_batch بيدّي نفس نتيجة استدعاء commit_product المباشر
+    لكل صف — يعني تحسين الأداء ماغيّرش أي سلوك."""
+
+    def setUp(self):
+        self.category = Category.objects.create(name='شاش', slug='gauze')
+
+    def test_mixed_batch_create_and_update_same_as_before(self):
+        from inventory.models import Inventory
+        existing = Product.objects.create(category=self.category, name_ar='صنف قديم')
+        Inventory.objects.create(product=existing, quantity=30)
+
+        rows = [
+            {
+                'row_num': 2, 'action': 'update', 'match_pk': existing.pk,
+                'category_slug': '', 'name_ar': 'صنف قديم محدّث',
+                'small': {'unit_name': 'قطعة', 'unit_price': 4.0, 'qty_in_small': 1, 'quantity': 15},
+                'large': None, 'discounts': {},
+            },
+            {
+                'row_num': 3, 'action': 'create', 'match_pk': None,
+                'category_slug': 'gauze', 'name_ar': 'صنف جديد كليًا',
+                'small': {'unit_name': 'قطعة', 'unit_price': 6.0, 'qty_in_small': 1, 'quantity': 8},
+                'large': None, 'discounts': {},
+            },
+        ]
+        created_count, updated_count, restocked_count = svc.commit_import_batch(rows, {}, user=None)
+
+        self.assertEqual(created_count, 1)
+        self.assertEqual(updated_count, 1)
+        self.assertEqual(restocked_count, 1)
+
+        existing.refresh_from_db()
+        self.assertEqual(existing.name_ar, 'صنف قديم محدّث')
+        self.assertEqual(existing.inventory.quantity, 45)  # 30 + 15
+
+        new_product = Product.objects.get(name_ar='صنف جديد كليًا')
+        self.assertEqual(new_product.inventory.quantity, 8)

@@ -20,7 +20,8 @@ __all__ = [
 ]
 
 
-def commit_product(row_data, target_pk, user, account_types_by_pk, category_cache=None):
+def commit_product(row_data, target_pk, user, account_types_by_pk, category_cache=None,
+                    product_cache=None, inventory_cache=None):
     """
     بيطبّق صنف واحد (وحدة أو وحدتين + خصوماته) فعليًا على قاعدة البيانات،
     بعد ما يبقى معروف بالظبط (من مرحلة المراجعة) هل ده تحديث لمنتج
@@ -32,13 +33,20 @@ def commit_product(row_data, target_pk, user, account_types_by_pk, category_cach
     category_cache (اختياري): مُمرَّر من commit_import_batch ومُشترك بين
     كل صفوف نفس الدفعة، عشان لو قسم جديد اتكرر في أكتر من صف يتعمل مرة
     واحدة بس بدل ما كل صف يحاول ينشئه لوحده. راجع get_or_create_category.
+
+    product_cache / inventory_cache (اختياريان): dict {pk: instance} مُجهّز
+    مقدّمًا من commit_import_batch بجلب كل منتجات/مخزونات دفعة التحديث دفعة
+    واحدة (بدل استعلام Product.get + Inventory.get_or_create لكل صف على
+    حدة) — ده أكبر سبب لبطء الاستيراد مع ملفات كبيرة (مئات/آلاف الصفوف).
+    لو معدّاش الاثنين (الاستخدام المباشر القديم، زي الاختبارات)، السلوك
+    زي ما هو بالظبط: استعلام منفصل لكل صف.
     """
     category = None
     if row_data['category_slug']:
         category = get_or_create_category(row_data['category_slug'], cache=category_cache)
 
     if target_pk:
-        product = Product.objects.get(pk=target_pk)
+        product = (product_cache or {}).get(target_pk) or Product.objects.get(pk=target_pk)
         product.name_ar = row_data['name_ar']
         if category:
             product.category = category
@@ -69,9 +77,13 @@ def commit_product(row_data, target_pk, user, account_types_by_pk, category_cach
     else:
         log_activity(product, ActivityLog.Event.UPDATED, user=user, changes_summary='تحديث بيانات/أسعار من ملف Excel')
 
-    inventory, _ = Inventory.objects.get_or_create(
-        product=product, defaults={'quantity': 0, 'reserved': 0, 'min_quantity': 0},
-    )
+    inventory = (inventory_cache or {}).get(product.pk)
+    if inventory is None:
+        inventory, _ = Inventory.objects.get_or_create(
+            product=product, defaults={'quantity': 0, 'reserved': 0, 'min_quantity': 0},
+        )
+        if inventory_cache is not None:
+            inventory_cache[product.pk] = inventory
 
     restocked = False
     for size, unit_data in (('S', row_data['small']), ('L', row_data['large'])):
@@ -127,6 +139,29 @@ def commit_import_batch(rows, decisions, user):
     # القسم بينشأ مرة واحدة بس ويتعاد استخدامه، بدل ما كل صف يحاول ينشئه
     # بنفسه ويضرب IntegrityError من تعارض الـslug مع الصف اللي قبله.
     category_cache = {}
+
+    # تحديد كل الصفوف اللي هتتحدّث (target_pk معروف مسبقًا) عشان نجيب
+    # منتجاتها ومخزونها بدفعة واحدة (Product.objects.filter(pk__in=..))
+    # بدل ما كل صف يعمل استعلام Product.get + Inventory.get_or_create
+    # لوحده — ده كان السبب الأساسي وراء بطء استيراد الملفات الكبيرة (كل
+    # صف بيعمل ٦-٨ استعلامات منفصلة، فملف بـ٥٠٠ صف = آلاف الاستعلامات
+    # المتتالية جوه نفس الطلب).
+    target_pks = []
+    for row_data in rows:
+        if row_data['action'] == 'review':
+            decision = decisions.get(row_data['row_num'], 'new')
+            pk = int(decision) if decision != 'new' else None
+        else:
+            pk = row_data.get('match_pk')
+        if pk:
+            target_pks.append(pk)
+
+    product_cache = Product.objects.select_related('category').in_bulk(target_pks)
+    inventory_cache = {
+        inv.product_id: inv
+        for inv in Inventory.objects.filter(product_id__in=target_pks)
+    }
+
     created_count = updated_count = restocked_count = 0
     for row_data in rows:
         if row_data['action'] == 'review':
@@ -134,7 +169,11 @@ def commit_import_batch(rows, decisions, user):
             target_pk = int(decision) if decision != 'new' else None
         else:
             target_pk = row_data.get('match_pk')
-        created, restocked = commit_product(row_data, target_pk, user, account_types_by_pk, category_cache=category_cache)
+        created, restocked = commit_product(
+            row_data, target_pk, user, account_types_by_pk,
+            category_cache=category_cache,
+            product_cache=product_cache, inventory_cache=inventory_cache,
+        )
         if created:
             created_count += 1
         else:

@@ -391,9 +391,7 @@ if SENTRY_DSN:
     sentry_sdk.init(
         dsn=SENTRY_DSN,
         integrations=[DjangoIntegration()],
-        # بيبعت نسخة من كل الترانزاكشنز لقياس الأداء. لو حابب تقلل الحمل/البيانات
-        # المبعوتة لـ Sentry، قلل الرقم ده (مثلاً 0.2 = 20% من الطلبات بس).
         traces_sample_rate=config('SENTRY_TRACES_SAMPLE_RATE', default=1.0, cast=float),
-        send_default_pii=False,  # ميبعتش بيانات شخصية للعميل (اسم/إيميل) لـ Sentry تلقائيًا.
+        send_default_pii=False,
         environment=config('SENTRY_ENVIRONMENT', default='production'),
     )

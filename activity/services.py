@@ -4,8 +4,14 @@
 بعدين، بيتغيّر هنا مرة واحدة بس).
 """
 from django.contrib.contenttypes.models import ContentType
+from django.utils import timezone
 
 from .models import ActivityLog
+
+# مدة الاحتفاظ الافتراضية بسجلات النشاط (كل الأنواع، بما فيها الملاحظات
+# اليدوية NOTE) بالأيام قبل ما يتم مسحها — راجع
+# activity/management/commands/trim_activity_logs.py.
+DEFAULT_RETENTION_DAYS = 90
 
 
 def log_activity(instance, event, user=None, note='', changes_summary=''):
@@ -63,3 +69,19 @@ def delete_activity_logs_for(instance):
     """
     content_type = ContentType.objects.get_for_model(instance.__class__)
     ActivityLog.objects.filter(content_type=content_type, object_id=instance.pk).delete()
+
+
+def delete_old_activity_logs(days=DEFAULT_RETENTION_DAYS):
+    """
+    بتمسح كل سجلات النشاط (CREATED/UPDATED/DELETED/NOTE بلا استثناء) الأقدم
+    من `days` يوم. قرار متعمّد إن الملاحظات اليدوية (NOTE/Chatter) تتمسح
+    برضه بعد المدة دي زي باقي الأنواع — النظام مش مقصود منه أرشفة طويلة
+    المدى، الهدف تنظيف دوري لقاعدة البيانات. تُستخدم من
+    activity/management/commands/trim_activity_logs.py، وترجع عدد
+    السجلات اللي اتمسحت.
+    """
+    cutoff = timezone.now() - timezone.timedelta(days=days)
+    queryset = ActivityLog.objects.filter(created_at__lt=cutoff)
+    count = queryset.count()
+    queryset.delete()
+    return count

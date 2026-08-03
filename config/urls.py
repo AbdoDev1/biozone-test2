@@ -60,3 +60,11 @@ if settings.DEBUG:
         urlpatterns += [path('__debug__/', include(debug_toolbar.urls))]
     except ImportError:
         pass
+
+    # مؤقت لتجربة Sentry محليًا بس — محمي بشرط DEBUG عشان مستحيل
+    # يظهر على السيرفر الحقيقي حتى لو نسيت تشيله بعد التجربة.
+    # امسحه بعد ما تتأكد إن الـ Error وصل للوحة Sentry.
+    def trigger_error(request):
+        division_by_zero = 1 / 0
+
+    urlpatterns += [path('sentry-debug/', trigger_error, name='sentry-debug')]

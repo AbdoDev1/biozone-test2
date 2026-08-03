@@ -78,7 +78,11 @@
 </div>
 {% endif %}
 
-<form method="POST" action="{% url 'staff:import_products_confirm' %}" x-data="{ submitting: false }" @submit="submitting = true">
+<form method="POST" action="{% url 'staff:import_products_confirm' %}"
+      x-data="{ submitting: false }" @submit="submitting = true"
+      x-init="window.addEventListener('beforeunload', (e) => {
+          if (submitting) { e.preventDefault(); e.returnValue = ''; }
+      })">
     {% csrf_token %}
 
     <!-- شريط التابات -->
@@ -211,8 +215,13 @@
 
     <div class="flex gap-3">
         {% btn "تأكيد وحفظ الكل" type="submit" size="lg" rounded="xl" extra_classes="flex-1" extra_attrs=':disabled="submitting" x-text="submitting ? \'جاري الحفظ…\' : \'تأكيد وحفظ الكل\'"' %}
+        <!-- معطّل وقت الحفظ عمدًا (مش بس بصري): قبل كده كان ممكن تدوس هنا
+             فتحس إن العملية "اتلغت"، بس فعليًا الحفظ في السيرفر مكانش بيتوقف
+             (الطلب اتبعت أصلًا وDjango بيكمّله)، فكانت النتيجة إن الأصناف
+             بتتحفظ رغم إنك حاسس إنك لغيت — لبس حقيقي حصل قبل كده. -->
         <a href="{% url 'staff:import_products' %}"
-           class="px-6 py-3 rounded-xl border border-gray-200 text-gray-600 hover:bg-gray-50 text-center">
+           :class="submitting ? 'pointer-events-none opacity-40 cursor-not-allowed' : ''"
+           class="px-6 py-3 rounded-xl border border-gray-200 text-gray-600 hover:bg-gray-50 text-center transition">
             إلغاء
         </a>
     </div>
@@ -225,7 +234,8 @@
             <div class="h-full w-1/3 bg-primary-500 rounded-full animate-import-progress"></div>
         </div>
         <p class="text-xs text-gray-500 mt-2 text-center">
-            جاري حفظ الأصناف في قاعدة البيانات — من فضلك متقفلش الصفحة.
+            جاري حفظ الأصناف في قاعدة البيانات — الصفحة هتنتقل تلقائيًا لما يخلص، من فضلك
+            <strong>متقفلش الصفحة ولا تضغط رجوع</strong> (الحفظ مش بيتوقف حتى لو خرجت، وده كان سبب اللبس قبل كده).
         </p>
     </div>
 </form>
