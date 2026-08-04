@@ -16,8 +16,8 @@
     <form method="get" hx-boost="false" class="no-print bg-white rounded-2xl shadow-sm p-4 md:p-5 mb-6">
         <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
             <div>
-                <label class="text-xs font-medium text-gray-500 mb-1 block">القسم</label>
-                <select name="category" class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm outline-none focus:border-primary-400">
+                <label for="supply_category" class="text-xs font-medium text-gray-500 mb-1 block">القسم</label>
+                <select name="category" id="supply_category" class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm outline-none focus:border-primary-400">
                     <option value="">كل الأقسام</option>
                     {% for cat in categories %}
                     <option value="{{ cat.id }}" {% if selected_category == cat.id|stringformat:'s' %}selected{% endif %}>{{ cat.name }}</option>

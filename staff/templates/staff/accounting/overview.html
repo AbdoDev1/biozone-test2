@@ -196,8 +196,8 @@
                 <input type="hidden" name="kind" :value="mode">
 
                 <div>
-                    <label class="block text-xs text-gray-500 mb-1">العميل</label>
-                    <select name="client_id" required
+                    <label for="acc_client_id" class="block text-xs text-gray-500 mb-1">العميل</label>
+                    <select name="client_id" id="acc_client_id" required
                             @change="balance = $event.target.selectedOptions[0].dataset.balance ?? null"
                             class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm outline-none focus:border-primary-400">
                         <option value="">اختر عميل...</option>
@@ -212,15 +212,15 @@
                 </div>
 
                 <div>
-                    <label class="block text-xs text-gray-500 mb-1">المبلغ</label>
-                    <input type="number" step="0.01" min="0.01" name="amount" required
+                    <label for="acc_amount" class="block text-xs text-gray-500 mb-1">المبلغ</label>
+                    <input type="number" step="0.01" min="0.01" name="amount" id="acc_amount" required
                            class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm outline-none focus:border-primary-400">
                 </div>
 
                 <!-- حقول خاصة بالدفعة بس -->
                 <div x-show="mode === 'PAYMENT'">
-                    <label class="block text-xs text-gray-500 mb-1">طريقة السداد</label>
-                    <select name="method" class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm outline-none focus:border-primary-400">
+                    <label for="acc_method" class="block text-xs text-gray-500 mb-1">طريقة السداد</label>
+                    <select name="method" id="acc_method" class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm outline-none focus:border-primary-400">
                         {% for value, label in payment_methods %}
                         <option value="{{ value }}">{{ label }}</option>
                         {% endfor %}
@@ -229,19 +229,19 @@
 
                 <!-- حقول خاصة بالتسوية بس -->
                 <div x-show="mode === 'ADJUSTMENT'">
-                    <label class="block text-xs text-gray-500 mb-1">الاتجاه</label>
-                    <select name="direction" class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm outline-none focus:border-primary-400">
+                    <label for="acc_direction" class="block text-xs text-gray-500 mb-1">الاتجاه</label>
+                    <select name="direction" id="acc_direction" class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm outline-none focus:border-primary-400">
                         <option value="increase">زيادة المديونية (عليه)</option>
                         <option value="decrease">تقليل المديونية (لصالحه)</option>
                     </select>
                 </div>
 
                 <div>
-                    <label class="block text-xs text-gray-500 mb-1">
+                    <label for="acc_note" class="block text-xs text-gray-500 mb-1">
                         <span x-text="mode === 'ADJUSTMENT' ? 'السبب' : 'ملاحظة (اختياري)'"></span>
                         <span x-show="mode === 'ADJUSTMENT'" class="text-red-500">*</span>
                     </label>
-                    <input type="text" name="note" :required="mode === 'ADJUSTMENT'"
+                    <input type="text" name="note" id="acc_note" :required="mode === 'ADJUSTMENT'"
                            class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm outline-none focus:border-primary-400">
                 </div>
 

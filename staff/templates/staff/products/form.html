@@ -92,7 +92,7 @@
             </div>
 
             <div class="md:col-span-2">
-                <label class="text-sm font-medium text-gray-700 mb-1 block">
+                <label for="{{ form.category.id_for_label }}" class="text-sm font-medium text-gray-700 mb-1 block">
                     {{ form.category.label }} <span class="text-red-500">*</span>
                 </label>
                 {{ form.category }}
@@ -102,7 +102,7 @@
             </div>
 
             <div>
-                <label class="text-sm font-medium text-gray-700 mb-1 block">
+                <label for="{{ form.name_ar.id_for_label }}" class="text-sm font-medium text-gray-700 mb-1 block">
                     {{ form.name_ar.label }} <span class="text-red-500">*</span>
                 </label>
                 {{ form.name_ar }}
@@ -112,12 +112,12 @@
             </div>
 
             <div>
-                <label class="text-sm font-medium text-gray-700 mb-1 block">{{ form.name_en.label }}</label>
+                <label for="{{ form.name_en.id_for_label }}" class="text-sm font-medium text-gray-700 mb-1 block">{{ form.name_en.label }}</label>
                 {{ form.name_en }}
             </div>
 
             <div>
-                <label class="text-sm font-medium text-gray-700 mb-1 block">{{ form.barcode.label }}</label>
+                <label for="{{ form.barcode.id_for_label }}" class="text-sm font-medium text-gray-700 mb-1 block">{{ form.barcode.label }}</label>
                 {{ form.barcode }}
                 {% if form.barcode.errors %}
                     <p class="text-red-500 text-xs mt-1">{{ form.barcode.errors.0 }}</p>
@@ -125,32 +125,32 @@
             </div>
 
             <div>
-                <label class="text-sm font-medium text-gray-700 mb-1 block">{{ form.manufacturer.label }}</label>
+                <label for="{{ form.manufacturer.id_for_label }}" class="text-sm font-medium text-gray-700 mb-1 block">{{ form.manufacturer.label }}</label>
                 {{ form.manufacturer }}
             </div>
 
             <div>
-                <label class="text-sm font-medium text-gray-700 mb-1 block">{{ form.size.label }}</label>
+                <label for="{{ form.size.id_for_label }}" class="text-sm font-medium text-gray-700 mb-1 block">{{ form.size.label }}</label>
                 {{ form.size }}
                 <p class="text-[11px] text-gray-400 mt-1">مختلف عن حجم الوحدة (قطعة/كرتونة) — ده مقاس المنتج نفسه لو كان لبس/هدوم</p>
             </div>
 
             <div>
-                <label class="text-sm font-medium text-gray-700 mb-1 block">{{ form.image.label }}</label>
+                <label for="{{ form.image.id_for_label }}" class="text-sm font-medium text-gray-700 mb-1 block">{{ form.image.label }}</label>
                 {% if is_edit and product.image %}
-                    <img src="{{ product.image.url }}" class="w-20 h-20 object-cover rounded-lg mb-2">
+                    <img src="{{ product.image.url }}" alt="{{ product.display_name }}" class="w-20 h-20 object-cover rounded-lg mb-2">
                 {% endif %}
                 {{ form.image }}
             </div>
 
             <div class="md:col-span-2">
-                <label class="text-sm font-medium text-gray-700 mb-1 block">{{ form.description.label }}</label>
+                <label for="{{ form.description.id_for_label }}" class="text-sm font-medium text-gray-700 mb-1 block">{{ form.description.label }}</label>
                 {{ form.description }}
             </div>
 
             <div class="flex items-center gap-2">
                 {{ form.is_active }}
-                <label class="text-sm font-medium text-gray-700">{{ form.is_active.label }}</label>
+                <label for="{{ form.is_active.id_for_label }}" class="text-sm font-medium text-gray-700">{{ form.is_active.label }}</label>
             </div>
 
         </div>
@@ -219,7 +219,7 @@
                 {% endif %}
                 <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
                     <div>
-                        <label class="text-sm font-medium text-gray-700 mb-1 block">
+                        <label for="{{ unit_form.name.id_for_label }}" class="text-sm font-medium text-gray-700 mb-1 block">
                             {{ unit_form.name.label }} <span class="text-red-500">*</span>
                         </label>
                         {{ unit_form.name }}
@@ -228,14 +228,14 @@
                         {% endif %}
                     </div>
                     <div>
-                        <label class="text-sm font-medium text-gray-700 mb-1 block">{{ unit_form.size.label }}</label>
+                        <label for="{{ unit_form.size.id_for_label }}" class="text-sm font-medium text-gray-700 mb-1 block">{{ unit_form.size.label }}</label>
                         {{ unit_form.size }}
                         {% if unit_form.size.errors %}
                             <p class="text-red-500 text-xs mt-1">{{ unit_form.size.errors.0 }}</p>
                         {% endif %}
                     </div>
                     <div>
-                        <label class="text-sm font-medium text-gray-700 mb-1 block">
+                        <label for="{{ unit_form.unit_price.id_for_label }}" class="text-sm font-medium text-gray-700 mb-1 block">
                             {{ unit_form.unit_price.label }} <span class="text-red-500">*</span>
                         </label>
                         {{ unit_form.unit_price }}
@@ -245,7 +245,7 @@
                         {% endif %}
                     </div>
                     <div>
-                        <label class="text-sm font-medium text-gray-700 mb-1 block">{{ unit_form.qty_in_small.label }}</label>
+                        <label for="{{ unit_form.qty_in_small.id_for_label }}" class="text-sm font-medium text-gray-700 mb-1 block">{{ unit_form.qty_in_small.label }}</label>
                         {{ unit_form.qty_in_small }}
                         <p class="text-[11px] text-gray-400 mt-1">القطعة = 1، والكرتونة = عدد القطع التي تحتويها</p>
                         {% if unit_form.qty_in_small.errors %}
@@ -254,7 +254,7 @@
                     </div>
                     {% if not unit_form.instance.pk %}
                     <div>
-                        <label class="text-sm font-medium text-gray-700 mb-1 block">{{ unit_form.initial_stock.label }}</label>
+                        <label for="{{ unit_form.initial_stock.id_for_label }}" class="text-sm font-medium text-gray-700 mb-1 block">{{ unit_form.initial_stock.label }}</label>
                         {{ unit_form.initial_stock }}
                         {% if unit_form.initial_stock.errors %}
                             <p class="text-red-500 text-xs mt-1">{{ unit_form.initial_stock.errors.0 }}</p>
@@ -263,7 +263,7 @@
                     {% endif %}
                 </div>
                 {% if unit_form.instance.pk %}
-                <label class="flex items-center gap-2 mt-3 text-xs text-red-600">
+                <label for="{{ unit_form.DELETE.id_for_label }}" class="flex items-center gap-2 mt-3 text-xs text-red-600">
                     {{ unit_form.DELETE }} احذف هذه الوحدة
                 </label>
                 {% elif formset.forms|length > 1 %}

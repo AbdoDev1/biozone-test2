@@ -16,13 +16,13 @@
 <!-- بحث وفلاتر -->
 <form method="GET" class="bg-white rounded-2xl shadow-sm p-4 mb-6 flex flex-col sm:flex-row gap-3 sm:items-end sm:flex-wrap">
     <div class="flex-1 min-w-[180px]">
-        <label class="text-xs text-gray-500 mb-1 block">بحث في الملاحظة/التغييرات</label>
-        <input type="text" name="q" value="{{ search_q }}" placeholder="نص الملاحظة..."
+        <label for="act_q" class="text-xs text-gray-500 mb-1 block">بحث في الملاحظة/التغييرات</label>
+        <input type="text" name="q" id="act_q" value="{{ search_q }}" placeholder="نص الملاحظة..."
                class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm outline-none focus:border-primary-400">
     </div>
     <div class="w-full sm:w-44">
-        <label class="text-xs text-gray-500 mb-1 block">نوع الحدث</label>
-        <select name="event" class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm outline-none focus:border-primary-400">
+        <label for="act_event" class="text-xs text-gray-500 mb-1 block">نوع الحدث</label>
+        <select name="event" id="act_event" class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm outline-none focus:border-primary-400">
             <option value="" {% if not event_filter %}selected{% endif %}>الكل</option>
             {% for value, display in event_choices %}
             <option value="{{ value }}" {% if event_filter == value %}selected{% endif %}>{{ display }}</option>
@@ -30,8 +30,8 @@
         </select>
     </div>
     <div class="w-full sm:w-48">
-        <label class="text-xs text-gray-500 mb-1 block">نوع الكيان</label>
-        <select name="content_type" class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm outline-none focus:border-primary-400">
+        <label for="act_content_type" class="text-xs text-gray-500 mb-1 block">نوع الكيان</label>
+        <select name="content_type" id="act_content_type" class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm outline-none focus:border-primary-400">
             <option value="" {% if not content_type_filter %}selected{% endif %}>الكل</option>
             {% for ct in content_type_choices %}
             <option value="{{ ct.pk }}" {% if content_type_filter == ct.pk|stringformat:"s" %}selected{% endif %}>{{ ct.name }}</option>

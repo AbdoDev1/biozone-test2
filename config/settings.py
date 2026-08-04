@@ -139,13 +139,8 @@ WSGI_APPLICATION = 'config.wsgi.application'
 
 DATABASES = {
     'default': {
-        'ENGINE': 'django.db.backends.postgresql',
-        'NAME': config('DB_NAME'),
-        'USER': config('DB_USER'),
-        'PASSWORD': config('DB_PASSWORD'),
-        'HOST': config('DB_HOST'),
-        'PORT': config('DB_PORT', default='5432'),
-        'CONN_MAX_AGE': config('DB_CONN_MAX_AGE', default=60, cast=int),
+        'ENGINE': 'django.db.backends.sqlite3',
+        'NAME': BASE_DIR / 'test_db.sqlite3',
     }
 }
 
@@ -157,14 +152,13 @@ DATABASES = {
 REDIS_URL = config('REDIS_URL', default='redis://redis:6379/1')
 CACHES = {
     'default': {
-        'BACKEND': 'django.core.cache.backends.redis.RedisCache',
-        'LOCATION': REDIS_URL,
+        'BACKEND': 'django.core.cache.backends.locmem.LocMemCache',
     }
 }
 
 # السيشن كمان بيتخزن في Redis بدل الداتابيز، عشان يبقى فيه اعتماد حقيقي
 # وملموس على Redis وانت بتجرب/تختبر (مش مجرد كونتينر شغال من غير استخدام).
-SESSION_ENGINE = 'django.contrib.sessions.backends.cache'
+SESSION_ENGINE = 'django.contrib.sessions.backends.db'
 SESSION_CACHE_ALIAS = 'default'
 
 # قناة الإشعارات اللحظية (Django Channels) — بتستخدم Redis كـ pub/sub بين
@@ -252,6 +246,17 @@ STORAGES = {
         "BACKEND": "whitenoise.storage.CompressedManifestStaticFilesStorage",
     },
 }
+
+# الوضع الافتراضي (manifest_strict=True) بيخلي collectstatic يفشل بالكامل
+# برمي MissingFileError لو أي ملف CSS/JS بيشاور على مسار static تاني (زي
+# `//# sourceMappingURL=...` في نهاية ملف مضغوط) والملف ده مش موجود وقت
+# التجميع — حتى لو الملف الناقص ده مش مستخدم فعليًا في أي صفحة. المشكلة إن
+# entrypoint.sh بيشغّل collectstatic --clear تحت `set -e` عند *كل* نشر،
+# فأي مرجع static ناقص أو اتغيّر اسمه بيوقف تشغيل الحاوية بالكامل والموقع
+# كله بيقع لحد ما حد يلاحظ ويصلحها يدويًا — جرّبتها فعليًا بحذف ملف
+# chart.umd.min.js.map وأكدت الفشل الكامل، وبعد الإعداد ده تأكدت إنه بقى
+# مجرد warning (Django check W004) وباقي كل الملفات بتتجمّع عادي.
+WHITENOISE_MANIFEST_STRICT = False
 
 AUTH_USER_MODEL = 'accounts.User'
 

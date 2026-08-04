@@ -16,6 +16,7 @@
     <h2 class="text-lg font-semibold text-yellow-600 mb-3">طلبات التسجيل ({{ pending|length }})</h2>
     {% if pending %}
     <div class="bg-white rounded-2xl shadow-sm overflow-hidden">
+        <div class="overflow-x-auto">
         <table class="w-full text-sm">
             <thead class="bg-gray-50 text-gray-600">
                 <tr>
@@ -67,6 +68,7 @@
                 {% endfor %}
             </tbody>
         </table>
+        </div>
     </div>
     {% else %}
     <p class="text-gray-400 text-sm">لا يوجد طلبات في الانتظار</p>
@@ -78,6 +80,7 @@
     <h2 class="text-lg font-semibold text-green-600 mb-3">العملاء النشطين ({{ total_active }})</h2>
     {% if active %}
     <div class="bg-white rounded-2xl shadow-sm overflow-hidden">
+        <div class="overflow-x-auto">
         <table class="w-full text-sm">
             <thead class="bg-gray-50 text-gray-600">
                 <tr>
@@ -101,6 +104,7 @@
                 {% endfor %}
             </tbody>
         </table>
+        </div>
     </div>
     {% if active_page_obj.paginator.num_pages > 1 %}
     <div class="flex items-center justify-center gap-2 mt-4 text-sm">
@@ -124,6 +128,7 @@
 <div>
     <h2 class="text-lg font-semibold text-red-500 mb-3">المرفوضين ({{ rejected|length }})</h2>
     <div class="bg-white rounded-2xl shadow-sm overflow-hidden">
+        <div class="overflow-x-auto">
         <table class="w-full text-sm">
             <thead class="bg-gray-50 text-gray-600">
                 <tr>
@@ -147,6 +152,7 @@
                 {% endfor %}
             </tbody>
         </table>
+        </div>
     </div>
 </div>
 {% endif %}

@@ -107,8 +107,8 @@
               class="grid grid-cols-1 md:grid-cols-3 gap-4 items-end max-w-2xl">
             {% csrf_token %}
             <div>
-                <label class="block text-sm text-gray-600 mb-1">الحد الأدنى (بالقطعة)</label>
-                <input type="number" name="min_quantity" min="0" value="{{ item.min_quantity }}"
+                <label for="min_quantity" class="block text-sm text-gray-600 mb-1">الحد الأدنى (بالقطعة)</label>
+                <input type="number" name="min_quantity" id="min_quantity" min="0" value="{{ item.min_quantity }}"
                        class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500">
             </div>
             <div class="flex items-center gap-2 pb-2">
@@ -130,8 +130,8 @@
         <form method="post" hx-push-url="false" action="{% url 'staff:add_movement' item.pk %}{% if list_qs %}?{{ list_qs }}{% endif %}" class="grid grid-cols-1 md:grid-cols-5 gap-4">
             {% csrf_token %}
             <div>
-                <label class="block text-sm text-gray-600 mb-1">نوع الحركة</label>
-                <select name="movement_type"
+                <label for="movement_type" class="block text-sm text-gray-600 mb-1">نوع الحركة</label>
+                <select name="movement_type" id="movement_type"
                         class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500">
                     <option value="IN">وارد</option>
                     <option value="OUT">صادر</option>
@@ -140,8 +140,8 @@
                 </select>
             </div>
             <div>
-                <label class="block text-sm text-gray-600 mb-1">الوحدة</label>
-                <select name="unit_id"
+                <label for="movement_unit_id" class="block text-sm text-gray-600 mb-1">الوحدة</label>
+                <select name="unit_id" id="movement_unit_id"
                         class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500">
                     {% for unit in units %}
                     <option value="{{ unit.pk }}">{{ unit.name }}{% if unit.qty_in_small > 1 %} ({{ unit.qty_in_small }} قطعة){% endif %}</option>
@@ -149,13 +149,13 @@
                 </select>
             </div>
             <div>
-                <label class="block text-sm text-gray-600 mb-1">الكمية (بالوحدة المختارة)</label>
-                <input type="number" name="quantity" min="1"
+                <label for="movement_quantity" class="block text-sm text-gray-600 mb-1">الكمية (بالوحدة المختارة)</label>
+                <input type="number" name="quantity" id="movement_quantity" min="1"
                        class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500">
             </div>
             <div>
-                <label class="block text-sm text-gray-600 mb-1">ملاحظة</label>
-                <input type="text" name="note"
+                <label for="movement_note" class="block text-sm text-gray-600 mb-1">ملاحظة</label>
+                <input type="text" name="note" id="movement_note"
                        class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500">
             </div>
             <div class="flex items-end">

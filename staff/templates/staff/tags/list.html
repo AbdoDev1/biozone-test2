@@ -21,11 +21,11 @@
              class="absolute left-0 mt-2 w-64 bg-white rounded-lg shadow-lg border border-gray-100 z-20 p-3">
             <form method="post" action="{% url 'staff:tag_add' %}{% if request.GET.urlencode %}?{{ request.GET.urlencode }}{% endif %}">
                 {% csrf_token %}
-                <label class="text-xs text-gray-500 block mb-1">اسم الوسم</label>
-                <input type="text" name="name" maxlength="50" required autofocus
+                <label for="new_tag_name" class="text-xs text-gray-500 block mb-1">اسم الوسم</label>
+                <input type="text" name="name" id="new_tag_name" maxlength="50" required autofocus
                        class="w-full border border-gray-300 rounded-lg px-2 py-1.5 text-sm mb-2">
-                <label class="text-xs text-gray-500 block mb-1">اللون</label>
-                <select name="color" class="w-full border border-gray-300 rounded-lg px-2 py-1.5 text-sm mb-3">
+                <label for="new_tag_color" class="text-xs text-gray-500 block mb-1">اللون</label>
+                <select name="color" id="new_tag_color" class="w-full border border-gray-300 rounded-lg px-2 py-1.5 text-sm mb-3">
                     {% for value, display in color_choices %}
                     <option value="{{ value }}">{{ display }}</option>
                     {% endfor %}
@@ -43,13 +43,13 @@
 <!-- بحث وفلتر اللون -->
 <form method="GET" class="bg-white rounded-2xl shadow-sm p-4 mb-6 flex flex-col sm:flex-row gap-3 sm:items-end">
     <div class="flex-1 min-w-[180px]">
-        <label class="text-xs text-gray-500 mb-1 block">بحث بالاسم</label>
-        <input type="text" name="q" value="{{ search_q }}" placeholder="مثال: عاجل"
+        <label for="tags_search_q" class="text-xs text-gray-500 mb-1 block">بحث بالاسم</label>
+        <input type="text" name="q" id="tags_search_q" value="{{ search_q }}" placeholder="مثال: عاجل"
                class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm outline-none focus:border-primary-400">
     </div>
     <div class="w-full sm:w-44">
-        <label class="text-xs text-gray-500 mb-1 block">اللون</label>
-        <select name="color" class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm outline-none focus:border-primary-400">
+        <label for="tags_color_filter" class="text-xs text-gray-500 mb-1 block">اللون</label>
+        <select name="color" id="tags_color_filter" class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm outline-none focus:border-primary-400">
             <option value="" {% if not color_filter %}selected{% endif %}>الكل</option>
             {% for value, display in color_choices %}
             <option value="{{ value }}" {% if color_filter == value %}selected{% endif %}>{{ display }}</option>
@@ -90,11 +90,11 @@
                                  class="absolute left-0 mt-2 w-64 bg-white rounded-lg shadow-lg border border-gray-100 z-20 p-3 text-right">
                                 <form method="post" action="{% url 'staff:tag_edit' tag.pk %}{% if request.GET.urlencode %}?{{ request.GET.urlencode }}{% endif %}">
                                     {% csrf_token %}
-                                    <label class="text-xs text-gray-500 block mb-1">اسم الوسم</label>
-                                    <input type="text" name="name" value="{{ tag.name }}" maxlength="50" required
+                                    <label for="tag_name_{{ tag.pk }}" class="text-xs text-gray-500 block mb-1">اسم الوسم</label>
+                                    <input type="text" name="name" id="tag_name_{{ tag.pk }}" value="{{ tag.name }}" maxlength="50" required
                                            class="w-full border border-gray-300 rounded-lg px-2 py-1.5 text-sm mb-2">
-                                    <label class="text-xs text-gray-500 block mb-1">اللون</label>
-                                    <select name="color" class="w-full border border-gray-300 rounded-lg px-2 py-1.5 text-sm mb-3">
+                                    <label for="tag_color_{{ tag.pk }}" class="text-xs text-gray-500 block mb-1">اللون</label>
+                                    <select name="color" id="tag_color_{{ tag.pk }}" class="w-full border border-gray-300 rounded-lg px-2 py-1.5 text-sm mb-3">
                                         {% for value, display in color_choices %}
                                         <option value="{{ value }}" {% if tag.color == value %}selected{% endif %}>{{ display }}</option>
                                         {% endfor %}

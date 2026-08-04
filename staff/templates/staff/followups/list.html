@@ -20,15 +20,15 @@
 <!-- فلاتر -->
 <form method="GET" class="bg-white rounded-2xl shadow-sm p-4 mb-6 flex flex-wrap gap-3 items-end">
     <div class="w-full sm:w-48">
-        <label class="text-xs text-gray-500 mb-1 block">النطاق</label>
-        <select name="scope" class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm outline-none focus:border-primary-400">
+        <label for="fu_scope" class="text-xs text-gray-500 mb-1 block">النطاق</label>
+        <select name="scope" id="fu_scope" class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm outline-none focus:border-primary-400">
             <option value="mine" {% if scope == 'mine' %}selected{% endif %}>متابعاتي أنا</option>
             <option value="all" {% if scope == 'all' %}selected{% endif %}>كل المتابعات</option>
         </select>
     </div>
     <div class="w-full sm:w-48">
-        <label class="text-xs text-gray-500 mb-1 block">الحالة</label>
-        <select name="status" class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm outline-none focus:border-primary-400">
+        <label for="fu_status" class="text-xs text-gray-500 mb-1 block">الحالة</label>
+        <select name="status" id="fu_status" class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm outline-none focus:border-primary-400">
             <option value="open" {% if status == 'open' %}selected{% endif %}>مفتوحة</option>
             <option value="overdue" {% if status == 'overdue' %}selected{% endif %}>متأخرة فقط</option>
             <option value="done" {% if status == 'done' %}selected{% endif %}>منجزة</option>

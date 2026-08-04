@@ -31,6 +31,7 @@
 <form method="post" hx-push-url="false">
     {% csrf_token %}
     <div class="bg-white rounded-2xl shadow-sm overflow-hidden">
+        <div class="overflow-x-auto">
         <table class="w-full text-sm">
             <thead class="bg-gray-50 text-gray-600">
                 <tr>
@@ -88,6 +89,7 @@
                 {% endfor %}
             </tbody>
         </table>
+        </div>
     </div>
 
     {% if page_obj.paginator.num_pages > 1 %}

@@ -330,21 +330,21 @@
                     {% csrf_token %}
                     <h4 class="text-sm font-semibold text-gray-700">تسجيل دفعة</h4>
                     <div>
-                        <label class="block text-xs text-gray-500 mb-1">المبلغ</label>
-                        <input type="number" step="0.01" min="0.01" name="amount" required
+                        <label for="payment_amount" class="block text-xs text-gray-500 mb-1">المبلغ</label>
+                        <input type="number" step="0.01" min="0.01" name="amount" id="payment_amount" required
                                class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm outline-none focus:border-primary-400">
                     </div>
                     <div>
-                        <label class="block text-xs text-gray-500 mb-1">طريقة السداد</label>
-                        <select name="method" class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm outline-none focus:border-primary-400">
+                        <label for="payment_method" class="block text-xs text-gray-500 mb-1">طريقة السداد</label>
+                        <select name="method" id="payment_method" class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm outline-none focus:border-primary-400">
                             {% for value, label in payment_methods %}
                             <option value="{{ value }}">{{ label }}</option>
                             {% endfor %}
                         </select>
                     </div>
                     <div>
-                        <label class="block text-xs text-gray-500 mb-1">ملاحظة (اختياري)</label>
-                        <input type="text" name="note"
+                        <label for="payment_note" class="block text-xs text-gray-500 mb-1">ملاحظة (اختياري)</label>
+                        <input type="text" name="note" id="payment_note"
                                class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm outline-none focus:border-primary-400">
                     </div>
                     {% btn "تسجيل الدفعة" type="submit" variant="success" full_width=True %}
@@ -355,20 +355,20 @@
                     {% csrf_token %}
                     <h4 class="text-sm font-semibold text-gray-700">تسوية يدوية</h4>
                     <div>
-                        <label class="block text-xs text-gray-500 mb-1">المبلغ</label>
-                        <input type="number" step="0.01" min="0.01" name="amount" required
+                        <label for="adjustment_amount" class="block text-xs text-gray-500 mb-1">المبلغ</label>
+                        <input type="number" step="0.01" min="0.01" name="amount" id="adjustment_amount" required
                                class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm outline-none focus:border-primary-400">
                     </div>
                     <div>
-                        <label class="block text-xs text-gray-500 mb-1">الاتجاه</label>
-                        <select name="direction" class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm outline-none focus:border-primary-400">
+                        <label for="adjustment_direction" class="block text-xs text-gray-500 mb-1">الاتجاه</label>
+                        <select name="direction" id="adjustment_direction" class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm outline-none focus:border-primary-400">
                             <option value="increase">زيادة المديونية (عليه)</option>
                             <option value="decrease">تقليل المديونية (لصالحه)</option>
                         </select>
                     </div>
                     <div>
-                        <label class="block text-xs text-gray-500 mb-1">السبب <span class="text-red-500">*</span></label>
-                        <input type="text" name="note" required
+                        <label for="adjustment_note" class="block text-xs text-gray-500 mb-1">السبب <span class="text-red-500">*</span></label>
+                        <input type="text" name="note" id="adjustment_note" required
                                class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm outline-none focus:border-primary-400">
                     </div>
                     <button type="submit" class="w-full bg-orange-500 hover:bg-orange-600 text-white text-sm py-2 rounded-lg">

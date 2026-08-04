@@ -26,47 +26,54 @@
         {% csrf_token %}
 
         <div>
-            <label class="text-sm font-medium text-gray-700 mb-1 block">اسم المستخدم</label>
+            <label for="{{ form.username.id_for_label }}" class="text-sm font-medium text-gray-700 mb-1 block">اسم المستخدم</label>
             {{ form.username }}
             {% if form.username.errors %}<p class="text-xs text-red-600 mt-1">{{ form.username.errors|join:", " }}</p>{% endif %}
         </div>
 
         <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
-                <label class="text-sm font-medium text-gray-700 mb-1 block">الاسم الأول</label>
+                <label for="{{ form.first_name.id_for_label }}" class="text-sm font-medium text-gray-700 mb-1 block">الاسم الأول</label>
                 {{ form.first_name }}
             </div>
             <div>
-                <label class="text-sm font-medium text-gray-700 mb-1 block">الاسم الأخير</label>
+                <label for="{{ form.last_name.id_for_label }}" class="text-sm font-medium text-gray-700 mb-1 block">الاسم الأخير</label>
                 {{ form.last_name }}
             </div>
         </div>
 
         <div>
-            <label class="text-sm font-medium text-gray-700 mb-1 block">البريد الإلكتروني</label>
+            <label for="{{ form.email.id_for_label }}" class="text-sm font-medium text-gray-700 mb-1 block">البريد الإلكتروني</label>
             {{ form.email }}
         </div>
 
         {% if is_new %}
         <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
-                <label class="text-sm font-medium text-gray-700 mb-1 block">كلمة المرور</label>
-                {{ form.password1 }}
+                <label for="{{ form.password1.id_for_label }}" class="text-sm font-medium text-gray-700 mb-1 block">كلمة المرور</label>
+                <div class="relative" x-data="{ show: false }">
+                    {{ form.password1 }}
+                    {% include 'partials/password_toggle_button.html' %}
+                </div>
                 {% if form.password1.errors %}<p class="text-xs text-red-600 mt-1">{{ form.password1.errors|join:", " }}</p>{% endif %}
             </div>
             <div>
-                <label class="text-sm font-medium text-gray-700 mb-1 block">تأكيد كلمة المرور</label>
-                {{ form.password2 }}
+                <label for="{{ form.password2.id_for_label }}" class="text-sm font-medium text-gray-700 mb-1 block">تأكيد كلمة المرور</label>
+                <div class="relative" x-data="{ show: false }">
+                    {{ form.password2 }}
+                    {% include 'partials/password_toggle_button.html' %}
+                </div>
                 {% if form.password2.errors %}<p class="text-xs text-red-600 mt-1">{{ form.password2.errors|join:", " }}</p>{% endif %}
             </div>
         </div>
+
         {% endif %}
 
         <hr class="my-2">
         <h2 class="text-sm font-semibold text-gray-700">الدور والصلاحيات</h2>
 
         <div>
-            <label class="text-sm font-medium text-gray-700 mb-1 block">الدور الوظيفي</label>
+            <label for="{{ form.role.id_for_label }}" class="text-sm font-medium text-gray-700 mb-1 block">الدور الوظيفي</label>
             {{ form.role }}
         </div>
 

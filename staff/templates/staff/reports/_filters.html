@@ -12,8 +12,8 @@
       x-data="{ period: '{{ selected_period }}' }">
     <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-6 gap-3">
         <div>
-            <label class="text-xs font-medium text-gray-500 mb-1 block">الفترة الزمنية</label>
-            <select name="period" x-model="period"
+            <label for="filter_period" class="text-xs font-medium text-gray-500 mb-1 block">الفترة الزمنية</label>
+            <select name="period" id="filter_period" x-model="period"
                     class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm outline-none focus:border-primary-400">
                 {% for key, label in period_choices %}
                 <option value="{{ key }}" {% if key == selected_period %}selected{% endif %}>{{ label }}</option>
@@ -21,18 +21,18 @@
             </select>
         </div>
         <div x-show="period === 'custom'" x-cloak>
-            <label class="text-xs font-medium text-gray-500 mb-1 block">من تاريخ</label>
-            <input type="date" name="date_from" value="{{ date_from }}"
+            <label for="filter_date_from" class="text-xs font-medium text-gray-500 mb-1 block">من تاريخ</label>
+            <input type="date" name="date_from" id="filter_date_from" value="{{ date_from }}"
                    class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm outline-none focus:border-primary-400">
         </div>
         <div x-show="period === 'custom'" x-cloak>
-            <label class="text-xs font-medium text-gray-500 mb-1 block">إلى تاريخ</label>
-            <input type="date" name="date_to" value="{{ date_to }}"
+            <label for="filter_date_to" class="text-xs font-medium text-gray-500 mb-1 block">إلى تاريخ</label>
+            <input type="date" name="date_to" id="filter_date_to" value="{{ date_to }}"
                    class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm outline-none focus:border-primary-400">
         </div>
         <div>
-            <label class="text-xs font-medium text-gray-500 mb-1 block">الموظف</label>
-            <select name="employee"
+            <label for="filter_employee" class="text-xs font-medium text-gray-500 mb-1 block">الموظف</label>
+            <select name="employee" id="filter_employee"
                     class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm outline-none focus:border-primary-400">
                 <option value="">كل الموظفين</option>
                 {% for emp in employees %}
@@ -41,8 +41,8 @@
             </select>
         </div>
         <div>
-            <label class="text-xs font-medium text-gray-500 mb-1 block">العميل</label>
-            <select name="client"
+            <label for="filter_client" class="text-xs font-medium text-gray-500 mb-1 block">العميل</label>
+            <select name="client" id="filter_client"
                     class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm outline-none focus:border-primary-400">
                 <option value="">كل العملاء</option>
                 {% for c in clients %}
@@ -51,8 +51,8 @@
             </select>
         </div>
         <div>
-            <label class="text-xs font-medium text-gray-500 mb-1 block">القسم</label>
-            <select name="category"
+            <label for="filter_category" class="text-xs font-medium text-gray-500 mb-1 block">القسم</label>
+            <select name="category" id="filter_category"
                     class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm outline-none focus:border-primary-400">
                 <option value="">كل الأقسام</option>
                 {% for cat in categories %}
@@ -61,8 +61,8 @@
             </select>
         </div>
         <div class="sm:col-span-2 lg:col-span-2">
-            <label class="text-xs font-medium text-gray-500 mb-1 block">المنتج</label>
-            <select name="product"
+            <label for="filter_product" class="text-xs font-medium text-gray-500 mb-1 block">المنتج</label>
+            <select name="product" id="filter_product"
                     class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm outline-none focus:border-primary-400">
                 <option value="">كل المنتجات</option>
                 {% for p in products %}

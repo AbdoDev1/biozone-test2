@@ -270,8 +270,11 @@
                 <input type="hidden" name="form" value="password">
                 {% for field in password_form %}
                 <div>
-                    <label class="block text-xs text-gray-500 mb-1">{{ field.label }}</label>
-                    {{ field }}
+                    <label for="{{ field.id_for_label }}" class="block text-xs text-gray-500 mb-1">{{ field.label }}</label>
+                    <div class="relative" x-data="{ show: false }">
+                        {{ field }}
+                        {% include 'partials/password_toggle_button.html' %}
+                    </div>
                     {% if field.errors %}
                     <p class="text-red-500 text-xs mt-1">{{ field.errors.0 }}</p>
                     {% endif %}

@@ -6,6 +6,9 @@ INPUT_CLASSES = (
     'w-full border border-gray-300 rounded-lg px-4 py-2 text-sm '
     'focus:outline-none focus:ring-2 focus:ring-blue-500'
 )
+# نفس الكلاسات فوق + مساحة إضافية على جهة النهاية (يمين في RTL) عشان
+# أيقونة "إظهار كلمة المرور" متتلخبطش مع النص وقت الكتابة.
+PASSWORD_INPUT_CLASSES = INPUT_CLASSES + ' pe-10'
 
 
 class ClientPasswordChangeForm(PasswordChangeForm):
@@ -16,15 +19,29 @@ class ClientPasswordChangeForm(PasswordChangeForm):
     """
     old_password = forms.CharField(
         label='كلمة المرور الحالية',
-        widget=forms.PasswordInput(attrs={'class': INPUT_CLASSES}),
+        widget=forms.PasswordInput(attrs={
+            'class': PASSWORD_INPUT_CLASSES,
+            # x-bind:type بيتقرا كـ خاصية HTML عادية من Django (متعرفش
+            # إنها Alpine)، وAlpine بيلقطها من الـ DOM بعد ما الصفحة
+            # تحمّل. لازم القالب اللي بيعرض الحقل ده يكون جواه عنصر أب
+            # فيه x-data="{ show: false }" عشان show تتعرف. راجع
+            # dashboard.html للف اللي بيلف على password_form.
+            'x-bind:type': "show ? 'text' : 'password'",
+        }),
     )
     new_password1 = forms.CharField(
         label='كلمة المرور الجديدة',
-        widget=forms.PasswordInput(attrs={'class': INPUT_CLASSES}),
+        widget=forms.PasswordInput(attrs={
+            'class': PASSWORD_INPUT_CLASSES,
+            'x-bind:type': "show ? 'text' : 'password'",
+        }),
     )
     new_password2 = forms.CharField(
         label='تأكيد كلمة المرور الجديدة',
-        widget=forms.PasswordInput(attrs={'class': INPUT_CLASSES}),
+        widget=forms.PasswordInput(attrs={
+            'class': PASSWORD_INPUT_CLASSES,
+            'x-bind:type': "show ? 'text' : 'password'",
+        }),
     )
 
 

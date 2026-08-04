@@ -39,7 +39,7 @@
             <form method="post" action="{% url 'tags:tag_add' app_label model_name object_id %}">
                 {% csrf_token %}
                 <input type="hidden" name="next" value="{{ request.get_full_path }}">
-                <label class="text-xs text-gray-500 block mb-1">اسم الوسم (موجود أو جديد)</label>
+                <label for="tag-name-{{ app_label }}-{{ model_name }}-{{ object_id }}" class="text-xs text-gray-500 block mb-1">اسم الوسم (موجود أو جديد)</label>
                 {% if available_tags %}
                 <div class="flex flex-wrap gap-1 mb-2">
                     {% for t in available_tags %}
@@ -51,6 +51,7 @@
                 </div>
                 {% endif %}
                 <input list="existing-tags-{{ app_label }}-{{ model_name }}-{{ object_id }}" name="name"
+                       id="tag-name-{{ app_label }}-{{ model_name }}-{{ object_id }}"
                        x-model="name"
                        placeholder="مثال: عاجل" maxlength="50" required
                        class="w-full border border-gray-300 rounded-lg px-2 py-1.5 text-sm mb-2">
@@ -67,8 +68,8 @@
 
                 <!-- الوسم ده جديد: محتاج نحدد لونه -->
                 <div x-show="!existingColor" class="mb-3">
-                    <label class="text-xs text-gray-500 block mb-1">اللون (وسم جديد)</label>
-                    <select name="color" class="w-full border border-gray-300 rounded-lg px-2 py-1.5 text-sm">
+                    <label for="tag-color-{{ app_label }}-{{ model_name }}-{{ object_id }}" class="text-xs text-gray-500 block mb-1">اللون (وسم جديد)</label>
+                    <select name="color" id="tag-color-{{ app_label }}-{{ model_name }}-{{ object_id }}" class="w-full border border-gray-300 rounded-lg px-2 py-1.5 text-sm">
                         {% for value, display in color_choices %}
                         <option value="{{ value }}">{{ display }}</option>
                         {% endfor %}

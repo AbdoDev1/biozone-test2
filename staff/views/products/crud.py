@@ -26,6 +26,7 @@ from staff.utils import list_qs, url_with_qs, redirect_with_qs
 from django.contrib.contenttypes.models import ContentType
 from activity.models import ActivityLog
 from activity.services import log_activity, diff_summary, delete_activity_logs_for
+from followups.services import delete_followups_for
 from tags.services import tags_for, tags_for_many
 
 # الحقول اللي بتتراقب في تايم لاين النشاط (مرحلة 2) — نفس الحقول الأساسية
@@ -619,6 +620,7 @@ def product_delete(request, pk):
             messages.warning(request, f'المنتج "{name}" له مخزون — تم تعطيله بدل الحذف.')
         else:
             delete_activity_logs_for(product)
+            delete_followups_for(product)
             product.delete()
             messages.success(request, f'تم حذف المنتج "{name}".')
         return redirect_with_qs(request, 'staff:product_list')

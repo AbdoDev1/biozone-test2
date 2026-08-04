@@ -7,11 +7,11 @@
           class="border border-gray-100 rounded-xl p-4">
         {% csrf_token %}
         <input type="hidden" name="next" value="{{ request.get_full_path }}">
-        <label class="block text-sm font-semibold text-gray-700 mb-2">جدولة متابعة جديدة</label>
+        <p class="block text-sm font-semibold text-gray-700 mb-2">جدولة متابعة جديدة</p>
         <div class="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-3">
             <div>
-                <label class="text-xs text-gray-500 block mb-1">نوع المتابعة</label>
-                <select name="activity_type" required
+                <label for="fu_activity_type" class="text-xs text-gray-500 block mb-1">نوع المتابعة</label>
+                <select name="activity_type" id="fu_activity_type" required
                         class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm outline-none focus:border-primary-400">
                     {% for value, display in activity_type_choices %}
                     <option value="{{ value }}">{{ display }}</option>
@@ -19,13 +19,13 @@
                 </select>
             </div>
             <div>
-                <label class="text-xs text-gray-500 block mb-1">تاريخ الاستحقاق</label>
-                <input type="date" name="due_date" required
+                <label for="fu_due_date" class="text-xs text-gray-500 block mb-1">تاريخ الاستحقاق</label>
+                <input type="date" name="due_date" id="fu_due_date" required
                        class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm outline-none focus:border-primary-400">
             </div>
             <div>
-                <label class="text-xs text-gray-500 block mb-1">الموظف المسؤول</label>
-                <select name="assigned_to" required
+                <label for="fu_assigned_to" class="text-xs text-gray-500 block mb-1">الموظف المسؤول</label>
+                <select name="assigned_to" id="fu_assigned_to" required
                         class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm outline-none focus:border-primary-400">
                     <option value="">اختر موظفًا...</option>
                     {% for emp in employees %}
@@ -34,8 +34,8 @@
                 </select>
             </div>
         </div>
-        <label class="text-xs text-gray-500 block mb-1">تفاصيل (اختياري)</label>
-        <textarea name="note" rows="2" maxlength="255" placeholder="مثال: متابعة سداد باقي فاتورة شهر يوليو"
+        <label for="fu_note" class="text-xs text-gray-500 block mb-1">تفاصيل (اختياري)</label>
+        <textarea name="note" id="fu_note" rows="2" maxlength="255" placeholder="مثال: متابعة سداد باقي فاتورة شهر يوليو"
                   class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm outline-none focus:border-primary-400"></textarea>
         <button type="submit"
                 class="mt-3 bg-primary-600 hover:bg-primary-700 text-white text-sm font-semibold px-5 py-2 rounded-lg transition">

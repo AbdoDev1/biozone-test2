@@ -42,8 +42,20 @@ class EmployeeForm(forms.ModelForm):
 
 
 class EmployeeCreateForm(EmployeeForm):
-    password1 = forms.CharField(label='كلمة المرور', widget=forms.PasswordInput(attrs={'class': _TEXT_INPUT_CLASS}))
-    password2 = forms.CharField(label='تأكيد كلمة المرور', widget=forms.PasswordInput(attrs={'class': _TEXT_INPUT_CLASS}))
+    password1 = forms.CharField(
+        label='كلمة المرور',
+        widget=forms.PasswordInput(attrs={
+            'class': _TEXT_INPUT_CLASS + ' pe-10',
+            'x-bind:type': "show ? 'text' : 'password'",
+        }),
+    )
+    password2 = forms.CharField(
+        label='تأكيد كلمة المرور',
+        widget=forms.PasswordInput(attrs={
+            'class': _TEXT_INPUT_CLASS + ' pe-10',
+            'x-bind:type': "show ? 'text' : 'password'",
+        }),
+    )
 
     def clean(self):
         cleaned = super().clean()
