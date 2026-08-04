@@ -79,10 +79,7 @@
 {% endif %}
 
 <form method="POST" action="{% url 'staff:import_products_confirm' %}"
-      x-data="{ submitting: false }" @submit="submitting = true"
-      x-init="window.addEventListener('beforeunload', (e) => {
-          if (submitting) { e.preventDefault(); e.returnValue = ''; }
-      })">
+      x-data="{ submitting: false }" @submit="submitting = true">
     {% csrf_token %}
 
     <!-- شريط التابات -->

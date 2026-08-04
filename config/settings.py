@@ -157,13 +157,17 @@ DATABASES = {
 REDIS_URL = config('REDIS_URL', default='redis://redis:6379/1')
 CACHES = {
     'default': {
-        'BACKEND': 'django.core.cache.backends.locmem.LocMemCache',
+        'BACKEND': 'django.core.cache.backends.redis.RedisCache',
+        'LOCATION': REDIS_URL,
     }
 }
 
-# السيشن كمان بيتخزن في Redis بدل الداتابيز، عشان يبقى فيه اعتماد حقيقي
-# وملموس على Redis وانت بتجرب/تختبر (مش مجرد كونتينر شغال من غير استخدام).
-SESSION_ENGINE = 'django.contrib.sessions.backends.db'
+# السيشن بتتخزن في Redis (عبر الكاش أعلاه) بدل الداتابيز مباشرة —
+# cached_db بتحاول تقرا من الكاش الأول (سريع)، ولو مش موجودة (خرجت من
+# الكاش بأي سبب) بترجع تقرا من الداتابيز كـ fallback بدل ما تضيع السيشن
+# خالص، عكس backend الكاش الصرف (.cache) اللي كان ممكن يخسر السيشن نهائي
+# لو الكاش اتصفّر.
+SESSION_ENGINE = 'django.contrib.sessions.backends.cached_db'
 SESSION_CACHE_ALIAS = 'default'
 
 # قناة الإشعارات اللحظية (Django Channels) — بتستخدم Redis كـ pub/sub بين

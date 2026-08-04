@@ -52,10 +52,27 @@ def find_similar_products(name_key, candidates, threshold=0.82, limit=3):
     بيدوّر بين قائمة منتجات (candidates — أي iterable فيه .name_key و .pk)
     عن أقرب الأسماء لـ name_key، ويرجّع أفضل `limit` نتيجة بنسبة تشابه
     >= threshold، مرتبة من الأعلى تشابهًا. مش بيدمج تلقائي — بس بيقترح.
+
+    فلترة أولية رخيصة قبل SequenceMatcher (المكلّف): نسبة SequenceMatcher.ratio
+    محكومة رياضيًا بأطوال النصين (ratio <= 2*min(len)/(len_a+len_b))، فلو
+    طول اسمين مختلف جدًا عن بعض، مستحيل يوصلوا threshold حتى لو كل حرف
+    فيهم متطابق. تجاهل المرشحين دول بدون حتى استدعاء similarity() بيقلل
+    عدد المقارنات الفعلية بشكل كبير مع كتالوجات كبيرة — من غير ما يغيّر
+    النتيجة النهائية خالص (نفس المرشحين اللي كانوا هيرجعوا زي ما هم).
     """
+    if not name_key:
+        return []
+    name_len = len(name_key)
     scored = []
     for product in candidates:
-        ratio = similarity(name_key, product.name_key)
+        other_key = product.name_key
+        if not other_key:
+            continue
+        other_len = len(other_key)
+        max_possible_ratio = 2 * min(name_len, other_len) / (name_len + other_len)
+        if max_possible_ratio < threshold:
+            continue
+        ratio = similarity(name_key, other_key)
         if ratio >= threshold:
             scored.append((product, round(ratio * 100)))
     scored.sort(key=lambda item: -item[1])
