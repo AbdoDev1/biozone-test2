@@ -32,7 +32,10 @@ from tags.services import tags_for, tags_for_many
 # الحقول اللي بتتراقب في تايم لاين النشاط (مرحلة 2) — نفس الحقول الأساسية
 # الظاهرة في تاب "بيانات المنتج"، مش كل حقول الموديل (مفيش داعي نسجّل
 # تغييرات على حقول داخلية زي updated_at).
-PRODUCT_TRACKED_FIELDS = ['name_ar', 'name_en', 'category', 'barcode', 'manufacturer', 'size', 'is_active']
+PRODUCT_TRACKED_FIELDS = [
+    'name_ar', 'name_en', 'category', 'code', 'barcode', 'barcode_2', 'barcode_3',
+    'manufacturer', 'size', 'is_active',
+]
 
 STAFF_LIST_PAGE_SIZE = 30
 
@@ -84,6 +87,8 @@ def product_list(request):
             | Q(name_key__icontains=normalized_q)
             | Q(name_en__icontains=search_q)
             | Q(barcode__iexact=search_q)
+            | Q(barcode_2__iexact=search_q)
+            | Q(barcode_3__iexact=search_q)
             | Q(code__iexact=search_q)
         )
     if status_filter == 'active':

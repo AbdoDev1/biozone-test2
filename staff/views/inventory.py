@@ -34,6 +34,8 @@ def inventory_list(request):
             | Q(product__name_en__icontains=search_q)
             | Q(product__code__icontains=search_q)
             | Q(product__barcode__iexact=search_q)
+            | Q(product__barcode_2__iexact=search_q)
+            | Q(product__barcode_3__iexact=search_q)
         )
 
     # فلتر "المخزون المنخفض بس" — ده اللي بتودّي له لوحة التحكم برابط

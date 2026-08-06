@@ -50,12 +50,12 @@ def commit_product(row_data, target_pk, user, account_types_by_pk, category_cach
         product.name_ar = row_data['name_ar']
         if category:
             product.category = category
-        # الباركود بيتحدّث بس لو الملف فيه قيمة فعلية للصف ده (بعد ما اتفلتر
-        # من أي تعارض في parsing.py) — عمود فاضي وقت التحديث معناه "سيب
-        # الباركود المسجّل زي ما هو"، مش "امسحه"، عكس الاسم/القسم اللي
-        # بيتكتبوا دايمًا زي ما هما في الملف.
-        if row_data.get('barcode'):
-            product.barcode = row_data['barcode']
+        # الباركود مش موجود في ملف الإكسل خالص (راجع parsing.py) — فمش
+        # بيتلمس هنا أبدًا، سواء عند إضافة صنف جديد أو تحديث صنف موجود.
+        # لو الصنف الجديد جاله كود يدوي (row_data['code'])، Product.save()
+        # بيحترمه ومش بيولّد كود تلقائي بدلًا منه.
+        if row_data.get('code'):
+            product.code = row_data['code']
         product.save()
         created = False
     else:
@@ -63,7 +63,7 @@ def commit_product(row_data, target_pk, user, account_types_by_pk, category_cach
             raise ValueError(f'صنف جديد "{row_data["name_ar"]}" لازم يكون له قسم (category_slug)')
         product = Product.objects.create(
             name_ar=row_data['name_ar'], category=category, is_active=True,
-            barcode=row_data.get('barcode') or None,
+            code=row_data.get('code') or '',
         )
         created = True
 

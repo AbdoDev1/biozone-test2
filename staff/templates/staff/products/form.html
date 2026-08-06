@@ -77,17 +77,15 @@
         <h2 class="font-bold text-gray-700 mb-4 pb-2 border-b border-gray-100">بيانات المنتج</h2>
         <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
 
-            <div class="md:col-span-2">
-                <label class="text-sm font-medium text-gray-700 mb-1 block">كود الصنف</label>
-                {% if is_edit %}
-                <div class="w-full border border-gray-200 bg-gray-50 rounded-lg px-3 py-2 text-sm text-gray-700 font-mono flex items-center justify-between">
-                    <span>{{ product.code }}</span>
-                    <span class="text-[11px] text-gray-400">للاستخدام في ملف Excel عند التحديث</span>
-                </div>
+            <div>
+                <label for="{{ form.code.id_for_label }}" class="text-sm font-medium text-gray-700 mb-1 block">{{ form.code.label }}</label>
+                {{ form.code }}
+                {% if form.code.errors %}
+                    <p class="text-red-500 text-xs mt-1">{{ form.code.errors.0 }}</p>
                 {% else %}
-                <div class="w-full border border-dashed border-gray-200 bg-gray-50 rounded-lg px-3 py-2 text-xs text-gray-400">
-                    هيتولّد تلقائيًا (مثال: BZ-00001) بعد ما تحفظ المنتج لأول مرة
-                </div>
+                    <p class="text-[11px] text-gray-400 mt-1">
+                        {% if is_edit %}هو الحقل المعتمد للتفرقة بين الأصناف واستيراد/تصدير Excel.{% else %}اتركه فارغًا ليتولّد تلقائيًا (مثال: BZ-00001) عند الحفظ.{% endif %}
+                    </p>
                 {% endif %}
             </div>
 
@@ -117,16 +115,35 @@
             </div>
 
             <div>
-                <label for="{{ form.barcode.id_for_label }}" class="text-sm font-medium text-gray-700 mb-1 block">{{ form.barcode.label }}</label>
-                {{ form.barcode }}
-                {% if form.barcode.errors %}
-                    <p class="text-red-500 text-xs mt-1">{{ form.barcode.errors.0 }}</p>
-                {% endif %}
-            </div>
-
-            <div>
                 <label for="{{ form.manufacturer.id_for_label }}" class="text-sm font-medium text-gray-700 mb-1 block">{{ form.manufacturer.label }}</label>
                 {{ form.manufacturer }}
+            </div>
+
+            <div class="md:col-span-2">
+                <label class="text-sm font-medium text-gray-700 mb-1 block">الباركود</label>
+                <p class="text-[11px] text-gray-400 mb-2">
+                    اختياري بالكامل — مش شرط لحفظ المنتج، ومش موجود في ملف Excel. حد أقصى ٣ باركودات لنفس المنتج (مفيدة لو نفس الصنف عليه أكتر من باركود فعلي)، وأي باركود متكرر مع منتج تاني هيترفض برسالة خطأ.
+                </p>
+                <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                    <div>
+                        {{ form.barcode }}
+                        {% if form.barcode.errors %}
+                            <p class="text-red-500 text-xs mt-1">{{ form.barcode.errors.0 }}</p>
+                        {% endif %}
+                    </div>
+                    <div>
+                        {{ form.barcode_2 }}
+                        {% if form.barcode_2.errors %}
+                            <p class="text-red-500 text-xs mt-1">{{ form.barcode_2.errors.0 }}</p>
+                        {% endif %}
+                    </div>
+                    <div>
+                        {{ form.barcode_3 }}
+                        {% if form.barcode_3.errors %}
+                            <p class="text-red-500 text-xs mt-1">{{ form.barcode_3.errors.0 }}</p>
+                        {% endif %}
+                    </div>
+                </div>
             </div>
 
             <div>

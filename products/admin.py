@@ -25,5 +25,5 @@ class ProductUnitInline(admin.TabularInline):
 class ProductAdmin(admin.ModelAdmin):
     list_display = ('display_name', 'code', 'barcode', 'category', 'manufacturer', 'is_active', 'created_at')
     list_filter = ('category', 'is_active')
-    search_fields = ('name_ar', 'name_en', 'manufacturer', 'code', 'barcode')
+    search_fields = ('name_ar', 'name_en', 'manufacturer', 'code', 'barcode', 'barcode_2', 'barcode_3')
     inlines = [ProductUnitInline]

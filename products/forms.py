@@ -45,7 +45,10 @@ class CategoryForm(forms.ModelForm):
 class ProductForm(forms.ModelForm):
     class Meta:
         model = Product
-        fields = ['category', 'name_ar', 'name_en', 'barcode', 'manufacturer', 'size', 'description', 'image', 'is_active']
+        fields = [
+            'category', 'name_ar', 'name_en', 'code', 'barcode', 'barcode_2', 'barcode_3',
+            'manufacturer', 'size', 'description', 'image', 'is_active',
+        ]
         widgets = {
             'category': forms.Select(attrs={
                 'class': 'w-full border border-gray-200 rounded-lg px-3 py-2 text-sm outline-none focus:border-blue-400'
@@ -58,9 +61,24 @@ class ProductForm(forms.ModelForm):
                 'class': 'w-full border border-gray-200 rounded-lg px-3 py-2 text-sm outline-none focus:border-blue-400',
                 'placeholder': 'مثال: L (اتركه فارغًا لو لا ينطبق)'
             }),
+            'code': forms.TextInput(attrs={
+                'class': 'w-full border border-gray-200 rounded-lg px-3 py-2 text-sm outline-none focus:border-blue-400 font-mono',
+                'placeholder': 'اتركه فارغًا ليتولّد تلقائيًا (BZ-00001)',
+                'autocomplete': 'off',
+            }),
             'barcode': forms.TextInput(attrs={
                 'class': 'w-full border border-gray-200 rounded-lg px-3 py-2 text-sm outline-none focus:border-blue-400 font-mono',
                 'placeholder': 'امسحه بالاسكانر أو اكتبه يدويًا (اختياري)',
+                'autocomplete': 'off',
+            }),
+            'barcode_2': forms.TextInput(attrs={
+                'class': 'w-full border border-gray-200 rounded-lg px-3 py-2 text-sm outline-none focus:border-blue-400 font-mono',
+                'placeholder': 'باركود إضافي (اختياري)',
+                'autocomplete': 'off',
+            }),
+            'barcode_3': forms.TextInput(attrs={
+                'class': 'w-full border border-gray-200 rounded-lg px-3 py-2 text-sm outline-none focus:border-blue-400 font-mono',
+                'placeholder': 'باركود إضافي (اختياري)',
                 'autocomplete': 'off',
             }),
             'name_en': forms.TextInput(attrs={
@@ -84,7 +102,10 @@ class ProductForm(forms.ModelForm):
             'category': 'القسم',
             'name_ar': 'الاسم بالعربي',
             'name_en': 'الاسم بالإنجليزي',
+            'code': 'الكود',
             'barcode': 'الباركود',
+            'barcode_2': 'باركود إضافي (٢)',
+            'barcode_3': 'باركود إضافي (٣)',
             'manufacturer': 'الشركة المصنعة',
             'size': 'المقاس (لبس/هدوم إن وجد)',
             'description': 'الوصف',

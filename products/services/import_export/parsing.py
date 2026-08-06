@@ -53,10 +53,10 @@ def parse_unit_row(row_num, row, idx, account_types_by_col):
     name_ar = cell_str('name_ar')
     category_slug = cell_str('category_slug')
     unit_name = cell_str('unit_name')
+    # code هو الحقل الوحيد المعتمد للتفرقة بين الأصناف وقت الاستيراد —
+    # الباركود مش موجود في شيت الإكسل خالص (لا قراءة ولا كتابة)، بيتسجّل
+    # من صفحة المنتج نفسها فقط. راجع Product.BARCODE_FIELDS في models.py.
     code = cell_str('code')
-    # الباركود عمود اختياري (مش ضمن REQUIRED_IMPORT_HEADERS) — لو الملف
-    # مفيهوش العمود ده خالص، cell() بترجع None عادي والصنف بيتحفظ من غيره.
-    barcode = cell_str('barcode')
 
     raw_qty_in_small = cell('qty_in_small')
     raw_unit_price = cell('unit_price')
@@ -102,7 +102,6 @@ def parse_unit_row(row_num, row, idx, account_types_by_col):
     return {
         'row_num': row_num,
         'code': code,
-        'barcode': barcode,
         'category_slug': category_slug,
         'name_ar': name_ar,
         'unit_name': unit_name,
@@ -147,12 +146,10 @@ def group_unit_rows(unit_rows):
         discount_source = small or large
         category_slug = next((r['category_slug'] for r in rows if r['category_slug']), '')
         code = next((r['code'] for r in rows if r['code']), '')
-        barcode = next((r.get('barcode') for r in rows if r.get('barcode')), '')
         products_data.append({
             'row_num': rows[0]['row_num'],
             'row_nums': [r['row_num'] for r in rows],
             'code': code,
-            'barcode': barcode,
             'category_slug': category_slug,
             'name_ar': rows[0]['name_ar'],
             'small': small,
@@ -214,10 +211,9 @@ def read_import_workbook(excel_file, max_rows):
             discount_col_name(at): at for at in account_types if discount_col_name(at) in idx
         }
 
-        all_products = list(Product.objects.only('id', 'name_ar', 'code', 'name_key', 'barcode'))
+        all_products = list(Product.objects.only('id', 'name_ar', 'code', 'name_key'))
         existing_by_code = {p.code: p for p in all_products if p.code}
         existing_by_name_key = {p.name_key: p for p in all_products if p.name_key}
-        existing_by_barcode = {p.barcode: p for p in all_products if p.barcode}
 
         unit_rows, errors = [], []
         for row_num, row in enumerate(ws.iter_rows(min_row=2, values_only=True), start=2):
@@ -256,31 +252,5 @@ def read_import_workbook(excel_file, max_rows):
             errors.append(f'سطر {r["row_num"]}: صنف جديد "{r["name_ar"]}" لازم يكون له قسم (category_slug)')
             continue
         valid_rows.append(r)
-
-    # الباركود عمود unique في الموديل — لو سبناه يتعارض (مع صنف تاني في
-    # القاعدة، أو حتى مع صف تاني في نفس الملف) هيبوّظ الحفظ بـ IntegrityError
-    # وترجع الدفعة *كلها* من غير ما يتحفظ أي حاجة (زي أي استثناء تاني في
-    # commit_import_batch). أفضل من كده نكتشف التعارض هنا الأول ونتجاهل
-    # الباركود بس لهذا الصف (الصنف نفسه بيتحفظ عادي من غيره) مع تحذير واضح،
-    # بدل ما نخسر الدفعة كلها بسبب باركود واحد غلط.
-    seen_barcodes_in_file = {}
-    for r in valid_rows:
-        barcode = r.get('barcode')
-        if not barcode:
-            continue
-        conflict = existing_by_barcode.get(barcode)
-        if conflict and conflict.pk != r.get('match_pk'):
-            errors.append(
-                f'سطر {r["row_num"]}: الباركود "{barcode}" مستخدم بالفعل لصنف آخر '
-                f'("{conflict.name_ar}") — تم حفظ الصنف من غير هذا الباركود.'
-            )
-            r['barcode'] = ''
-        elif barcode in seen_barcodes_in_file:
-            errors.append(
-                f'سطر {r["row_num"]}: الباركود "{barcode}" مكرر أكتر من مرة في نفس الملف — تم تجاهله.'
-            )
-            r['barcode'] = ''
-        else:
-            seen_barcodes_in_file[barcode] = r['row_num']
 
     return valid_rows, errors, None

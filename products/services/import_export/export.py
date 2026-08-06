@@ -24,6 +24,9 @@ def build_products_export_workbook(products):
     الحالية لكل نوع حساب، عشان لو رفعت الملف تاني بعد التعديل، النظام
     يتعرّف على كل صنف بكوده ويحدّثه بدل ما يضيفه كصنف جديد. عمود quantity
     بيتصدّر دايمًا صفر (كمية "وارد" هتتضاف فوق الرصيد الحالي، مش الرصيد نفسه).
+    ملحوظة: الباركود مش موجود هنا خالص (لا تصدير ولا استيراد) — هو حقل
+    ثانوي بيتسجّل من صفحة المنتج نفسها فقط (بالاسكانر أو يدويًا)، والكود
+    (code) هو المعتمد وحده في التفرقة بين الأصناف وقت الاستيراد.
     """
     account_types = list(AccountType.objects.all().order_by('name'))
 
@@ -31,7 +34,7 @@ def build_products_export_workbook(products):
     ws = wb.active
     ws.title = 'المنتجات'
     headers = [
-        'code', 'barcode', 'category_slug', 'name_ar', 'unit_name',
+        'code', 'category_slug', 'name_ar', 'unit_name',
         'qty_in_small', 'unit_price', 'quantity',
     ] + [discount_col_name(at) for at in account_types]
     ws.append(headers)
@@ -51,12 +54,12 @@ def build_products_export_workbook(products):
 
         if small:
             ws.append([
-                product.code, product.barcode or '', product.category.slug, product.name_ar, small.name,
+                product.code, product.category.slug, product.name_ar, small.name,
                 1, float(small.unit_price), 0,
             ] + discount_cells)
         if large:
             ws.append([
-                product.code, product.barcode or '', product.category.slug, product.name_ar, large.name,
+                product.code, product.category.slug, product.name_ar, large.name,
                 large.qty_in_small, float(large.unit_price), 0,
             ] + (blank_discounts if small else discount_cells))
 
@@ -66,7 +69,8 @@ def build_products_export_workbook(products):
 
 
 def build_import_template_workbook():
-    """قالب فارغ (بأمثلة توضيحية) لأعمدة الاستيراد — نفس أعمدة التصدير بالظبط."""
+    """قالب فارغ (بأمثلة توضيحية) لأعمدة الاستيراد — نفس أعمدة التصدير بالظبط.
+    الباركود مش موجود هنا (راجع ملحوظة build_products_export_workbook فوق)."""
     account_types = list(AccountType.objects.all().order_by('name'))
     discount_headers = [discount_col_name(at) for at in account_types]
 
@@ -74,7 +78,7 @@ def build_import_template_workbook():
     ws = wb.active
     ws.title = 'المنتجات'
     headers = [
-        'code', 'barcode', 'category_slug', 'name_ar', 'unit_name',
+        'code', 'category_slug', 'name_ar', 'unit_name',
         'qty_in_small', 'unit_price', 'quantity',
     ] + discount_headers
     ws.append(headers)
@@ -85,13 +89,11 @@ def build_import_template_workbook():
 
     # مثال 1: صنف بوحدتين — الخصم بيتكتب على صف الوحدة الصغرى بس (قطعة)،
     # وصف الكرتونة بيتسيب فاضي لأن سعرها بيتحسب تلقائيًا من نسبة القطعة.
-    # الباركود (اختياري) بيتكتب في صف واحد بس من صفوف نفس الصنف (بيتلمّ
-    # تلقائيًا للصنف كله عند القراءة، زي category_slug بالظبط).
-    ws.append(['', '', 'gauze', 'شاش طبي', 'قطعة', 1, 2.00, 200] + small_discounts)
-    ws.append(['', '', 'gauze', 'شاش طبي', 'كرتونة', 50, 100.00, 0] + blank_discounts)
+    ws.append(['', 'gauze', 'شاش طبي', 'قطعة', 1, 2.00, 200] + small_discounts)
+    ws.append(['', 'gauze', 'شاش طبي', 'كرتونة', 50, 100.00, 0] + blank_discounts)
 
     # مثال 2: صنف بوحدة واحدة بس (كبرى) — الخصم بيتكتب على صفها هي نفسها.
-    ws.append(['', '', 'gloves', 'قفازات لاتكس', 'كرتونة', 10, 250.00, 100] + large_discounts)
+    ws.append(['', 'gloves', 'قفازات لاتكس', 'كرتونة', 10, 250.00, 100] + large_discounts)
 
     for col in ws.columns:
         ws.column_dimensions[col[0].column_letter].width = 20

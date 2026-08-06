@@ -2,6 +2,7 @@ from decimal import Decimal, ROUND_HALF_UP
 
 from django.contrib.postgres.indexes import GinIndex
 from django.db import models
+from django.core.exceptions import ValidationError
 from django.core.validators import FileExtensionValidator
 from django.utils import timezone
 
@@ -36,20 +37,46 @@ class Product(models.Model):
         on_delete=models.PROTECT,
         related_name='products',
     )
-    # كود صنف فريد بيتولّد تلقائيًا لكل منتج (BZ-00001, BZ-00002, ...).
-    # الهدف منه: identifier ثابت للصنف مستقل تمامًا عن اسمه — لو حبيت تصحّح
-    # أو تغيّر اسم صنف موجود بالكامل (في التعديل اليدوي أو برفع شيت إكسل
-    # فيه عمود code)، النظام لسه بيعرف إنه نفس الصنف وميعملوش نسخة جديدة.
-    code = models.CharField(max_length=20, unique=True, editable=False, blank=True)
+    # كود الصنف — الحقل الأساسي/الإلزامي اللي بيتفرّق بيه بين الأصناف (هو
+    # اللي بيتحفظ في عمود code في ملف الإكسل، وهو أول حاجة بيتشاف عليها
+    # التطابق وقت الاستيراد — راجع products/services/import_export/parsing.py
+    # classify_row). المخزن ممكن يدخّله يدويًا (زي كود المورّد أو ترقيم
+    # داخلي خاص بيه)، ولو سابه فاضي بيتولّد تلقائيًا بصيغة BZ-00001 (راجع
+    # _assign_code تحت). editable=True (بعد ما كان False) عشان يظهر كحقل
+    # قابل للتعديل في فورم المنتج (products/forms.py) — التوليد التلقائي
+    # لسه شغال بالظبط زي الأول، بس دلوقتي كخيار احتياطي لو المخزن ما
+    # دخلش كود بنفسه، مش سلوك وحيد مفروض.
+    code = models.CharField(
+        max_length=20, unique=True, blank=True,
+        verbose_name='الكود',
+        help_text='كود الصنف الأساسي — اتركه فارغًا ليتولّد تلقائيًا (BZ-00001...)، أو ادخل كود المورّد/الترقيم الداخلي الخاص بك.',
+        error_messages={'unique': 'هذا الكود مستخدم بالفعل لمنتج آخر — اختر كودًا مختلفًا أو اتركه فارغًا ليتولّد تلقائيًا.'},
+    )
     # باركود فعلي (EAN/UPC أو أي كود مطبوع على عبوة المنتج) — مختلف تمامًا
-    # عن code فوق (كود داخلي بيتولّد تلقائيًا للنظام نفسه). ده بيتسجّل يدويًا
-    # (أو بالاسكانر وقت الإدخال) وبيُستخدم في البحث بالاسكانر في المخزون.
-    # blank/null=True لأن مش كل الأصناف عندها باركود مسجّل، وunique بس لو
-    # القيمة موجودة فعلاً (null مسموح يتكرر بدون تعارض).
+    # عن code فوق (كود داخلي، هو المعتمد في التفرقة بين الأصناف والاستيراد/
+    # التصدير). الباركود حقل ثانوي اختياري بالكامل: مش شرط لحفظ المنتج،
+    # ومش موجود في شيت الإكسل خالص (لا تصدير ولا استيراد) — راجع
+    # products/services/import_export/. بيتسجّل يدويًا أو بالاسكانر وقت
+    # الإدخال، وبيُستخدم في البحث بالاسكانر في المخزون/قائمة المنتجات
+    # (staff). المنتج ممكن يكون له أكتر من باركود واحد (حد أقصى 3 —
+    # barcode/barcode_2/barcode_3) لو نفس الصنف مطبوع عليه أكتر من باركود
+    # فعلي (تغليف مختلف من موردين مختلفين مثلاً). الحقل الأول (barcode) بس
+    # هو الظاهر في التصدير/الاستيراد لو رجعنا نضيفه مستقبلًا؛ الحقلين
+    # الإضافيين لدعم البحث بالاسكانر بس.
     barcode = models.CharField(
         max_length=64, unique=True, null=True, blank=True, db_index=True,
         verbose_name='الباركود',
         help_text='باركود العبوة (اختياري) — يمكن مسحه بقارئ الباركود عند البحث في المخزون',
+    )
+    barcode_2 = models.CharField(
+        max_length=64, unique=True, null=True, blank=True, db_index=True,
+        verbose_name='باركود إضافي (٢)',
+        help_text='باركود إضافي اختياري لنفس الصنف (تغليف مختلف مثلًا)',
+    )
+    barcode_3 = models.CharField(
+        max_length=64, unique=True, null=True, blank=True, db_index=True,
+        verbose_name='باركود إضافي (٣)',
+        help_text='باركود إضافي اختياري لنفس الصنف (تغليف مختلف مثلًا)',
     )
     name_ar = models.CharField(max_length=255)
     # نسخة مُطبَّعة من name_ar (بدون فراغات زيادة/فروق أرقام وحروف شكلية)
@@ -135,18 +162,69 @@ class Product(models.Model):
     def __str__(self):
         return self.display_name
 
+    # أسماء الحقول التلاتة اللي بيتسجّل فيها باركود المنتج — مرجع واحد
+    # مستخدم في التطبيع (save)، فحص التكرار (clean)، والبحث (matching.py
+    # وقوائم staff) عشان لو حبينا نزوّد/ننقص عدد الخانات مستقبلًا نغيّرها
+    # في مكان واحد بس.
+    BARCODE_FIELDS = ('barcode', 'barcode_2', 'barcode_3')
+
     def save(self, *args, **kwargs):
         is_new = self.pk is None
         self.name_key = normalize_name(self.name_ar)
-        # نحوّل الباركود الفاضي لـ None (مش '') عشان قيد unique متعدد لا
-        # يتعارض بين أصناف كتير مالهاش باركود مسجّل أصلاً.
-        if self.barcode is not None:
-            self.barcode = self.barcode.strip() or None
+        # نحوّل أي خانة باركود فاضية لـ None (مش '') عشان قيد unique متعدد
+        # لا يتعارض بين أصناف كتير مالهاش باركود مسجّل أصلاً في الخانة دي.
+        for field_name in self.BARCODE_FIELDS:
+            value = getattr(self, field_name)
+            if value is not None:
+                setattr(self, field_name, value.strip() or None)
         if not self.code:
             self._assign_code()
         if is_new and self.new_arrival_at is None:
             self.new_arrival_at = timezone.now()
         super().save(*args, **kwargs)
+
+    def clean(self):
+        super().clean()
+        self._validate_barcode_uniqueness()
+
+    def _validate_barcode_uniqueness(self):
+        """
+        بتمنع نفس قيمة الباركود من التكرار في أكتر من خانة — سواء جوه نفس
+        المنتج (مثلاً نفس الرقم في barcode وbarcode_2 بالغلط)، أو مع منتج
+        تاني تمامًا في أي واحدة من خاناته التلاتة. الفحص ده إضافي فوق قيد
+        unique=True المفروض على كل عمود لوحده في قاعدة البيانات — القيد
+        ده وحده مش كافي لأنه بيمسك بس تكرار "نفس العمود" (barcode مع
+        barcode لمنتج تاني)، مش تكرار "عمود مختلف" (barcode مع barcode_2
+        لمنتج تاني)، واللي محتاج مقارنة يدوية عبر الخانات التلاتة مع بعض.
+        """
+        values = {}  # القيمة (بعد التريم) -> اسم أول خانة عندنا فيها القيمة دي
+        for field_name in self.BARCODE_FIELDS:
+            value = (getattr(self, field_name) or '').strip()
+            if not value:
+                continue
+            if value in values:
+                raise ValidationError({
+                    field_name: f'نفس الباركود ("{value}") مكرر أكتر من مرة في نفس المنتج.',
+                })
+            values[value] = field_name
+
+        if not values:
+            return
+
+        query = models.Q()
+        for value in values:
+            for field_name in self.BARCODE_FIELDS:
+                query |= models.Q(**{field_name: value})
+        conflicts = Product.objects.filter(query)
+        if self.pk:
+            conflicts = conflicts.exclude(pk=self.pk)
+
+        for conflict in conflicts:
+            for value, our_field in values.items():
+                if value in (conflict.barcode, conflict.barcode_2, conflict.barcode_3):
+                    raise ValidationError({
+                        our_field: f'الباركود "{value}" مستخدم بالفعل لمنتج آخر ("{conflict.name_ar}").',
+                    })
 
     def _assign_code(self):
         """

@@ -1,5 +1,6 @@
 from decimal import Decimal
 
+from django.core.exceptions import ValidationError
 from django.test import TestCase
 
 from accounts.models import AccountType, ClientProfile, User
@@ -36,6 +37,12 @@ class ProductCodeGenerationTestCase(TestCase):
     def test_explicit_code_is_respected(self):
         product = Product.objects.create(category=self.category, name_ar='منتج مستورد', code='BZ-09999')
         self.assertEqual(product.code, 'BZ-09999')
+
+    def test_duplicate_manual_code_is_rejected(self):
+        Product.objects.create(category=self.category, name_ar='منتج 1', code='SUP-001')
+        second = Product(category=self.category, name_ar='منتج 2', code='SUP-001')
+        with self.assertRaises(ValidationError):
+            second.full_clean()
 
 
 class ProductNameNormalizationTestCase(TestCase):
@@ -75,6 +82,54 @@ class ProductBarcodeTestCase(TestCase):
         Product.objects.create(category=self.category, name_ar='منتج 1', barcode='')
         Product.objects.create(category=self.category, name_ar='منتج 2', barcode='')
         self.assertEqual(Product.objects.count(), 2)
+
+
+class ProductMultipleBarcodesTestCase(TestCase):
+    """
+    المنتج ممكن يكون له لحد 3 باركودات (barcode/barcode_2/barcode_3) —
+    الباركود مش مطلوب/إلزامي، لكن ممنوع يتكرر نفس القيمة في أي خانة تانية،
+    سواء جوه نفس المنتج أو مع منتج تاني تمامًا. راجع Product.clean().
+    """
+
+    def setUp(self):
+        self.category = make_category()
+
+    def test_product_can_have_up_to_three_barcodes(self):
+        product = Product.objects.create(
+            category=self.category, name_ar='منتج',
+            barcode='111', barcode_2='222', barcode_3='333',
+        )
+        product.full_clean()
+        self.assertEqual((product.barcode, product.barcode_2, product.barcode_3), ('111', '222', '333'))
+
+    def test_barcode_not_required(self):
+        product = Product.objects.create(category=self.category, name_ar='منتج بدون باركود')
+        product.full_clean()  # لازم يعدي من غير أي خطأ رغم إن الباركود فاضي بالكامل
+
+    def test_same_value_in_two_slots_of_same_product_is_rejected(self):
+        product = Product(category=self.category, name_ar='منتج', barcode='999', barcode_2='999')
+        with self.assertRaises(ValidationError):
+            product.full_clean()
+
+    def test_duplicate_barcode_across_products_same_field_is_rejected(self):
+        Product.objects.create(category=self.category, name_ar='منتج 1', barcode='555')
+        second = Product(category=self.category, name_ar='منتج 2', barcode='555')
+        with self.assertRaises(ValidationError):
+            second.full_clean()
+
+    def test_duplicate_barcode_across_products_different_field_is_rejected(self):
+        # نفس القيمة في barcode لمنتج، وbarcode_2 لمنتج تاني — لازم يترفض
+        # برضه رغم إنهم أعمدة مختلفة في قاعدة البيانات (unique=True لوحده
+        # مش كافي هنا، محتاج فحص Product.clean() اليدوي عبر الخانات).
+        Product.objects.create(category=self.category, name_ar='منتج 1', barcode='777')
+        second = Product(category=self.category, name_ar='منتج 2', barcode_2='777')
+        with self.assertRaises(ValidationError):
+            second.full_clean()
+
+    def test_editing_product_does_not_conflict_with_itself(self):
+        product = Product.objects.create(category=self.category, name_ar='منتج', barcode='321')
+        product.name_en = 'Updated'
+        product.full_clean()  # ميرفضش رغم إن نفس الباركود موجود بالفعل — هو نفسه بتاعه
 
 
 class ProductUnitsForClientTestCase(TestCase):
