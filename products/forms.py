@@ -47,7 +47,7 @@ class ProductForm(forms.ModelForm):
         model = Product
         fields = [
             'category', 'name_ar', 'name_en', 'code', 'barcode', 'barcode_2', 'barcode_3',
-            'manufacturer', 'size', 'description', 'image', 'is_active',
+            'manufacturer', 'description', 'image', 'is_active',
         ]
         widgets = {
             'category': forms.Select(attrs={
@@ -56,10 +56,6 @@ class ProductForm(forms.ModelForm):
             'name_ar': forms.TextInput(attrs={
                 'class': 'w-full border border-gray-200 rounded-lg px-3 py-2 text-sm outline-none focus:border-blue-400',
                 'placeholder': 'اسم المنتج بالعربي'
-            }),
-            'size': forms.TextInput(attrs={
-                'class': 'w-full border border-gray-200 rounded-lg px-3 py-2 text-sm outline-none focus:border-blue-400',
-                'placeholder': 'مثال: L (اتركه فارغًا لو لا ينطبق)'
             }),
             'code': forms.TextInput(attrs={
                 'class': 'w-full border border-gray-200 rounded-lg px-3 py-2 text-sm outline-none focus:border-blue-400 font-mono',
@@ -107,7 +103,6 @@ class ProductForm(forms.ModelForm):
             'barcode_2': 'باركود إضافي (٢)',
             'barcode_3': 'باركود إضافي (٣)',
             'manufacturer': 'الشركة المصنعة',
-            'size': 'المقاس (لبس/هدوم إن وجد)',
             'description': 'الوصف',
             'image': 'صورة المنتج',
             'is_active': 'نشط',

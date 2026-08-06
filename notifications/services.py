@@ -4,6 +4,8 @@
 أعلى الملف) في الأماكن اللي بتستخدمها من apps تانية، عشان نتفادى أي
 circular import بين orders/accounts/notifications.
 """
+import threading
+
 from accounts.models import User
 
 from .models import Notification
@@ -39,6 +41,44 @@ def _push_realtime(recipient_id):
         )
     except Exception:
         pass
+
+
+def _fanout_trim_and_push(recipient_ids):
+    """
+    بتشغّل التقليم (trim) وبث الإشعار الفوري (push) لكل مستلم في قائمة
+    recipient_ids، في Thread منفصل بالخلفية — عشان الطلب الأصلي (زي تأكيد
+    استيراد إكسل مع "إرسال إشعار للعملاء") يرجع استجابته فورًا بعد ما
+    الإشعارات اتسجلت في قاعدة البيانات فعلاً (bulk_create قبل نداء الدالة
+    دي)، من غير ما يستنى مية+ استعلام trim ومية+ نداء WebSocket واحد واحد
+    بالتتابع.
+
+    ده كان هو السبب الحقيقي وراء شاشة "جاري الحفظ..." اللي بتفضل شغالة
+    لفترة طويلة بعد تأكيد استيراد إكسل مع عدد كبير من العملاء النشطين،
+    رغم إن حفظ الأصناف وتسجيل الإشعارات كانا خلصوا فعلاً من زمان — الوقت
+    الضائع كله كان بعد كده، في نفس الطلب، قبل ما الصفحة تقدر ترجع تحويلة
+    للمستخدم.
+
+    Thread منفصل (مش async_to_sync عادي) عشان قاعدة بيانات Postgres مش
+    بتتحمّل نفس الـ connection من تريدات مختلفة — كل تريد بياخد connection
+    خاصة بيه تلقائيًا من Django، وبنقفلها بنفسنا في النهاية (connections.close_all)
+    عشان ما تتسربش. best-effort بالكامل زي _push_realtime نفسها: لو التريد
+    فشل أو اتقطع مفيش أي تأثير على الإشعارات نفسها (متسجلة بالفعل)، غاية
+    اللي ممكن يتأخر هو التقليم أو البوش اللحظي (وله fallback عادي: الـ
+    polling الدوري بتاع الجرس).
+    """
+    def _run():
+        from django.db import connections
+        try:
+            for recipient_id in recipient_ids:
+                try:
+                    _trim_old(recipient_id)
+                except Exception:
+                    pass
+                _push_realtime(recipient_id)
+        finally:
+            connections.close_all()
+
+    threading.Thread(target=_run, daemon=True).start()
 
 
 def _trim_old(recipient_id, keep=MAX_NOTIFICATIONS_PER_USER):
@@ -112,6 +152,14 @@ def notify_all_clients(kind, title, message='', url_name='', url_kwargs=None):
     وممكن تتستخدم لأي إشعار جماعي تاني للعملاء مستقبلًا.
     bulk_create عشان لو الكتالوج/قاعدة العملاء كبرت، السطر ده يفضل عملية
     واحدة على قاعدة البيانات بدل استعلام منفصل لكل عميل.
+
+    التسجيل نفسه (bulk_create) بيحصل هنا بشكل متزامن (عشان الإشعار يبقى
+    موجود في قاعدة البيانات فورًا لحظة رجوع الدالة — أي كود بينادي الدالة
+    دي ويتأكد بعدها من وجود الإشعار هيلاقيه موجود). لكن التقليم (trim)
+    والبوش اللحظي (WebSocket) لكل عميل بيتأجّلوا لـ Thread بالخلفية عبر
+    _fanout_trim_and_push، لأنهم هما اللي بيبقوا بطيئين مع عدد عملاء كبير
+    (استعلام + نداء WebSocket منفصل لكل عميل) — راجع تعليق الدالة دي
+    لتفاصيل الباج اللي كان بيحصل قبل كده.
     """
     clients = User.objects.filter(role=User.Role.CLIENT, status=User.Status.ACTIVE, is_active=True)
     notifications = [
@@ -123,7 +171,5 @@ def notify_all_clients(kind, title, message='', url_name='', url_kwargs=None):
     ]
     if notifications:
         Notification.objects.bulk_create(notifications)
-        for n in notifications:
-            _trim_old(n.recipient_id)
-            _push_realtime(n.recipient_id)
+        _fanout_trim_and_push([n.recipient_id for n in notifications])
     return notifications

@@ -164,7 +164,6 @@ def product_detail(request, pk):
             'units__discounts',
             'similar_products__units__discounts', 'similar_products__category', 'similar_products__inventory',
             'complementary_products__units__discounts', 'complementary_products__category', 'complementary_products__inventory',
-            'variant_group__products', 'variant_group__products__inventory',
         ),
         pk=pk,
     )
@@ -181,12 +180,10 @@ def product_detail(request, pk):
     # الـ prefetch_related الجاهز فوق بدل ما نضرب استعلام إضافي لكل قسم.
     similar_products = [p for p in product.similar_products.all() if p.is_active][:6]
     complementary_products = [p for p in product.complementary_products.all() if p.is_active][:6]
-    variant_siblings = [p for p in product.variant_siblings if p.is_active]
     return render(request, 'store/product_detail.html', {
         'product': product,
         'units': units,
         'cart_quantities': _cart_quantities(request),
         'similar_products': similar_products,
         'complementary_products': complementary_products,
-        'variant_siblings': variant_siblings,
     })

@@ -1,10 +1,10 @@
-{% comment %} نتائج البحث (htmx) لمنتقي المنتجات العام — بيتستخدم لثلاث علاقات:
-   similar / complementary / variant. كل نتيجة زرار submit لفورم منفصل
-   بيبعت مباشرة لـ endpoint الإضافة المناسب حسب relation. {% endcomment %}
+{% comment %} نتائج البحث (htmx) لمنتقي المنتجات العام — بيتستخدم لعلاقتين:
+   similar / complementary. كل نتيجة زرار submit لفورم منفصل بيبعت مباشرة
+   لـ endpoint الإضافة المناسب حسب relation. {% endcomment %}
 <div class="border border-gray-100 rounded-lg mt-1 divide-y divide-gray-50 max-h-56 overflow-y-auto bg-white shadow-sm">
     {% for result in results %}
     <form method="post"
-          action="{% if relation == 'variant' %}{% url 'staff:product_variant_link' product.pk %}{% else %}{% url 'staff:product_relation_add' product.pk relation %}{% endif %}"
+          action="{% url 'staff:product_relation_add' product.pk relation %}"
           class="w-full">
         {% csrf_token %}
         <input type="hidden" name="target_id" value="{{ result.pk }}">

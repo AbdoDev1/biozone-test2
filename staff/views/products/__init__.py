@@ -38,9 +38,6 @@ from .relations import (
     product_relation_search,
     product_relation_add,
     product_relation_remove,
-    product_variant_search,
-    product_variant_link,
-    product_variant_unlink,
 )
 
 from .import_export import (
@@ -75,9 +72,6 @@ __all__ = [
     'product_relation_search',
     'product_relation_add',
     'product_relation_remove',
-    'product_variant_search',
-    'product_variant_link',
-    'product_variant_unlink',
     'CATEGORY_LIST_PAGE_SIZE',
     'category_list',
     'category_add',

@@ -34,7 +34,7 @@ from tags.services import tags_for, tags_for_many
 # تغييرات على حقول داخلية زي updated_at).
 PRODUCT_TRACKED_FIELDS = [
     'name_ar', 'name_en', 'category', 'code', 'barcode', 'barcode_2', 'barcode_3',
-    'manufacturer', 'size', 'is_active',
+    'manufacturer', 'is_active',
 ]
 
 STAFF_LIST_PAGE_SIZE = 30
@@ -381,7 +381,7 @@ def _discount_context_for_product(product):
 def product_edit(request, pk):
     product = get_object_or_404(
         Product.objects.prefetch_related(
-            'similar_products', 'complementary_products', 'variant_group__products',
+            'similar_products', 'complementary_products',
         ),
         pk=pk,
     )
@@ -473,13 +473,11 @@ def product_edit(request, pk):
         'product_actions': product_actions,
         'similar_products': product.similar_products.all(),
         'complementary_products': product.complementary_products.all(),
-        'variant_siblings': product.variant_siblings,
         'relations_count': (
-            len(product.similar_products.all()) + len(product.complementary_products.all()) + len(product.variant_siblings)
+            len(product.similar_products.all()) + len(product.complementary_products.all())
         ),
         'similar_search_url': url_with_qs(request, 'staff:product_relation_search', pk=product.pk, relation='similar'),
         'complementary_search_url': url_with_qs(request, 'staff:product_relation_search', pk=product.pk, relation='complementary'),
-        'variant_search_url': url_with_qs(request, 'staff:product_variant_search', pk=product.pk),
         'discount_account_types': _discount_context_for_product(product) if request.user.role == User.Role.ADMIN else [],
     })
 
