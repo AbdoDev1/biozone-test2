@@ -178,17 +178,17 @@ def _preflight_checks():
 def _run_pg_dump():
     """بتشغّل pg_dump فعليًا وتضغط الناتج. بترجع (success: bool, error_text: str)."""
     db = settings.DATABASES['default']
-    today = datetime.now().strftime('%Y-%m-%d')
-
-    # عداد تسلسلي لكل يوم: بنشوف كام نسخة موجودة بالفعل بنفس تاريخ
-    # النهاردة ونزود عليهم واحد. لو مفيش نسخ للنهاردة، بيبدأ من 1.
-    existing_today = list(BACKUP_DIR.glob(f'biozone_{today}_*.sql.gz'))
-    seq = len(existing_today) + 1
-    backup_file = BACKUP_DIR / f'biozone_{today}_{seq}.sql.gz'
-    # لو حصل تعارض نادر (نفس الرقم موجود فعلًا لأي سبب)، بنزود لحد ما نلاقي رقم فاضي
+    # اسم الملف: تاريخ + ساعة بس (زي biozone_2026-08-06_22h.sql.gz)، نفس
+    # صيغة scripts/backup_db.sh بالظبط عشان الاتنين يفضلوا متوافقين. لو
+    # حصل نادرًا نسختين في نفس الساعة (تشغيل يدوي من الداشبورد جنب
+    # تشغيلة الكرون مثلاً)، بنضيف رقم تسلسلي (_2، _3، ...) بدل ما نكتب
+    # فوق النسخة الأولى.
+    hour_stamp = datetime.now().strftime('%Y-%m-%d_%Hh')
+    backup_file = BACKUP_DIR / f'biozone_{hour_stamp}.sql.gz'
+    seq = 2
     while backup_file.exists():
+        backup_file = BACKUP_DIR / f'biozone_{hour_stamp}_{seq}.sql.gz'
         seq += 1
-        backup_file = BACKUP_DIR / f'biozone_{today}_{seq}.sql.gz'
 
     env = os.environ.copy()
     env['PGPASSWORD'] = db['PASSWORD']

@@ -10,7 +10,7 @@
 # confirmation.
 #
 # Usage (run from the project directory, next to docker-compose.yml):
-#   ./scripts/restore_db.sh backups/biozone_2026-08-05_120000.sql.gz
+#   ./scripts/restore_db.sh backups/biozone_2026-08-05_12h.sql.gz
 
 set -euo pipefail
 

@@ -69,8 +69,17 @@ if [ "$AVAILABLE_MB" -lt "$MIN_FREE_MB" ]; then
     exit 1
 fi
 
-TIMESTAMP=$(date '+%Y-%m-%d_%H%M%S')
+# اسم الملف: تاريخ + ساعة بس (من غير دقايق/ثواني) عشان يبقى سهل القراءة
+# بالعين المجردة، زي biozone_2026-08-06_22h.sql.gz. لو حصل نادرًا نسختين
+# في نفس الساعة (تشغيل يدوي من الداشبورد جنب تشغيلة الكرون مثلاً)، بنضيف
+# رقم تسلسلي (_2، _3، ...) بدل ما نكتب فوق النسخة الأولى.
+TIMESTAMP=$(date '+%Y-%m-%d_%Hh')
 BACKUP_FILE="$BACKUP_DIR/biozone_${TIMESTAMP}.sql.gz"
+SEQ=2
+while [ -e "$BACKUP_FILE" ]; do
+    BACKUP_FILE="$BACKUP_DIR/biozone_${TIMESTAMP}_${SEQ}.sql.gz"
+    SEQ=$((SEQ + 1))
+done
 
 log "== بدء النسخ الاحتياطي: $DB_NAME =="
 
