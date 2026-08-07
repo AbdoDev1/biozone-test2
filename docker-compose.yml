@@ -39,6 +39,15 @@ services:
     build: .
     restart: unless-stopped
     logging: *default-logging
+    # DNS عام صريح (بدل ما نعتمد على /etc/resolv.conf بتاع الـ host، اللي
+    # بيتقلّد جوه الحاوية تلقائيًا). على سيرفرات سحابية زي Alibaba Cloud،
+    # الـ host بيستخدم DNS داخلي خاص (100.100.100.100) شغال بس من على
+    # الـ host نفسه — مش قابل للوصول من جوه شبكة Docker الداخلية بتاعة
+    # الحاوية، فأي domain خارجي (زي sentry.io) كان بيفشل resolution من
+    # جوه web بالتحديد، حتى لو الـ host نفسه شايف الدنيا تمام.
+    dns:
+      - 8.8.8.8
+      - 1.1.1.1
     env_file:
       - .env.production
     environment:
