@@ -35,6 +35,9 @@ def backup_run_now(request):
     success, error_detail = perform_backup()
     if success:
         messages.success(request, 'تم عمل النسخة الاحتياطية بنجاح.')
+    elif isinstance(error_detail, str) and 'شغالة بالفعل دلوقتي' in error_detail:
+        # مش خطأ فني — مجرد تعارض توقيت (مثلاً الكرون شغال دلوقتي بالظبط).
+        messages.warning(request, error_detail)
     else:
         # نفس الرسالة العامة اللي بتوصل لكل الموظفين — التفاصيل التقنية
         # (error_detail) متاحة بس عن طريق زرار "تحميل تفاصيل المشكلة" في

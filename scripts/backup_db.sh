@@ -9,6 +9,13 @@ REQUIRE_MOUNTPOINT="${REQUIRE_MOUNTPOINT:-false}"
 MIN_FREE_MB="${MIN_FREE_MB:-500}"
 LOG_FILE="$PROJECT_DIR/logs/backup.log"
 LAST_ERROR_FILE="$BACKUP_DIR/last_error.txt"
+# نفس ملف القفل بالظبط اللي staff/services/backup.py بيستخدمه (logs/.backup.lock)
+# — مقصود يتحط في logs/ مش backups/ عشان يفضل شغال حتى لو الفلاشة نفسها
+# مش متركّبة أو بصيغة FAT32/exFAT بدل ext4 (راجع تعليق LOCK_FILE في
+# backup.py للتفاصيل). logs/ متعمول لها bind mount في docker-compose.yml
+# زي backups/ بالظبط، فالسكريبت ده (شغال على الـ host) وperform_backup()
+# (شغالة جوه الحاوية) بيقفلوا نفس الملف الحقيقي على نفس القرص.
+LOCK_FILE="$PROJECT_DIR/logs/.backup.lock"
 
 log() {
     echo "$(date '+%Y-%m-%d %H:%M:%S') | $1" | tee -a "$LOG_FILE"
@@ -29,6 +36,16 @@ notify_error() {
 
 cd "$PROJECT_DIR"
 mkdir -p "$BACKUP_DIR" "$PROJECT_DIR/logs"
+
+# قفل بسيط عشان نمنع تشغيلتين سوا (السكريبت ده + الزرار اليدوي/الكرون
+# جوه Django) — لو محاولة تانية شغالة بالفعل، نسيب اللي شغالة تكمل ونطلع
+# من غير ما نعتبرها "فشل" (exit 0، مش 1، عشان ماي فعّلش تنبيهات مراقبة
+# خارجية زي cron email على حاجة مش خطأ حقيقي).
+exec 200>"$LOCK_FILE"
+if ! flock -n 200; then
+    log "تم تجاهل هذه المحاولة: في نسخة احتياطية تانية شغالة بالفعل (يدوي عن طريق Django أو محاولة تانية) — استنى لحد ما تخلص."
+    exit 0
+fi
 
 if [ ! -f "$ENV_FILE" ]; then
     log "خطأ: ملف $ENV_FILE مش موجود. لازم تشغّل السكريبت من مجلد المشروع."

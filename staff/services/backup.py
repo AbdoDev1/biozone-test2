@@ -16,6 +16,8 @@
 بنفس صيغة الاسم، فمتوافقين مع بعض (retention وعرض الحالة شغالين على
 نواتج أي منهم).
 """
+import errno
+import fcntl
 import os
 import shutil
 import subprocess
@@ -28,6 +30,47 @@ PROJECT_DIR = Path(settings.BASE_DIR)
 BACKUP_DIR = PROJECT_DIR / 'backups'
 LOG_FILE = PROJECT_DIR / 'logs' / 'backup.log'
 LAST_ERROR_FILE = BACKUP_DIR / 'last_error.txt'
+
+# ملحوظة مهمة: القفل ده مقصود يتحط في logs/ مش في backups/، لأن backups/
+# ممكن يكون نقطة تركيب فلاشة USB بصيغة FAT32/exFAT (مش ext4 زي باقي
+# السيرفر)، و logs/ دايمًا على قرص السيرفر العادي (ext4) بغض النظر عن حالة
+# الفلاشة. ده بيضمن:
+#   1) القفل شغال حتى لو الفلاشة مش متركّبة أصلاً وقت المحاولة.
+#   2) نتجنب أي شك في سلوك flock() على صيغ زي vfat/exfat (نظريًا لازم
+#      يشتغل عادي لأنه advisory lock على مستوى الـ VFS في الكيرنل نفسه،
+#      مش وظيفة خاصة بالـ filesystem — لكن مفيش داعي نراهن على ده أصلاً
+#      ما دام logs/ موجود ومضمون إنه ext4 عادي).
+# logs/ متعمول له bind mount في docker-compose.yml (./logs:/app/logs) زي
+# backups/ بالظبط، فالقفل شغال ومتوافق سواء اتعمل من جوه الحاوية
+# (perform_backup) أو من على الـ host مباشرة (scripts/backup_db.sh) —
+# الاتنين بيقفلوا نفس الملف الحقيقي على نفس القرص.
+LOCK_FILE = PROJECT_DIR / 'logs' / '.backup.lock'
+
+
+class BackupInProgress(Exception):
+    """في محاولة نسخ تانية شغالة بالفعل (يدوي أو كرون) — مش خطأ حقيقي."""
+
+
+def _acquire_lock():
+    LOCK_FILE.parent.mkdir(parents=True, exist_ok=True)
+    fd = os.open(str(LOCK_FILE), os.O_CREAT | os.O_RDWR, 0o644)
+    try:
+        fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except OSError as exc:
+        os.close(fd)
+        if exc.errno in (errno.EACCES, errno.EAGAIN):
+            raise BackupInProgress(
+                'في نسخة احتياطية شغالة بالفعل دلوقتي (يدوي أو كرون) — استنى لحد ما تخلص وجرّب تاني.'
+            )
+        raise
+    return fd
+
+
+def _release_lock(fd):
+    try:
+        fcntl.flock(fd, fcntl.LOCK_UN)
+    finally:
+        os.close(fd)
 
 # نفس أسلوب scripts/backup_db.sh بالظبط (متغيرات بيئة، مش .env.production)
 # — RETENTION_DAYS بتتحدد وقت تشغيل الكرون، مش قيمة ثابتة في الكود.
@@ -290,7 +333,25 @@ def perform_backup():
 
     بترجع (success: bool, error_detail: str) — error_detail فاضية عند
     النجاح، أو نص الخطأ الحقيقي عند الفشل.
+
+    لو في محاولة تانية شغالة بالفعل (يدوي أو كرون)، المحاولة دي بتتجاهل
+    فورًا (من غير ما تستنى) وترجع (False, رسالة واضحة) — من غير ما تبعت
+    بث "فشل" أو تسجّل إشعار دائم في الجرس أو تكتب فوق last_error.txt،
+    لأن ده مش خطأ فني حقيقي، مجرد تعارض توقيت عادي.
     """
+    try:
+        lock_fd = _acquire_lock()
+    except BackupInProgress as exc:
+        _log(f'تم تجاهل محاولة نسخ: {exc}')
+        return False, str(exc)
+
+    try:
+        return _perform_backup_locked()
+    finally:
+        _release_lock(lock_fd)
+
+
+def _perform_backup_locked():
     _broadcast('running', 'جاري عمل نسخة احتياطية من قاعدة البيانات...')
 
     error = _preflight_checks()
