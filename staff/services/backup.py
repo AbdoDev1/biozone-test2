@@ -246,6 +246,39 @@ def _cleanup_old_backups():
         _log(f'تم مسح {deleted} نسخة قديمة (أقدم من {RETENTION_DAYS} يوم).')
 
 
+def report_backup_result(success, error, backup_name=''):
+    """
+    بتبعت نفس البث اللحظي (WebSocket) + الإشعار الدائم اللي perform_backup()
+    بتبعتهم، من غير ما تعيد تنفيذ عملية النسخ نفسها. مخصصة لسيناريو النسخ
+    اللي بيحصل برّه Django (scripts/backup_db.sh من على الـ host مباشرة —
+    الطريقة الوحيدة اللي فحص REQUIRE_MOUNTPOINT فيها بيبقى دقيق فعليًا، لأنه
+    بيتنفذ على الـ host نفسه مش من جوه الحاوية؛ راجع تعليق REQUIRE_MOUNTPOINT
+    فوق وتعليق management/commands/report_backup_result.py للتفاصيل).
+    """
+    if success:
+        LAST_ERROR_FILE.unlink(missing_ok=True)
+        suffix = f' ({backup_name})' if backup_name else ''
+        _broadcast('success', f'تم عمل النسخة الاحتياطية بنجاح{suffix}.')
+        return
+
+    _broadcast('error', 'حصلت مشكلة في النسخ الاحتياطي. جرّب تعمله يدويًا.')
+    try:
+        from notifications.models import Notification
+        from notifications.services import notify_staff_with_perm
+
+        notify_staff_with_perm(
+            codename='staff.manage_backup',
+            kind=Notification.Kind.BACKUP_FAILED,
+            title='فشل النسخ الاحتياطي التلقائي',
+            message=error[:200] if error else 'جرّب تشغيله يدويًا من صفحة النسخ الاحتياطي.',
+            url_name='staff:backup_manual',
+        )
+    except Exception:
+        # لو قاعدة البيانات نفسها اللي واقعة، مش هنقدر نسجّل إشعار فيها
+        # برضه — بس ده لازم مايكسرش استدعاء الأمر من السكريبت.
+        pass
+
+
 def perform_backup():
     """
     نقطة الدخول الوحيدة لعمل نسخة احتياطية من جوه Django (زرار التشغيل
@@ -267,33 +300,13 @@ def perform_backup():
         success = False
 
     if success:
-        LAST_ERROR_FILE.unlink(missing_ok=True)
         _cleanup_old_backups()
-        _broadcast('success', 'تم عمل النسخة الاحتياطية بنجاح.')
+        report_backup_result(True, '')
         return True, ''
 
     _log(f'فشل النسخ الاحتياطي! {error}')
     BACKUP_DIR.mkdir(parents=True, exist_ok=True)
     LAST_ERROR_FILE.write_text(error, encoding='utf-8')
-
-    _broadcast('error', 'حصلت مشكلة في النسخ الاحتياطي. جرّب تعمله يدويًا.')
-
-    try:
-        from notifications.models import Notification
-        from notifications.services import notify_staff_with_perm
-
-        notify_staff_with_perm(
-            codename='staff.manage_backup',
-            kind=Notification.Kind.BACKUP_FAILED,
-            title='فشل النسخ الاحتياطي التلقائي',
-            message='جرّب تشغيله يدويًا من صفحة النسخ الاحتياطي.',
-            url_name='staff:backup_manual',
-        )
-    except Exception:
-        # لو قاعدة البيانات نفسها اللي واقعة (سبب شائع لفشل النسخ أصلًا)،
-        # مش هنقدر نسجّل إشعار فيها برضه — بس ده لازم مايكسرش الاستجابة
-        # للموظف (زرار "تشغيل الآن" المفروض يرجّع رسالة لطيفة مش صفحة
-        # خطأ 500). last_error.txt والـ log اتسجلوا فوق قبل الخطوة دي.
-        pass
+    report_backup_result(False, error)
 
     return False, error

@@ -37,10 +37,27 @@ log() {
     echo "$(date '+%Y-%m-%d %H:%M:%S') | $1" | tee -a "$LOG_FILE"
 }
 
+# بتبلّغ نظام الإشعارات جوه Django (بث لحظي + جرس عند الفشل) بنتيجة
+# المحاولة دي، عن طريق أمر report_backup_result (راجع تعليقه للتفاصيل).
+# بتتنفذ من غير ما توقف السكريبت لو فشلت هي نفسها (مثلاً حاوية web واقعة
+# أصلًا — سبب شائع لفشل النسخ) عشان النتيجة الحقيقية تفضل متسجلة في
+# backup.log وlast_error.txt بغض النظر عن نجاح الإبلاغ نفسه.
+notify_success() {
+    docker compose exec -T web python manage.py report_backup_result --success --file "$1" >/dev/null 2>&1 \
+        || log "تنبيه: تعذّر إبلاغ نظام الإشعارات بنجاح النسخة (الحاوية web شغالة؟)."
+}
+notify_error() {
+    docker compose exec -T web python manage.py report_backup_result --error "$1" >/dev/null 2>&1 \
+        || log "تنبيه: تعذّر إبلاغ نظام الإشعارات بفشل النسخة (الحاوية web شغالة؟)."
+}
+
+cd "$PROJECT_DIR"
+
 mkdir -p "$BACKUP_DIR" "$PROJECT_DIR/logs"
 
 if [ ! -f "$ENV_FILE" ]; then
     log "خطأ: ملف $ENV_FILE مش موجود. لازم تشغّل السكريبت من مجلد المشروع."
+    notify_error "ملف $ENV_FILE مش موجود على السيرفر."
     exit 1
 fi
 
@@ -51,6 +68,7 @@ DB_PASSWORD=$(grep -E '^DB_PASSWORD=' "$ENV_FILE" | cut -d '=' -f2-)
 
 if [ -z "$DB_NAME" ] || [ -z "$DB_USER" ]; then
     log "خطأ: DB_NAME أو DB_USER مش موجودين في $ENV_FILE."
+    notify_error "DB_NAME أو DB_USER مش موجودين في $ENV_FILE."
     exit 1
 fi
 
@@ -59,6 +77,7 @@ fi
 if [ "$REQUIRE_MOUNTPOINT" = "true" ] && ! mountpoint -q "$BACKUP_DIR"; then
     log "خطأ: $BACKUP_DIR مش Mount Point فعلي — الفلاشة يمكن مش متركّبة. تم إيقاف النسخ قبل ما يبدأ."
     echo "الفلاشة مش متركّبة في $BACKUP_DIR. راجع /etc/fstab أو وصّل الفلاشة تاني." > "$LAST_ERROR_FILE"
+    notify_error "الفلاشة مش متركّبة في $BACKUP_DIR. راجع /etc/fstab أو وصّل الفلاشة تاني."
     exit 1
 fi
 
@@ -66,6 +85,7 @@ AVAILABLE_MB=$(df -Pm "$BACKUP_DIR" | tail -1 | awk '{print $4}')
 if [ "$AVAILABLE_MB" -lt "$MIN_FREE_MB" ]; then
     log "خطأ: المساحة الفاضية في $BACKUP_DIR أقل من الحد الأدنى ($MIN_FREE_MB MB، متاح فعليًا: ${AVAILABLE_MB}MB)."
     echo "المساحة الفاضية غير كافية (متاح ${AVAILABLE_MB}MB، مطلوب ${MIN_FREE_MB}MB على الأقل). فرّغ مساحة أو غيّر الفلاشة." > "$LAST_ERROR_FILE"
+    notify_error "المساحة الفاضية غير كافية (متاح ${AVAILABLE_MB}MB، مطلوب ${MIN_FREE_MB}MB على الأقل)."
     exit 1
 fi
 
@@ -83,7 +103,6 @@ done
 
 log "== بدء النسخ الاحتياطي: $DB_NAME =="
 
-cd "$PROJECT_DIR"
 ERROR_TMP=$(mktemp)
 if docker compose exec -T -e PGPASSWORD="$DB_PASSWORD" db \
         pg_dump -U "$DB_USER" "$DB_NAME" 2>"$ERROR_TMP" | gzip > "$BACKUP_FILE"; then
@@ -92,9 +111,11 @@ if docker compose exec -T -e PGPASSWORD="$DB_PASSWORD" db \
     # لو نجحت المحاولة دي بعد فشل سابق، نمسح ملف الخطأ القديم عشان صفحة
     # "إعادة المحاولة اليدوية" ماتفضلش عارضة خطأ قديم اتحل بالفعل.
     rm -f "$LAST_ERROR_FILE" "$ERROR_TMP"
+    notify_success "$(basename "$BACKUP_FILE")"
 else
     log "فشل النسخ الاحتياطي! التفاصيل الكاملة في $LAST_ERROR_FILE"
     cp "$ERROR_TMP" "$LAST_ERROR_FILE" 2>/dev/null || echo 'تعذّر التقاط نص الخطأ.' > "$LAST_ERROR_FILE"
+    notify_error "$(cat "$LAST_ERROR_FILE" 2>/dev/null | head -c 1500)"
     rm -f "$BACKUP_FILE" "$ERROR_TMP"
     exit 1
 fi
