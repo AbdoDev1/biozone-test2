@@ -13,8 +13,14 @@
     <h1 class="text-2xl font-bold text-gray-800">سجل الأنشطة</h1>
 </div>
 
-<!-- بحث وفلاتر -->
-<form method="GET" class="bg-white rounded-2xl shadow-sm p-4 mb-6 flex flex-col sm:flex-row gap-3 sm:items-end sm:flex-wrap">
+<!-- بحث وفلاتر — hx-boost="false" ضروري هنا: فورم GET من غير action صريح
+     تحت hx-boost بيراكم قيم الفورم فوق querystring الصفحة الحالية بدل ما
+     يستبدلها (باج معروف في htmx، راجع github.com/bigskysoftware/htmx
+     issue #1788)، فكل بحث/فلترة كانت بتضيف نسخة جديدة من نفس الباراميترات
+     على الرابط بدل ما تستبدل القديمة. نفس الحل مستخدم في باقي فورمات
+     البحث/الفلترة في المشروع (المنتجات، الأقسام، المتابعات، الوسوم، تاب
+     المخزون، تقارير...). -->
+<form method="GET" hx-boost="false" class="bg-white rounded-2xl shadow-sm p-4 mb-6 flex flex-col sm:flex-row gap-3 sm:items-end sm:flex-wrap">
     <div class="flex-1 min-w-[180px]">
         <label for="act_q" class="text-xs text-gray-500 mb-1 block">بحث في الملاحظة/التغييرات</label>
         <input type="text" name="q" id="act_q" value="{{ search_q }}" placeholder="نص الملاحظة..."

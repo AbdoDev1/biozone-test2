@@ -47,7 +47,7 @@
 
 <!-- لوحة البحث والفلاتر (مرحلة 3: أضيف فلتر الحالة، فلتر المخزون، وخيار
      التجميع حسب القسم — البحث والفلتر بالقسم كانوا موجودين قبل كده) -->
-<form method="GET" class="bg-white rounded-2xl shadow-sm p-4 mb-6 flex flex-col sm:flex-row gap-3 sm:items-end sm:flex-wrap">
+<form method="GET" hx-boost="false" class="bg-white rounded-2xl shadow-sm p-4 mb-6 flex flex-col sm:flex-row gap-3 sm:items-end sm:flex-wrap">
     <div class="flex-1 min-w-[180px]">
         <label for="pf_search" class="text-xs text-gray-500 mb-1 block">بحث</label>
         <input type="text" name="q" id="pf_search" value="{{ search_q }}"

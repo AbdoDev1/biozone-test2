@@ -129,7 +129,7 @@ def account_type_discounts(request, pk):
         )
 
     if request.method == 'POST':
-        changed_units = []  # ملخص التغييرات الفعلية بس، عشان نسجلها كنشاط واحد مجمّع بعد الحفظ
+        changed_units = []  # أسماء المنتجات اللي اتغيّر خصمها بس (من غير القيم)، عشان نسجلها كنشاط واحد مجمّع بعد الحفظ
 
         with transaction.atomic():
             for key, raw_value in request.POST.items():
@@ -157,13 +157,13 @@ def account_type_discounts(request, pk):
                 if has_small_sibling:
                     if existing:
                         UnitDiscount.objects.filter(unit_id=unit_id, account_type=account_type).delete()
-                        changed_units.append(f'{unit_label}: {old_percent}% → بدون خصم (تلقائي)')
+                        changed_units.append(unit_label)
                     continue
 
                 if value == '':
                     if existing:
                         UnitDiscount.objects.filter(unit_id=unit_id, account_type=account_type).delete()
-                        changed_units.append(f'{unit_label}: {old_percent}% → بدون خصم')
+                        changed_units.append(unit_label)
                     continue
 
                 try:
@@ -177,8 +177,7 @@ def account_type_discounts(request, pk):
                     continue
 
                 if old_percent != discount_percent:
-                    old_label = f'{old_percent}%' if old_percent is not None else 'بدون خصم'
-                    changed_units.append(f'{unit_label}: {old_label} → {discount_percent}%')
+                    changed_units.append(unit_label)
 
                 UnitDiscount.objects.update_or_create(
                     unit_id=unit_id,
@@ -187,9 +186,13 @@ def account_type_discounts(request, pk):
                 )
 
         if changed_units:
+            # ملاحظة عامة بس (تم تعديل خصومات المنتجات دي) من غير عرض النسب
+            # الفعلية قديمة/جديدة — سجل الأنشطة مش المفروض يعرض تفاصيل تسعير
+            # حساسة، بس يأكد إن في تعديل حصل ومين عمله وإمتى.
+            changes_summary = 'تم تعديل خصومات: ' + '، '.join(dict.fromkeys(changed_units))
             log_activity(
                 account_type, ActivityLog.Event.UPDATED,
-                user=request.user, changes_summary='، '.join(changed_units),
+                user=request.user, changes_summary=changes_summary,
             )
         messages.success(request, f'تم حفظ قائمة الخصومات لنوع الحساب "{account_type.name}".')
         base_url = reverse('staff:account_type_discounts', kwargs={'pk': account_type.pk})

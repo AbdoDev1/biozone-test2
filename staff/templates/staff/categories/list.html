@@ -18,7 +18,7 @@
 </div>
 
 <!-- بحث -->
-<form method="GET" class="bg-white rounded-2xl shadow-sm p-4 mb-6 flex gap-3 items-end">
+<form method="GET" hx-boost="false" class="bg-white rounded-2xl shadow-sm p-4 mb-6 flex gap-3 items-end">
     <div class="flex-1">
         <label for="cat_search" class="text-xs text-gray-500 mb-1 block">بحث</label>
         <input type="text" name="q" id="cat_search" value="{{ search_q }}"

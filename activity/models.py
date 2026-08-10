@@ -4,6 +4,21 @@ from django.contrib.contenttypes.models import ContentType
 from django.db import models
 
 
+class ActivityLogQuerySet(models.QuerySet):
+    def exclude_pricing_details(self):
+        """
+        بتستثني أي سجل نشاط بيانه (changes_summary) خاص بتغيير سعر أو خصم —
+        دي بيانات تسعير حساسة، وطلب صاحب النظام إنها متظهرش في سجل الأنشطة
+        (لا الصفحة العامة ولا تايم لاين أي كيان) خالص، حتى مش بشكل مختصر.
+        حركة الرصيد الفعلية (وارد/صادر) لسه ظاهرة زي ما هي في سجل حركات
+        المخزون؛ الاستثناء هنا بيغطي بس أحداث ActivityLog (تعديل بيانات)
+        اللي فيها كلمة \"سعر\" أو \"خصم\" في ملخص التغيير.
+        """
+        return self.exclude(
+            models.Q(changes_summary__icontains='سعر') | models.Q(changes_summary__icontains='خصم')
+        )
+
+
 class ActivityLog(models.Model):
     """
     سجل نشاط عام (Audit Log + Chatter) — بديل عام لِـ orders.OrderLog
@@ -24,6 +39,8 @@ class ActivityLog(models.Model):
         UPDATED = 'UPDATED', 'تعديل بيانات'
         DELETED = 'DELETED', 'تم الحذف'
         NOTE = 'NOTE', 'ملاحظة'
+
+    objects = ActivityLogQuerySet.as_manager()
 
     content_type = models.ForeignKey(ContentType, on_delete=models.CASCADE)
     object_id = models.PositiveIntegerField()

@@ -110,16 +110,16 @@
             {% for movement in movements %}
             <tr class="hover:bg-gray-50">
                 <td class="px-4 py-3 font-medium sticky-col">
-                    <a href="{% url 'staff:inventory_detail' movement.inventory_id %}" class="hover:text-primary-600 hover:underline">
-                        {{ movement.inventory.product.display_name }}
+                    <a href="{% url 'staff:inventory_detail' movement.inventory_pk %}" class="hover:text-primary-600 hover:underline">
+                        {{ movement.product_name }}
                     </a>
                 </td>
                 <td class="px-4 py-3">
-                    {% status_badge movement.get_movement_type_display group="movement_type" key=movement.movement_type %}
+                    {% status_badge movement.type_display group="movement_type" key=movement.kind %}
                 </td>
-                <td class="px-4 py-3 text-gray-500">{{ movement.unit.name }}</td>
-                <td class="px-4 py-3 font-medium">{{ movement.quantity }}</td>
-                <td class="px-4 py-3 text-gray-500">{{ movement.stock_qty }}</td>
+                <td class="px-4 py-3 text-gray-500">{{ movement.unit_name }}</td>
+                <td class="px-4 py-3 font-medium">{{ movement.quantity_display }}</td>
+                <td class="px-4 py-3 text-gray-500">{{ movement.pieces_display }}</td>
                 <td class="px-4 py-3 text-gray-500">{{ movement.note|default:"—" }}</td>
                 <td class="px-4 py-3">{{ movement.created_by.username|default:"—" }}</td>
                 <td class="px-4 py-3 text-gray-500">{{ movement.created_at|date:"Y-m-d H:i" }}</td>
@@ -152,7 +152,7 @@
 <!-- لوحة البحث والفلاتر — نفس نمط بطاقة الفلاتر المستخدمة في صفحة المنتجات
      (staff/templates/staff/products/list.html): بطاقة بيضاء، حقول بعنوان
      صغير فوقها، وترتيب متجاوب (flex-wrap) بدل صف بحث مفرد. -->
-<form method="get" class="bg-white rounded-2xl shadow-sm p-4 mb-6 flex flex-col sm:flex-row gap-3 sm:items-end sm:flex-wrap">
+<form method="get" hx-boost="false" class="bg-white rounded-2xl shadow-sm p-4 mb-6 flex flex-col sm:flex-row gap-3 sm:items-end sm:flex-wrap">
     <div class="flex-1 min-w-[220px]">
         <label for="inv_search" class="text-xs text-gray-500 mb-1 block">بحث</label>
         <div class="relative">

@@ -49,7 +49,9 @@ def activity_list(request):
     ولا تعديل ولا حذف يدوي — السجل بيتكتب من الكود بس وقت الحفظ (راجع
     activity/services.py)، فمفيش داعي أي فورم هنا أصلًا.
     """
-    logs = ActivityLog.objects.select_related('content_type', 'created_by')
+    # بيانات تسعير/خصومات حساسة — مش مطلوب تظهر في سجل الأنشطة العام خالص،
+    # حتى بشكل مختصر (راجع ActivityLogQuerySet.exclude_pricing_details).
+    logs = ActivityLog.objects.exclude_pricing_details().select_related('content_type', 'created_by')
 
     search_q = request.GET.get('q', '').strip()
     event_filter = request.GET.get('event', '')

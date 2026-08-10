@@ -216,7 +216,7 @@ def product_quick_update_price(request, unit_pk):
             unit.save(update_fields=['unit_price'])
             log_activity(
                 unit.product, ActivityLog.Event.UPDATED, user=request.user,
-                changes_summary=f'سعر {unit.name}: {old_price} → {new_price} (تعديل سريع)',
+                changes_summary=f'تم تعديل سعر {unit.name} (تعديل سريع)',
             )
 
     return render(request, 'staff/products/partials/price_cell.html', {
@@ -316,10 +316,11 @@ def _snapshot_unit_prices(product):
 
 def _unit_prices_diff_summary(old_snapshot, product):
     """
-    بيقارن اللقطة القديمة لأسعار الوحدات بالقيم الحالية بعد الحفظ، ويرجع
-    سطر عربي مختصر لكل وحدة اتغيّر سعرها فعلًا (سواء وحدة موجودة اتعدّلت،
-    وحدة جديدة اتضافت من الصفر، أو وحدة موجودة اتمسحت أثناء التعديل —
-    الحذف ده كان بيحصل بصمت من غير أي أثر في تايم لاين النشاط قبل كده).
+    بتقارن اللقطة القديمة لأسعار الوحدات بالقيم الحالية بعد الحفظ، وترجع
+    ملاحظة عامة بس (اسم الوحدة اللي اتغيّرت) من غير القيم الرقمية القديمة/
+    الجديدة — الأسعار والخصومات حساسة ومش المفروض تتعرض بالتفصيل في سجل
+    الأنشطة (شوف نفس القرار في product_discounts_save و
+    account_type_discounts في staff/views/account_types.py).
     """
     parts = []
     current_units = product.units.all()
@@ -332,10 +333,7 @@ def _unit_prices_diff_summary(old_snapshot, product):
             old_value = old.get(field) if old else None
             if old_value != new_value:
                 label = UNIT_FIELD_LABELS[field]
-                if old is None:
-                    parts.append(f'{label} ({unit.name}): جديد — {new_value}')
-                else:
-                    parts.append(f'{label} ({unit.name}): {old_value} → {new_value}')
+                parts.append(f'تم تعديل {label} ({unit.name})')
 
     for unit_id, old in old_snapshot.items():
         if unit_id not in seen_ids:
@@ -496,7 +494,7 @@ def product_discounts_save(request, pk):
     product = get_object_or_404(Product.objects.prefetch_related('units'), pk=pk)
     sizes_present = {u.size for u in product.units.all()}
     units_by_id = {u.pk: u for u in product.units.all()}
-    changed = []
+    changed_labels = []  # أسماء الوحدات/أنواع الحساب اللي اتغيّرت بس، من غير النسب الفعلية
 
     with transaction.atomic():
         for key, raw_value in request.POST.items():
@@ -526,7 +524,7 @@ def product_discounts_save(request, pk):
             if value == '':
                 if existing:
                     existing.delete()
-                    changed.append(f'{unit_label}: {old_percent}% → بدون خصم')
+                    changed_labels.append(unit_label)
                 continue
 
             try:
@@ -539,15 +537,18 @@ def product_discounts_save(request, pk):
                 continue
 
             if old_percent != discount_percent:
-                old_label = f'{old_percent}%' if old_percent is not None else 'بدون خصم'
-                changed.append(f'{unit_label}: {old_label} → {discount_percent}%')
+                changed_labels.append(unit_label)
 
             UnitDiscount.objects.update_or_create(
                 unit=unit, account_type=account_type, defaults={'discount_percent': discount_percent},
             )
 
-    if changed:
-        log_activity(product, ActivityLog.Event.UPDATED, user=request.user, changes_summary='، '.join(changed))
+    if changed_labels:
+        # ملاحظة عامة في سجل الأنشطة (تم تعديل خصومات المنتج) من غير عرض
+        # النسب/الأسعار الفعلية بالتفصيل — الخصومات بيانات حساسة، وسجل
+        # الأنشطة المفروض يراقب حركة النظام بس مش يعرض تفاصيل تسعير كاملة.
+        changes_summary = 'تم تعديل خصومات المنتج (' + '، '.join(dict.fromkeys(changed_labels)) + ')'
+        log_activity(product, ActivityLog.Event.UPDATED, user=request.user, changes_summary=changes_summary)
         messages.success(request, 'تم حفظ تعديلات الخصومات.')
     else:
         messages.info(request, 'لا توجد تعديلات جديدة على الخصومات.')

@@ -186,11 +186,11 @@
                 {% for movement in movements %}
                 <tr class="hover:bg-gray-50">
                     <td class="px-4 py-3 sticky-col">
-                        {% status_badge movement.get_movement_type_display group="movement_type" key=movement.movement_type %}
+                        {% status_badge movement.type_display group="movement_type" key=movement.kind %}
                     </td>
-                    <td class="px-4 py-3 text-gray-500">{{ movement.unit.name }}</td>
-                    <td class="px-4 py-3 font-medium">{{ movement.quantity }}</td>
-                    <td class="px-4 py-3 text-gray-500">{{ movement.stock_qty }}</td>
+                    <td class="px-4 py-3 text-gray-500">{{ movement.unit_name }}</td>
+                    <td class="px-4 py-3 font-medium">{{ movement.quantity_display }}</td>
+                    <td class="px-4 py-3 text-gray-500">{{ movement.pieces_display }}</td>
                     <td class="px-4 py-3 text-gray-500">{{ movement.note|default:"—" }}</td>
                     <td class="px-4 py-3">{{ movement.created_by.username|default:"—" }}</td>
                     <td class="px-4 py-3 text-gray-500">{{ movement.created_at|date:"Y-m-d H:i" }}</td>

@@ -183,15 +183,18 @@ class ProductQuickPriceEditTestCase(TestCase):
         self.assertEqual(self.unit.unit_price, Decimal('35.50'))
         self.assertContains(response, '35.5')
 
-    def test_price_update_logs_activity_with_old_and_new_value(self):
+    def test_price_update_logs_activity_without_exposing_old_and_new_value(self):
+        # سجل الأنشطة بيسجّل إن السعر اتغيّر بس، من غير عرض القيم الفعلية
+        # قديمة/جديدة (بيانات تسعير حساسة) — راجع _unit_prices_diff_summary
+        # و product_quick_update_price في staff/views/products/crud.py.
         self.http.post(
             reverse('staff:product_quick_price', args=[self.unit.pk]),
             {'unit_price': '99.00'},
         )
         log = ActivityLog.objects.filter(object_id=self.product.pk, event=ActivityLog.Event.UPDATED).first()
         self.assertIsNotNone(log)
-        self.assertIn('20.00', log.changes_summary)
-        self.assertIn('99.00', log.changes_summary)
+        self.assertNotIn('20.00', log.changes_summary)
+        self.assertNotIn('99.00', log.changes_summary)
 
     def test_invalid_price_value_does_not_save_and_returns_error(self):
         response = self.http.post(

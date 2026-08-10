@@ -21,6 +21,9 @@ def activity_panel(context, obj):
     logs = (
         ActivityLog.objects
         .filter(content_type=content_type, object_id=obj.pk)
+        # بيانات تسعير/خصومات حساسة — مش مطلوب تظهر في تايم لاين النشاط
+        # حتى بشكل مختصر، راجع ActivityLogQuerySet.exclude_pricing_details.
+        .exclude_pricing_details()
         .select_related('created_by')[:50]
     )
     request = context.get('request')
