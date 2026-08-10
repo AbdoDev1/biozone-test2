@@ -55,7 +55,6 @@ urlpatterns = [
     path('orders/', orders.order_list, name='order_list'),
     path('orders/<int:pk>/', orders.order_detail, name='order_detail'),
     path('orders/<int:pk>/print/', orders.order_print, name='order_print'),
-    path('orders/<int:pk>/confirmed-invoice/', orders.order_confirmed_invoice_print, name='order_confirmed_invoice_print'),
     path('accounting/', accounting.accounting_overview, name='accounting_overview'),
     path('accounting/quick-entry/', accounting.accounting_quick_entry, name='accounting_quick_entry'),
     path('accounting/export/', accounting.accounting_export, name='accounting_export'),

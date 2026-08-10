@@ -33,8 +33,11 @@ class InvoiceSequence(models.Model):
 
 class Invoice(models.Model):
     """
-    فاتورة — مستند Snapshot ثابت يتولد تلقائيًا عند Order.mark_delivered().
-    immutable تمامًا بعد الإصدار: أي تصحيح لاحق = مستند مرتجع منفصل (مرحلة 11).
+    فاتورة — مستند Snapshot ثابت يتولد تلقائيًا عند Order.confirm() كمسودة
+    (is_draft=True) برقمها الثابت النهائي، وتتحول لنهائية (is_draft=False)
+    عند Order.mark_delivered() من غير ما رقمها أو أي حقل تاني يتغيّر.
+    immutable تمامًا بعد الإصدار (عدا انتقال المسودة دي بالذات): أي تصحيح
+    لاحق = مستند مرتجع منفصل (مرحلة 5).
     """
     invoice_number = models.CharField(max_length=20, unique=True, editable=False)
     order = models.OneToOneField(

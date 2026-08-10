@@ -176,23 +176,65 @@ class Order(models.Model):
     @transaction.atomic
     def confirm(self, actor=None):
         """
-        المخزن بيأكد الطلب من غير أي تعديل في الكميات — ومن دلوقتي (مرحلة 2)
-        دي كمان لحظة إصدار الفاتورة: بتتولد كـ "مسودة" (is_draft=True) هنا
-        فورًا، برقم فاتورة ثابت للأبد ومديونية حقيقية على العميل من هالحظة،
-        مش مؤجلة لحد التسليم. التسليم (mark_delivered) هيبقى بعد كده مجرد
-        إزالة علامة المسودة عن نفس الفاتورة، مش إصدار فاتورة جديدة.
+        المخزن بيأكد الطلب من غير أي تعديل في الكميات. من مرحلة 2، دي لحظة
+        إصدار الفاتورة: بتتولد كـ "مسودة" (is_draft=True) هنا فورًا، برقم
+        فاتورة ثابت للأبد ومديونية حقيقية على العميل من هالحظة، مش مؤجلة
+        لحد التسليم. ومن مرحلة 3، دي كمان لحظة خصم المخزون الفعلي (بدل ما
+        كان بيحصل عند mark_delivered): حركة "صادر (مباشر)" واحدة لكل صنف،
+        زي بالظبط اللي كان بيحصل في mark_delivered قبل كده. التسليم
+        (mark_delivered) بعد كده مجرد تحويل نفس الفاتورة من مسودة لنهائية
+        وتغيير حالة الطلب — مفيش أي تأثير تاني على المخزون ولا فاتورة جديدة.
 
-        ملاحظة مؤقتة (لسه في المرحلة دي): خصم المخزون الفعلي لسه بيحصل في
-        mark_delivered() زي الأول — هيتنقل هنا كمان في مرحلة تالية. يعني
-        دلوقتي فيه فترة (من التأكيد لحد التسليم) فيها فاتورة صادرة ومديونية
-        مسجّلة، لكن المخزون لسه ماتخصمش — ده وضع انتقالي متوقع في المرحلة دي
-        بس، مش السلوك النهائي.
+        حماية ضد double-submit/سباق: بنقفل صف الطلب (select_for_update)
+        ونتأكد إنه لسه مش CONFIRMED بالفعل *بعد* أخذ القفل — بالظبط نفس
+        منطق mark_delivered القديم (راجع تاريخ الملف)، لكن دلوقتي هنا لأن
+        خصم المخزون بقى هنا. لو طلبين POST جم مع بعض (دبل كليك)، التاني
+        هيستنى القفل وهيلاقي الطلب اتأكد بالفعل فيتوقف بـ ValidationError
+        بدل ما يخصم من المخزون مرتين لنفس الطلب.
+
+        لو الكمية بقت غير متوفرة فعليًا وقت التأكيد، الحركة هترفض تلقائيًا
+        (StockMovement.clean()) وتفشل العملية كلها (@transaction.atomic):
+        الطلب يفضل CONFIRMED=False ومفيش فاتورة اتصدرت، زي ما القديم كان
+        بيحصل بالظبط لو الفشل كان وقت mark_delivered.
         """
+        from django.core.exceptions import ValidationError
+        from inventory.models import Inventory, StockMovement
+        from invoices.models import Invoice
+
+        locked_self = Order.objects.select_for_update().get(pk=self.pk)
+        if locked_self.status == self.Status.CONFIRMED:
+            raise ValidationError('الطلب ده اتأكد بالفعل، لا يمكن تكرار التأكيد.')
+
+        items = list(self.items.select_related('product_unit').all())
+        product_ids = [item.product_unit.product_id for item in items if not item.is_service_fee]
+        locked_inventories = {
+            inv.product_id: inv
+            for inv in Inventory.objects.select_for_update().filter(product_id__in=product_ids)
+        }
+
+        for item in items:
+            if item.is_service_fee:
+                # صنف خدمي (زي مصاريف التوصيل) — مالوش منتج ولا تأثير على
+                # المخزون خالص، فبيتجاوز هنا تمامًا.
+                continue
+            inv = locked_inventories.get(item.product_unit.product_id)
+            if inv:
+                out_movement = StockMovement(
+                    inventory=inv,
+                    unit=item.product_unit,
+                    movement_type=StockMovement.MovementType.OUT,
+                    quantity=item.quantity,
+                    note=f'تأكيد طلب #{self.pk}',
+                    created_by=actor,
+                )
+                # StockMovement.save() بقت بتنادي full_clean() تلقائيًا
+                # (راجع inventory/models.py)، فمفيش داعي نناديها هنا يدويًا.
+                out_movement.save()
+
         self._actor = actor
         self.status = self.Status.CONFIRMED
         self.save()
 
-        from invoices.models import Invoice
         Invoice.issue_for_order(self, actor=actor)
 
     @transaction.atomic
@@ -215,61 +257,38 @@ class Order(models.Model):
     @transaction.atomic
     def mark_delivered(self, actor=None):
         """
-        تسليم الطلب — الطلبات مش بتحجز أي كمية وقت الإرسال، فالخصم الفعلي من
-        المخزون بيحصل هنا بس (لحظة التسليم): حركة "صادر (مباشر)" واحدة لكل
-        صنف. لو الكمية بقت غير متوفرة فعليًا وقت التسليم (اتباعت لعميل تاني
-        مثلاً في الفترة من إرسال الطلب لحد المراجعة)، الحركة هترفض تلقائيًا
-        (StockMovement.clean()) وهيرجع ValidationError للموظف.
+        تسليم الطلب. من مرحلة 3، خصم المخزون الفعلي بقى بيحصل عند التأكيد
+        (Order.confirm) مش هنا خالص — الميثود دي بقت بسيطة: تغيير حالة
+        الطلب لـ DELIVERED، وتحويل الفاتورة المرتبطة (اللي اتصدرت فعليًا
+        وقت التأكيد) من مسودة لنهائية (is_draft: True → False) بنفس رقمها
+        الثابت من غير ما يتغيّر أي حقل تاني فيها — مفيش إصدار فاتورة جديدة
+        ولا أي حركة مخزون هنا تاني.
 
-        حماية ضد double-submit/سباق: الفحص "الطلب لسه CONFIRMED" في الـ view
-        بيحصل *قبل* الدخول هنا (شرط مستوى الـ view بس، مش شرط هنا في الموديل —
-        الميثود دي أصلًا مصممة تتنادى من أي حالة، شوف اختبارات orders/tests.py).
-        المشكلة الفعلية: لو طلبين POST جم مع بعض (دبل كليك، أو تابين لموظفين
-        مختلفين) ممكن الاتنين يعدّوا فحص الـ view قبل ما أي واحد يغيّر الحالة
-        فعليًا، فالاتنين ينادوا mark_delivered() ويخصموا من المخزون مرتين لنفس
-        الطلب. عشان كده لازم نقفل صف الطلب نفسه (select_for_update) ونتأكد إنه
-        مش DELIVERED بالفعل *بعد* أخذ القفل — الطلب التاني هيستنى القفل، ولما
-        ياخده هيلاقي الحالة بقت DELIVERED فيتوقف بدل ما يسجّل حركة مخزون
-        تانية (خصم مزدوج) على نفس الطلب. الفاتورة كانت محمية أصلًا (hasattr
-        check في Invoice.issue_for_order)، لكن حركة المخزون ماكانتش.
+        لو الطلب اتنادى عليه mark_delivered() من غير ما يتأكد الأول
+        (confirm())، مش هيكون عنده فاتورة أصلًا (Invoice غير موجودة) —
+        بنتجاهل خطوة تحويل المسودة في الحالة دي بدل ما نطيح بـ exception،
+        زي ما كانت الميثود دي أصلًا مصممة تتنادى من أي حالة (شوف اختبارات
+        orders/tests.py).
 
-        ملاحظة مرحلة 2: الفاتورة بقت بتتولد في confirm() مش هنا خالص — مفيش
-        نداء لـ Invoice.issue_for_order في الميثود دي تاني. لو الطلب اتنادى
-        عليه mark_delivered() من غير ما يتأكد الأول (confirm())، مش هيكون
-        عنده فاتورة أصلًا لحد ما مرحلة تحويل الفاتورة لنهائية تتضاف (مرحلة 3).
+        حماية ضد double-submit/سباق: بنقفل صف الطلب (select_for_update)
+        ونتأكد إنه مش DELIVERED بالفعل *بعد* أخذ القفل — لو طلبين POST جم
+        مع بعض، التاني هيستنى القفل ولما ياخده هيلاقي الحالة بقت DELIVERED
+        فيتوقف. القفل هنا خصوصي لمنع تكرار OrderLog وقت السباق (Order.save()
+        مالهاش حماية built-in زي Invoice.save())، ومستقل تمامًا عن قفل
+        confirm() (ده بتاعه هو المخزون، ده بتاعه هو حالة التسليم — نفس
+        النمط بس مش نفس القفل الفعلي، وده مقصود).
         """
         from django.core.exceptions import ValidationError
-        from inventory.models import Inventory, StockMovement
 
         locked_self = Order.objects.select_for_update().get(pk=self.pk)
         if locked_self.status == self.Status.DELIVERED:
             raise ValidationError('الطلب ده اتسلّم بالفعل، لا يمكن تكرار التسليم.')
 
-        items = list(self.items.select_related('product_unit').all())
-        product_ids = [item.product_unit.product_id for item in items if not item.is_service_fee]
-        locked_inventories = {
-            inv.product_id: inv
-            for inv in Inventory.objects.select_for_update().filter(product_id__in=product_ids)
-        }
+        if hasattr(self, 'invoice') and self.invoice.is_draft:
+            invoice = self.invoice
+            invoice.is_draft = False
+            invoice.save()
 
-        for item in items:
-            if item.is_service_fee:
-                # صنف خدمي (زي مصاريف التوصيل) — مالوش منتج ولا تأثير على
-                # المخزون خالص، فبيتجاوز هنا تمامًا.
-                continue
-            inv = locked_inventories.get(item.product_unit.product_id)
-            if inv:
-                out_movement = StockMovement(
-                    inventory=inv,
-                    unit=item.product_unit,
-                    movement_type=StockMovement.MovementType.OUT,
-                    quantity=item.quantity,
-                    note=f'تسليم طلب #{self.pk}',
-                    created_by=actor,
-                )
-                # StockMovement.save() بقت بتنادي full_clean() تلقائيًا
-                # (راجع inventory/models.py)، فمفيش داعي نناديها هنا يدويًا.
-                out_movement.save()
         self._actor = actor
         self.status = self.Status.DELIVERED
         self.save()
@@ -280,15 +299,16 @@ class Order(models.Model):
         المخزن بيعدّل كمية صنف في الطلب (لو الكمية المتاحة أقل من المطلوب، أو
         لأي سبب تاني)، وبيعيد حساب السعر حسب الكمية الجديدة. التعديل هنا
         بيغيّر بس بيانات الطلب — مفيش أي تأثير على المخزون (لا حجز ولا فك)،
-        لأن الخصم الفعلي بيحصل بس وقت التسليم (mark_delivered).
+        لأن الخصم الفعلي بيحصل بس وقت التأكيد (confirm)، والتعديل هنا أصلًا
+        مسموح بس قبل التأكيد (شوف الشرط تحت).
         """
         if item.is_service_fee:
             raise ValueError('مينفعش تتعدّل كمية صنف خدمي زي "مصاريف التوصيل".')
         if self.status not in (self.Status.PENDING, self.Status.NEEDS_APPROVAL):
-            # بعد التأكيد (CONFIRMED) وقبل التسليم، الطلب بيتحوّل لمرحلة
-            # "فاتورة قبل نهائية" (راجع staff:order_confirmed_invoice_print)
-            # ومينفعش تتعدّل كمياته تاني — أي تصحيح لازم يبقى برفض الطلب
-            # وإنشاء واحد جديد، مش تعديل صامت على طلب اتأكد بالفعل.
+            # بعد التأكيد (CONFIRMED)، الطلب بقى له فاتورة حقيقية (مسودة
+            # is_draft=True برقمها الثابت النهائي — راجع Order.confirm) ومينفعش
+            # تتعدّل كمياته تاني — أي تصحيح لازم يبقى برفض الطلب وإنشاء واحد
+            # جديد، مش تعديل صامت على طلب اتأكد وله فاتورة بالفعل.
             raise ValueError('لا يمكن تعديل كميات طلب تم تأكيده بالفعل.')
 
         from inventory.models import Inventory
@@ -366,7 +386,7 @@ class Order(models.Model):
         له.
         """
         if self.status not in (self.Status.PENDING, self.Status.NEEDS_APPROVAL):
-            # بعد التأكيد (CONFIRMED)، الطلب بقى في مرحلة "فاتورة قبل نهائية"
+            # بعد التأكيد (CONFIRMED)، الطلب بقى له فاتورة حقيقية صادرة
             # ومينفعش يتعدّل خالص (لا كميات ولا صنف خدمي) — لازم القرار بشأن
             # مصاريف التوصيل يتاخد قبل التأكيد، مش بعده.
             raise ValueError('لا يمكن إضافة مصاريف توصيل بعد تأكيد الطلب.')

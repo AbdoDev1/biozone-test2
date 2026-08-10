@@ -5,7 +5,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>فاتورة {{ invoice.invoice_number }}</title>
+    <title>فاتورة {{ invoice.invoice_number }}{% if invoice.is_draft %} — مسودة{% endif %}</title>
     <link rel="stylesheet" href="{% static 'css/tailwind.css' %}">
     <link rel="stylesheet" href="{% static 'css/fonts.css' %}">
     <style>
@@ -41,6 +41,15 @@
 
     {% for page_items in item_pages %}
     <div class="invoice-sheet max-w-3xl mx-auto bg-white shadow border-2 border-gray-900 text-gray-900 {% if not forloop.last %}mb-8{% endif %}">
+
+        {% if invoice.is_draft %}
+        <!-- الطلب مؤكَّد وبانتظار التسليم — الفاتورة برقمها الثابت والمديونية
+             حقيقيان بالفعل من لحظة التأكيد، لسه بس منتظرة تسليم الطلب فعليًا
+             عشان تتحول لنهائية (راجع Order.mark_delivered). -->
+        <div class="bg-amber-50 border-b-2 border-amber-300 text-amber-800 text-xs px-5 py-2 text-center font-medium">
+            مسودة — الطلب مؤكَّد وبانتظار التسليم. رقم الفاتورة والمديونية على العميل ثابتان بالفعل، وهتتحول الفاتورة لنهائية تلقائيًا لحظة التسليم.
+        </div>
+        {% endif %}
 
         <!-- Header: هوية المتجر + بيانات الفاتورة والعميل كوحدة واحدة -->
         <div class="border-b-2 border-gray-900">

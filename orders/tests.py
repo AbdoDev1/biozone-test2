@@ -46,17 +46,47 @@ class OrderLifecycleTestCase(TestCase):
             unit_price=self.unit.unit_price,
         )
 
-    def test_mark_delivered_deducts_stock_and_creates_invoice(self):
-        """التسليم لازم يخصم بالظبط الكمية المطلوبة من المخزون. الفاتورة
-        بقت (مرحلة 2) بتتولد وقت التأكيد مش التسليم، فلازم نأكد الأول."""
+    def test_confirm_deducts_stock_and_issues_draft_invoice(self):
+        """من مرحلة 3: التأكيد (مش التسليم) هو لحظة خصم المخزون الفعلي
+        وإصدار الفاتورة (كمسودة is_draft=True) برقم ثابت ومديونية حقيقية."""
         self.order.confirm(actor=self.client_user)
-        self.order.mark_delivered(actor=self.client_user)
 
         self.inventory.refresh_from_db()
         self.assertEqual(self.inventory.quantity, 80)  # 100 - 20
-        self.assertEqual(self.order.status, Order.Status.DELIVERED)
+        self.assertEqual(self.order.status, Order.Status.CONFIRMED)
         self.assertTrue(Invoice.objects.filter(order=self.order).exists())
         self.assertEqual(self.order.invoice.total, Decimal('200.00'))  # 20 * 10
+        self.assertTrue(self.order.invoice.is_draft)
+
+    def test_mark_delivered_after_confirm_only_finalizes_invoice(self):
+        """التسليم بعد التأكيد لازم يحوّل الفاتورة لنهائية بنفس رقمها من
+        غير أي خصم مخزون إضافي — المخزون كان اتخصم بالفعل وقت confirm()."""
+        self.order.confirm(actor=self.client_user)
+        self.inventory.refresh_from_db()
+        quantity_after_confirm = self.inventory.quantity
+        invoice_number = self.order.invoice.invoice_number
+
+        self.order.mark_delivered(actor=self.client_user)
+
+        self.inventory.refresh_from_db()
+        self.assertEqual(self.inventory.quantity, quantity_after_confirm)  # لم يتغير
+        self.assertEqual(self.order.status, Order.Status.DELIVERED)
+        self.order.invoice.refresh_from_db()
+        self.assertFalse(self.order.invoice.is_draft)
+        self.assertEqual(self.order.invoice.invoice_number, invoice_number)  # لم يتغير
+
+    def test_confirm_twice_does_not_double_deduct_stock(self):
+        """double-submit/سباق: نداء confirm() تاني على طلب اتأكد بالفعل
+        لازم يترفض ومايخصمش من المخزون مرة تانية."""
+        self.order.confirm(actor=self.client_user)
+        self.inventory.refresh_from_db()
+        quantity_after_first_confirm = self.inventory.quantity
+
+        with self.assertRaises(Exception):
+            self.order.confirm(actor=self.client_user)
+
+        self.inventory.refresh_from_db()
+        self.assertEqual(self.inventory.quantity, quantity_after_first_confirm)  # لم يتغير
 
     def test_mark_delivered_twice_does_not_double_charge_invoice(self):
         """issue_for_order لازم تكون idempotent — نداءها مرتين ميعملش فاتورة تانية.
@@ -71,18 +101,21 @@ class OrderLifecycleTestCase(TestCase):
         self.assertEqual(Invoice.objects.filter(order=self.order).count(), 1)
         self.assertEqual(self.order.invoice.id, first_invoice_id)
 
-    def test_mark_delivered_fails_when_stock_insufficient(self):
-        """لو الكمية بقت غير متوفرة فعليًا وقت التسليم، التسليم يفشل ومايخصمش حاجة."""
+    def test_confirm_fails_when_stock_insufficient(self):
+        """من مرحلة 3: لو الكمية مش متوفرة وقت التأكيد، confirm() (مش
+        mark_delivered) هي اللي تفشل — والطلب يفضل زي ما هو من غير فاتورة
+        ولا خصم مخزون (@transaction.atomic بيلغي كل حاجة مع بعض)."""
         self.inventory.quantity = 5
         self.inventory.save(update_fields=['quantity'])
 
         with self.assertRaises(Exception):
-            self.order.mark_delivered(actor=self.client_user)
+            self.order.confirm(actor=self.client_user)
 
         self.inventory.refresh_from_db()
         self.assertEqual(self.inventory.quantity, 5)  # لم يتغير
         self.order.refresh_from_db()
-        self.assertNotEqual(self.order.status, Order.Status.DELIVERED)
+        self.assertEqual(self.order.status, Order.Status.PENDING)
+        self.assertFalse(Invoice.objects.filter(order=self.order).exists())
 
     def test_reject_twice_raises(self):
         """رفض طلب مرفوض بالفعل لازم يمنع، عشان مايتكررش في الـ log أو الإشعارات."""

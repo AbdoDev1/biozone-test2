@@ -8,7 +8,6 @@ from django.shortcuts import render, redirect, get_object_or_404
 from django.urls import reverse
 
 from orders.models import Order, OrderItem
-from invoices.utils import amount_to_arabic_words
 from staff.permissions import perm_required
 from tags.services import tags_for_many
 
@@ -74,46 +73,6 @@ def order_print(request, pk):
 
 
 @perm_required('orders.view_order')
-def order_confirmed_invoice_print(request, pk):
-    """
-    "فاتورة قبل نهائية" — بتظهر بس للطلبات في حالة CONFIRMED (بعد التأكيد
-    وقبل التسليم). مختلفة تمامًا عن order_print (نسخة تجهيز بدون أسعار):
-    دي بشكل رسمي فيه الأسعار والخصومات والإجمالي (زي شكل invoices/print.html
-    بالظبط)، لكن بدون رقم فاتورة رسمي ولا حركة حساب، وموضّح عليها بوضوح إنها
-    مش نهائية وإن رقم الفاتورة الحقيقي هيتولّد بس لحظة التسليم الفعلي
-    (Invoice.issue_for_order عن طريق Order.mark_delivered).
-
-    لو الطلب لسه مش CONFIRMED (أو خلاص اتسلّم وبقى له فاتورة حقيقية)، مفيش
-    داعي للمستند المؤقت ده — بنرجّع الموظف لصفحة تفاصيل الطلب بدل ما نعرض
-    مستند مش مناسب لحالته الحالية.
-    """
-    order = get_object_or_404(
-        Order.objects.select_related('client', 'client__client_profile'),
-        pk=pk,
-    )
-    if order.status != Order.Status.CONFIRMED:
-        messages.info(request, 'الفاتورة قبل النهائية متاحة فقط للطلبات المؤكدة بانتظار التسليم.')
-        return redirect('staff:order_detail', pk=order.pk)
-
-    all_items = list(order.items.select_related('product_unit').order_by('pk'))
-    for idx, item in enumerate(all_items, start=1):
-        item.display_index = idx
-    public_total = sum((item.public_price * item.quantity for item in all_items), Decimal('0'))
-    item_pages = [
-        all_items[i:i + ITEMS_PER_PRINT_PAGE]
-        for i in range(0, len(all_items), ITEMS_PER_PRINT_PAGE)
-    ] or [[]]
-
-    return render(request, 'staff/orders/confirmed_invoice_print.html', {
-        'order': order,
-        'item_pages': item_pages,
-        'item_count': len(all_items),
-        'public_total': public_total,
-        'amount_in_words': amount_to_arabic_words(order.total),
-    })
-
-
-@perm_required('orders.view_order')
 def order_detail(request, pk):
     order = get_object_or_404(
         Order.objects.select_related('client').prefetch_related('items__product_unit__product__inventory'),
@@ -169,9 +128,17 @@ def order_detail(request, pk):
         elif action == 'confirm':
             if order.is_amended and order.status != Order.Status.NEEDS_APPROVAL:
                 messages.error(request, 'يحتوي الطلب على تعديلات بانتظار موافقة العميل، ولا يمكن تأكيده مباشرة.')
+            elif order.status not in (Order.Status.PENDING, Order.Status.NEEDS_APPROVAL):
+                # بعد مرحلة 3، confirm() بيخصم من المخزون فعليًا، فمهم نمنع
+                # نداء تاني على طلب اتأكد بالفعل من هنا في الـ view (مش بس
+                # نعتمد على الحماية جوه الموديل) — زي بالظبط شرط 'deliver' تحت.
+                messages.error(request, 'الطلب ده اتأكد بالفعل.')
             else:
-                order.confirm(actor=request.user)
-                messages.success(request, f'تم تأكيد الطلب #{order.pk}.')
+                try:
+                    order.confirm(actor=request.user)
+                    messages.success(request, f'تم تأكيد الطلب #{order.pk} وخصم الكميات من المخزون.')
+                except ValidationError as e:
+                    messages.error(request, f'تعذّر تأكيد الطلب: {"، ".join(e.messages)}')
             return redirect('staff:order_detail', pk=order.pk)
 
         elif action == 'add_service_fee':
@@ -214,7 +181,7 @@ def order_detail(request, pk):
                 try:
                     with transaction.atomic():
                         order.mark_delivered(actor=request.user)
-                    messages.success(request, f'تم تسليم الطلب #{order.pk} وإصدار الفاتورة.')
+                    messages.success(request, f'تم تسليم الطلب #{order.pk} واعتماد الفاتورة نهائيًا.')
                 except ValidationError as e:
                     messages.error(request, f'تعذّر تسليم الطلب: {"، ".join(e.messages)}')
             return redirect('staff:order_detail', pk=order.pk)
@@ -234,18 +201,18 @@ def order_detail(request, pk):
             'icon': 'printer',
             'target': '_blank',
         })
-    if order.status == Order.Status.CONFIRMED:
-        # بعد التأكيد، نسخة المراجعة اليدوية (بدون أسعار) مبقتش مناسبة —
-        # الطلب بقى في مرحلة "قبل نهائية" وعايز مستند رسمي يوضّح ده.
+    if hasattr(order, 'invoice'):
+        # الفاتورة (مرحلة 2) بتتولد فورًا وقت التأكيد كمسودة (is_draft=True)
+        # برقمها الثابت النهائي، وبتتحول لنهائية (is_draft=False) لحظة
+        # التسليم من غير ما رقمها يتغيّر — يعني نفس المستند بالظبط من التأكيد
+        # لحد التسليم، مفيش مستند مؤقت منفصل ("قبل نهائي") تاني. القالب نفسه
+        # (invoices/print.html) بيوضّح حالة المسودة بشريط تنبيه لما is_draft.
         order_actions.append({
-            'label': 'طباعة الفاتورة (قبل نهائية)',
-            'href': reverse('staff:order_confirmed_invoice_print', args=[order.pk]),
-            'icon': 'printer',
-            'target': '_blank',
-        })
-    if order.status == Order.Status.DELIVERED and hasattr(order, 'invoice'):
-        order_actions.append({
-            'label': f'عرض/طباعة الفاتورة ({order.invoice.invoice_number})',
+            'label': (
+                f'طباعة الفاتورة ({order.invoice.invoice_number} — مسودة)'
+                if order.invoice.is_draft
+                else f'عرض/طباعة الفاتورة ({order.invoice.invoice_number})'
+            ),
             'href': reverse('invoices:print', args=[order.invoice.pk]),
             'icon': 'printer',
             'target': '_blank',
