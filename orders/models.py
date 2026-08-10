@@ -239,12 +239,37 @@ class Order(models.Model):
 
     @transaction.atomic
     def reject(self, actor=None, reason=''):
-        """رفض الطلب (من المخزن أو من العميل) — الطلبات لا تحجز أي كمية من
-        المخزون أصلًا، فمفيش أي حجز يتفك هنا."""
-        if self.status == self.Status.DELIVERED:
+        """
+        رفض الطلب. من مرحلة 4، السلوك بقى مختلف حسب الحالة وقت الرفض:
+
+        - من PENDING أو NEEDS_APPROVAL: مفيش حاجة حصلت بعد على الطلب —
+          لا مخزون اتخصم ولا فاتورة اتصدرت (راجع confirm/issue_for_order،
+          دول لسه ماتنادوش). السلوك هنا **زي ما كان تمامًا قبل مرحلة 4**:
+          تغيير الحالة لـ REJECTED + OrderLog، من غير أي منطق إضافي.
+        - من CONFIRMED: الطلب عليه بالفعل خصم مخزون فعلي وفاتورة مسودة
+          ومديونية مسجّلة (كل ده حصل في confirm()، مرحلة 2+3) — فلازم
+          يتعكسوا الاتنين قبل ما الحالة تتغيّر لـ REJECTED (راجع
+          _reverse_confirmed_order_effects تحت). الفاتورة نفسها **ماتتحذفش**
+          ولا تتعدّل غير عكسها محاسبيًا — تبقى immutable زي ما هي دايمًا
+          (Invoice.delete() أصلًا بترفض، وInvoice.save() بترفض أي تعديل غير
+          مسموح به).
+
+        حماية ضد double-submit/سباق: بنقفل صف الطلب (select_for_update)
+        ونتأكد من الحالة *بعد* أخذ القفل — نفس نمط confirm()/mark_delivered()
+        بالظبط، لأن رفض طلب CONFIRMED بقى بيعمل حركات مخزون ومحاسبة حقيقية،
+        فلازم يتحمي من نداءين متزامنين (دبل كليك) يعكسوا المخزون مرتين لنفس
+        الطلب. لو طلبين POST جم مع بعض، التاني هيستنى القفل ولما ياخده هيلاقي
+        الحالة بقت REJECTED بالفعل فيتوقف بـ ValueError من الفحص فوق، بدل ما
+        يعكس المخزون تاني.
+        """
+        locked_self = Order.objects.select_for_update().get(pk=self.pk)
+        if locked_self.status == self.Status.DELIVERED:
             raise ValueError('الطلب ده اتسلّم بالفعل، مينفعش يترفض.')
-        if self.status == self.Status.REJECTED:
+        if locked_self.status == self.Status.REJECTED:
             raise ValueError('الطلب ده مرفوض بالفعل.')
+
+        if locked_self.status == self.Status.CONFIRMED:
+            self._reverse_confirmed_order_effects(actor=actor)
 
         self._actor = actor
         self.status = self.Status.REJECTED
@@ -253,6 +278,109 @@ class Order(models.Model):
                 order=self, event=OrderLog.Event.NOTE, note=reason, created_by=actor,
             )
         self.save()
+
+    def _reverse_confirmed_order_effects(self, actor=None):
+        """
+        عكس أثر confirm() قبل رفض/إلغاء طلب CONFIRMED (مرحلة 4). بتتنادى من
+        جوه reject() بعد ما القفل بيتاخد وبعد التأكد إن الحالة CONFIRMED
+        فعلًا — مش method مستقلة تتنادى من برة.
+
+        - **الشرط الحقيقي للعكس هو وجود فاتورة (`hasattr(self, 'invoice')`)،
+          مش مجرد status == CONFIRMED.** المسار المهمّش المعروف
+          (`Order.client_approve_amendment` — راجع ملاحظة PROGRESS.md تحت
+          مرحلة 3) بيحطّ الطلب CONFIRMED مباشرة من غير ما ينادي confirm()
+          خالص، يعني من غير خصم مخزون ومن غير فاتورة أصلًا. لو عكسنا مخزون
+          "على الورق" لمجرد إن الحالة CONFIRMED، هنضيف مخزون فعلي مايستحقّوش
+          (حركة IN بلا OUT مقابلة لها قبلها). issue_for_order وخصم المخزون
+          الاتنين بيحصلوا مع بعض جوه نفس transaction في confirm() (مرحلة 2+3)
+          — يعني وجود الفاتورة *هو* الدليل الموثوق إن المخزون فعلًا اتخصم،
+          مش status لوحده. فبنفحص hasattr(self, 'invoice') مرة واحدة فوق،
+          ولو مفيش فاتورة نتجاهل عكس المخزون والمحاسبة تمامًا (كأن الطلب
+          اتنقل CONFIRMED من غير ما يمر بمسار الالتزام الحقيقي أصلًا) —
+          بس الحالة لسه بتتغيّر REJECTED عادي في reject() بعد كده.
+        - مخزون: حركة StockMovement من نوع IN لكل بند غير خدمي، بنفس الكمية
+          اللي اتخصمت في confirm() بالظبط (الكميات ثابتة بعد التأكيد —
+          amend_item_quantity بترفض التعديل بعد CONFIRMED، فمفيش خطر إن
+          الكمية الحالية في OrderItem تكون مختلفة عن اللي اتخصمت فعليًا).
+        - محاسبة: AccountTransaction من نوع ADJUSTMENT بقيمة سالبة تساوي
+          إجمالي الفاتورة بالظبط، بتصفّر المديونية اللي سجّلتها INVOICE
+          transaction وقت issue_for_order. مش من نوع PAYMENT (دي لسداد
+          فعلي من العميل، مش إلغاء) ولا INVOICE (المديونية الأصلية والعكس
+          مش نفس المعنى) — ADJUSTMENT هو التصنيف الصحيح لتصحيح محاسبي
+          استثنائي زي ده (راجع تعليق AccountTransaction.Kind).
+        - الفاتورة نفسها: **بدون أي تعديل عليها خالص هنا** — تبقى موجودة
+          كمسودة (is_draft=True) برقمها الثابت، غير قابلة للحذف ولا التعديل.
+          إشعار الإلغاء المرتبط بيها (`InvoiceReversal`, مرحلة 5) بيتسجّل
+          بجانبها — `stage=PRE_DELIVERY` لأن البضاعة أصلًا لسه ماتسلّمتش
+          للعميل، فمجرد عكس محاسبي/مخزني بسيط بدون أي حركة إضافية.
+        - OrderLog: ملاحظة صريحة توثّق إن الإلغاء حصل بعد التأكيد لا قبله،
+          منفصلة عن سجل STATUS_CHANGED العام اللي بيتسجّل تلقائيًا من
+          Order.save() لحظة تغيير الحالة لـ REJECTED بعد كده.
+        """
+        from inventory.models import Inventory, StockMovement
+        from accounting.models import AccountTransaction
+        from invoices.models import InvoiceReversal
+
+        if not hasattr(self, 'invoice'):
+            # مفيش فاتورة = confirm() الحقيقية ماحصلتش، غالبًا عن طريق
+            # المسار المهمّش المعروف (client_approve_amendment) — مفيش
+            # مخزون ولا مديونية تتعكس أصلًا (راجع الشرح فوق).
+            OrderLog.objects.create(
+                order=self,
+                event=OrderLog.Event.NOTE,
+                note=(
+                    'تم إلغاء الطلب بعد وصوله لحالة "مؤكد" — لا توجد فاتورة أو خصم مخزون '
+                    'مرتبطين به لعكسهما (الطلب لم يمرّ بمسار التأكيد الفعلي confirm()).'
+                ),
+                created_by=actor,
+            )
+            return
+
+        items = list(self.items.select_related('product_unit').all())
+        product_ids = [item.product_unit.product_id for item in items if not item.is_service_fee]
+        locked_inventories = {
+            inv.product_id: inv
+            for inv in Inventory.objects.select_for_update().filter(product_id__in=product_ids)
+        }
+
+        for item in items:
+            if item.is_service_fee:
+                continue
+            inv = locked_inventories.get(item.product_unit.product_id)
+            if inv:
+                StockMovement(
+                    inventory=inv,
+                    unit=item.product_unit,
+                    movement_type=StockMovement.MovementType.IN,
+                    quantity=item.quantity,
+                    note=f'إلغاء طلب #{self.pk} بعد التأكيد',
+                    created_by=actor,
+                ).save()
+
+        invoice = self.invoice
+        AccountTransaction.objects.create(
+            client=self.client,
+            kind=AccountTransaction.Kind.ADJUSTMENT,
+            amount=-invoice.total,
+            invoice=invoice,
+            note=f'عكس مديونية الفاتورة {invoice.invoice_number} — إلغاء الطلب #{self.pk} بعد التأكيد.',
+            created_by=actor,
+        )
+
+        InvoiceReversal.objects.create(
+            invoice=invoice,
+            stage=InvoiceReversal.Stage.PRE_DELIVERY,
+            amount=invoice.total,
+            note=f'إلغاء الطلب #{self.pk} بعد التأكيد وقبل التسليم — لم تُسلَّم أي بضاعة للعميل.',
+            created_by=actor,
+        )
+
+        OrderLog.objects.create(
+            order=self,
+            event=OrderLog.Event.NOTE,
+            note='تم إلغاء الطلب بعد التأكيد: تم عكس خصم المخزون وعكس مديونية الفاتورة المسجّلة.',
+            created_by=actor,
+        )
 
     @transaction.atomic
     def mark_delivered(self, actor=None):

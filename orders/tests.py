@@ -3,8 +3,9 @@ from decimal import Decimal
 from django.test import TestCase
 
 from accounts.models import User
+from accounting.models import AccountTransaction
 from inventory.models import Inventory
-from invoices.models import Invoice
+from invoices.models import Invoice, InvoiceReversal
 from orders.models import Order, OrderItem
 from products.models import Category, Product, ProductUnit
 
@@ -131,6 +132,120 @@ class OrderLifecycleTestCase(TestCase):
 
         with self.assertRaises(ValueError):
             self.order.reject(actor=self.client_user)
+
+    def test_reject_from_pending_does_not_touch_stock_or_accounting(self):
+        """مرحلة 4: رفض من PENDING (بدون تأكيد) لازم يفضل زي ما كان قبل
+        مرحلة 4 تمامًا — مفيش مخزون اتلمس ومفيش فاتورة ولا مديونية أصلًا،
+        لأن مفيش حاجة حصلت للطلب بعد."""
+        self.order.reject(actor=self.client_user, reason='رفض قبل التأكيد')
+
+        self.inventory.refresh_from_db()
+        self.assertEqual(self.inventory.quantity, 100)  # لم يتغير
+        self.assertEqual(self.order.status, Order.Status.REJECTED)
+        self.assertFalse(Invoice.objects.filter(order=self.order).exists())
+        self.assertEqual(AccountTransaction.balance_for(self.client_user), 0)
+        self.assertFalse(self.inventory.movements.exists())
+
+    def test_reject_confirmed_order_reverses_stock_and_accounting(self):
+        """مرحلة 4: رفض/إلغاء طلب CONFIRMED لازم يعكس خصم المخزون (StockMovement
+        IN مقابلة) ويعكس المديونية (AccountTransaction ADJUSTMENT سالبة تساوي
+        إجمالي الفاتورة)، من غير ما يحذف أو يعدّل الفاتورة نفسها."""
+        self.order.confirm(actor=self.client_user)
+        self.inventory.refresh_from_db()
+        self.assertEqual(self.inventory.quantity, 80)  # 100 - 20
+        self.assertEqual(AccountTransaction.balance_for(self.client_user), Decimal('200.00'))
+        invoice_number = self.order.invoice.invoice_number
+
+        self.order.reject(actor=self.client_user, reason='إلغاء بعد التأكيد')
+
+        self.inventory.refresh_from_db()
+        self.assertEqual(self.inventory.quantity, 100)  # رجع زي الأول
+        self.assertEqual(self.order.status, Order.Status.REJECTED)
+        # مديونية العميل رجعت صفر (INVOICE +200 ثم ADJUSTMENT -200)
+        self.assertEqual(AccountTransaction.balance_for(self.client_user), 0)
+
+        # الفاتورة لسه موجودة، مش محذوفة، نفس رقمها الثابت
+        self.order.invoice.refresh_from_db()
+        self.assertTrue(Invoice.objects.filter(order=self.order).exists())
+        self.assertEqual(self.order.invoice.invoice_number, invoice_number)
+        self.assertTrue(self.order.invoice.is_draft)  # لم تتغير هي نفسها
+
+        # حركة مخزون IN واحدة بنفس كمية الـ OUT الأصلية
+        in_movements = self.inventory.movements.filter(movement_type='IN')
+        self.assertEqual(in_movements.count(), 1)
+        self.assertEqual(in_movements.first().quantity, 20)
+
+        # OrderLog فيه ملاحظة صريحة توثّق الإلغاء بعد التأكيد
+        self.assertTrue(
+            self.order.logs.filter(note__icontains='بعد التأكيد').exists()
+        )
+
+    def test_reject_confirmed_order_without_invoice_does_not_touch_stock(self):
+        """حماية ضد المسار المهمّش المعروف (client_approve_amendment بتحط
+        CONFIRMED مباشرة من غير confirm()، فمفيش فاتورة ولا خصم مخزون
+        أصلًا — راجع ملاحظة PROGRESS.md تحت مرحلة 3). رفض طلب CONFIRMED
+        من غير فاتورة لازم *ميضيفش* مخزون وهمي (IN بلا OUT مقابل)."""
+        self.order.client_approve_amendment(actor=self.client_user)
+        self.assertEqual(self.order.status, Order.Status.CONFIRMED)
+        self.assertFalse(hasattr(self.order, 'invoice'))
+        self.inventory.refresh_from_db()
+        quantity_before_reject = self.inventory.quantity  # لسه 100، مفيش خصم حصل
+
+        self.order.reject(actor=self.client_user, reason='إلغاء مسار bypass')
+
+        self.inventory.refresh_from_db()
+        self.assertEqual(self.inventory.quantity, quantity_before_reject)  # لم يتغير
+        self.assertFalse(self.inventory.movements.exists())
+        self.assertEqual(self.order.status, Order.Status.REJECTED)
+        self.assertEqual(AccountTransaction.balance_for(self.client_user), 0)
+
+    def test_reject_confirmed_order_creates_pre_delivery_invoice_reversal(self):
+        """مرحلة 5: رفض/إلغاء طلب CONFIRMED لازم يسجّل InvoiceReversal واحد
+        بـ stage=PRE_DELIVERY (البضاعة أصلًا لسه ماتسلّمتش) وقيمة تساوي
+        إجمالي الفاتورة، من غير ما يمسّ الفاتورة نفسها."""
+        self.order.confirm(actor=self.client_user)
+        invoice = self.order.invoice
+        self.assertEqual(invoice.reversals.count(), 0)
+
+        self.order.reject(actor=self.client_user, reason='إلغاء بعد التأكيد')
+
+        self.assertEqual(invoice.reversals.count(), 1)
+        reversal = invoice.reversals.first()
+        self.assertEqual(reversal.stage, InvoiceReversal.Stage.PRE_DELIVERY)
+        self.assertEqual(reversal.amount, Decimal('200.00'))
+        self.assertEqual(reversal.created_by, self.client_user)
+        # الفاتورة لسه موجودة وبرقمها الثابت — الإشعار مستند منفصل بجانبها
+        invoice.refresh_from_db()
+        self.assertTrue(Invoice.objects.filter(pk=invoice.pk).exists())
+
+    def test_reject_confirmed_order_without_invoice_creates_no_reversal(self):
+        """مرحلة 5: نفس سيناريو المسار المهمّش (بدون فاتورة أصلًا) — مفيش
+        InvoiceReversal يتسجّل لأن مفيش فاتورة يترتبط بيها أصلًا."""
+        self.order.client_approve_amendment(actor=self.client_user)
+        self.assertFalse(hasattr(self.order, 'invoice'))
+
+        self.order.reject(actor=self.client_user, reason='bypass')
+
+        self.assertEqual(InvoiceReversal.objects.count(), 0)
+
+    def test_reject_confirmed_order_twice_does_not_double_reverse(self):
+        """double-submit/سباق: رفض طلب CONFIRMED مرتين لازم يترفض التاني
+        ومايعكسش المخزون أو المديونية مرة تانية."""
+        self.order.confirm(actor=self.client_user)
+        self.order.reject(actor=self.client_user)
+        self.inventory.refresh_from_db()
+        quantity_after_first_reject = self.inventory.quantity
+        balance_after_first_reject = AccountTransaction.balance_for(self.client_user)
+
+        with self.assertRaises(ValueError):
+            self.order.reject(actor=self.client_user)
+
+        self.inventory.refresh_from_db()
+        self.assertEqual(self.inventory.quantity, quantity_after_first_reject)
+        self.assertEqual(
+            AccountTransaction.balance_for(self.client_user), balance_after_first_reject,
+        )
+        self.assertEqual(self.order.invoice.reversals.count(), 1)  # لم يتكرر
 
     def test_amend_item_quantity_rejects_more_than_available(self):
         """طلب زيادة كمية أكبر من المتاح في المخزون لازم يترفض قبل ما يتحفظ."""

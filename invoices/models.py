@@ -211,3 +211,46 @@ class InvoiceItem(models.Model):
 
     def delete(self, *args, **kwargs):
         raise ValidationError('صنف الفاتورة immutable، مينفعش يتحذف.')
+
+
+class InvoiceReversal(models.Model):
+    """
+    إشعار إلغاء بسيط مرتبط بفاتورة (مرحلة 5) — آلية واحدة لتوثيق أي إلغاء
+    محاسبي على فاتورة، بدل نظام مرتجعات كامل منفصل. الفاتورة نفسها **ماتتغيّرش
+    ولا تتحذف أبدًا** بسبب الإلغاء (تفضل immutable زي ما هي دايمًا) — الإشعار
+    ده مستند منفصل بجانبها بيوثّق إن قيمتها اتعكست محاسبيًا ووقتها وسببها.
+
+    قرار صريح (راجع الخطة الأصلية، الجزء الخامس): مفيش موديلين أو مسارا كود
+    منفصلين لتمييز "إلغاء قبل التسليم" عن "مرتجع بعد التسليم" — الفرق بينهم
+    مجرد تسمية/توضيح لمكان توقف العملية (`stage`)، مش بنية مختلفة. التنفيذ
+    الحالي بيغطي `PRE_DELIVERY` بس (رفض/إلغاء طلب `CONFIRMED` — راجع
+    `Order._reverse_confirmed_order_effects`). `POST_DELIVERY` (نظام مرتجعات
+    كامل بعد التسليم فعليًا) لسه ماتبنيش، لكن حقل `stage` موجود من الأساس
+    عشان الجلسة القادمة تضيف بس قيمته ومنطقها الخاص من غير ما تحتاج تعمل
+    migration جديدة لبنية الجدول.
+    """
+    class Stage(models.TextChoices):
+        PRE_DELIVERY = 'PRE_DELIVERY', 'قبل التسليم'
+        POST_DELIVERY = 'POST_DELIVERY', 'بعد التسليم'
+
+    invoice = models.ForeignKey(Invoice, on_delete=models.PROTECT, related_name='reversals')
+    stage = models.CharField(max_length=20, choices=Stage.choices)
+    note = models.TextField(blank=True)
+    # قيمة الإلغاء بالجنيه — بتتسجّل موجبة دايمًا (بتمثّل إجمالي الفاتورة
+    # اللي اتلغت)، عكس AccountTransaction.amount اللي بيتسجّل سالب هناك
+    # عمدًا (هو حركة "بتقلّل المديونية"، أما ده مجرد توثيق لقيمة الإلغاء
+    # نفسها بغض النظر عن اتجاهها المحاسبي).
+    amount = models.DecimalField(max_digits=12, decimal_places=2)
+    created_by = models.ForeignKey(
+        User, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='+',
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = 'إشعار إلغاء فاتورة'
+        verbose_name_plural = 'إشعارات إلغاء الفواتير'
+        ordering = ['-created_at']
+
+    def __str__(self):
+        return f'إلغاء {self.invoice.invoice_number} — {self.get_stage_display()}'
