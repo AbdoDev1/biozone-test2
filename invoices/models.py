@@ -42,6 +42,13 @@ class Invoice(models.Model):
         on_delete=models.PROTECT,
         related_name='invoice',
     )
+    # مؤقتًا (مرحلة 1) الافتراضي False عمدًا — issue_for_order لسه بتتنادى من
+    # mark_delivered() زي ما هي، فأي فاتورة جديدة دلوقتي بتتولد لحظة التسليم
+    # الفعلي، يعني هي "نهائية" من ساعة ما اتعملت. لما issue_for_order تتنقل
+    # لـ confirm() (مرحلة 2) هتحدد is_draft=True صراحة وقت الإنشاء، من غير ما
+    # نغيّر default الحقل هنا — كده الفواتير القديمة والجديدة في المرحلة دي
+    # (لسه من مسار mark_delivered) تفضل is_draft=False زي سلوكها الفعلي.
+    is_draft = models.BooleanField(default=False, verbose_name='مسودة')
 
     # --- Snapshot بيانات العميل وقت الإصدار (مش قراءة حية من Order/ClientProfile) ---
     client_name = models.CharField(max_length=255)
@@ -69,8 +76,30 @@ class Invoice(models.Model):
 
     def save(self, *args, **kwargs):
         if self.pk is not None:
-            # الفاتورة immutable بعد الإصدار — مفيش تعديل، خالص.
-            raise ValidationError('الفاتورة مستند ثابت بعد الإصدار، مينفعش تتعدّل.')
+            # الفاتورة immutable بعد الإصدار، ما عدا استثناء واحد مقصود:
+            # تحويلها من مسودة (is_draft=True) لنهائية (is_draft=False) —
+            # وبس، بدون أي تغيير على أي حقل تاني، وبدون الرجوع من False
+            # لـ True تاني. أي تعديل خارج الحالة دي بالظبط يترفض زي الأول.
+            try:
+                previous = Invoice.objects.get(pk=self.pk)
+            except Invoice.DoesNotExist:
+                previous = None
+
+            is_draft_to_final = (
+                previous is not None
+                and previous.is_draft is True
+                and self.is_draft is False
+            )
+            other_fields_unchanged = previous is not None and all(
+                getattr(self, field.attname) == getattr(previous, field.attname)
+                for field in self._meta.concrete_fields
+                if field.attname not in ('id', 'is_draft')
+            )
+
+            if not (is_draft_to_final and other_fields_unchanged):
+                raise ValidationError(
+                    'الفاتورة مستند ثابت بعد الإصدار، مينفعش تتعدّل (عدا تحويلها من مسودة لنهائية).'
+                )
         super().save(*args, **kwargs)
 
     def delete(self, *args, **kwargs):
@@ -80,8 +109,11 @@ class Invoice(models.Model):
     @transaction.atomic
     def issue_for_order(cls, order, actor=None):
         """
-        يولّد فاتورة من طلب مُسلَّم (Order.DELIVERED) — Snapshot ثابت لبيانات
-        العميل والأصناف والأسعار وقت الإصدار. بينادى تلقائيًا من mark_delivered().
+        يولّد فاتورة من طلب — Snapshot ثابت لبيانات العميل والأصناف والأسعار
+        وقت الإصدار. بتتنادى تلقائيًا من Order.confirm() (مرحلة 2)، يعني وقت
+        التأكيد مش التسليم — بتتولد كـ "مسودة" (is_draft=True) فورًا، ورقم
+        الفاتورة بيثبت من هنا للأبد. mark_delivered() بعد كده مش بتصدر
+        فاتورة جديدة، بس بتحوّل نفس الفاتورة من مسودة لنهائية.
         """
         if hasattr(order, 'invoice'):
             return order.invoice
@@ -101,6 +133,11 @@ class Invoice(models.Model):
             client_phone=getattr(profile, 'phone', ''),
             total=order.total,
             issued_by=actor,
+            # بتتولد كمسودة دايمًا هنا — issue_for_order بقت بتتنادى من
+            # confirm() (مرحلة 2)، يعني الفاتورة لسه مش نهائية لحد التسليم.
+            # ده صراحةً هنا مش اعتمادًا على default الحقل (اللي فضل False
+            # عمدًا — راجع تعليق الحقل نفسه في تعريف الموديل فوق).
+            is_draft=True,
         )
         invoice.save()
 

@@ -47,7 +47,9 @@ class OrderLifecycleTestCase(TestCase):
         )
 
     def test_mark_delivered_deducts_stock_and_creates_invoice(self):
-        """التسليم لازم يخصم بالظبط الكمية المطلوبة من المخزون، ويصدر فاتورة واحدة."""
+        """التسليم لازم يخصم بالظبط الكمية المطلوبة من المخزون. الفاتورة
+        بقت (مرحلة 2) بتتولد وقت التأكيد مش التسليم، فلازم نأكد الأول."""
+        self.order.confirm(actor=self.client_user)
         self.order.mark_delivered(actor=self.client_user)
 
         self.inventory.refresh_from_db()
@@ -57,7 +59,9 @@ class OrderLifecycleTestCase(TestCase):
         self.assertEqual(self.order.invoice.total, Decimal('200.00'))  # 20 * 10
 
     def test_mark_delivered_twice_does_not_double_charge_invoice(self):
-        """issue_for_order لازم تكون idempotent — نداءها مرتين ميعملش فاتورة تانية."""
+        """issue_for_order لازم تكون idempotent — نداءها مرتين ميعملش فاتورة تانية.
+        confirm() (مرحلة 2) هي اللي بتصدر الفاتورة، فلازم تتنادى الأول."""
+        self.order.confirm(actor=self.client_user)
         self.order.mark_delivered(actor=self.client_user)
         first_invoice_id = self.order.invoice.id
 

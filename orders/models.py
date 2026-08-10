@@ -173,11 +173,27 @@ class Order(models.Model):
 
     # ---------- منطق سير العمل (المرحلة 8) ----------
 
+    @transaction.atomic
     def confirm(self, actor=None):
-        """المخزن بيأكد الطلب من غير أي تعديل في الكميات."""
+        """
+        المخزن بيأكد الطلب من غير أي تعديل في الكميات — ومن دلوقتي (مرحلة 2)
+        دي كمان لحظة إصدار الفاتورة: بتتولد كـ "مسودة" (is_draft=True) هنا
+        فورًا، برقم فاتورة ثابت للأبد ومديونية حقيقية على العميل من هالحظة،
+        مش مؤجلة لحد التسليم. التسليم (mark_delivered) هيبقى بعد كده مجرد
+        إزالة علامة المسودة عن نفس الفاتورة، مش إصدار فاتورة جديدة.
+
+        ملاحظة مؤقتة (لسه في المرحلة دي): خصم المخزون الفعلي لسه بيحصل في
+        mark_delivered() زي الأول — هيتنقل هنا كمان في مرحلة تالية. يعني
+        دلوقتي فيه فترة (من التأكيد لحد التسليم) فيها فاتورة صادرة ومديونية
+        مسجّلة، لكن المخزون لسه ماتخصمش — ده وضع انتقالي متوقع في المرحلة دي
+        بس، مش السلوك النهائي.
+        """
         self._actor = actor
         self.status = self.Status.CONFIRMED
         self.save()
+
+        from invoices.models import Invoice
+        Invoice.issue_for_order(self, actor=actor)
 
     @transaction.atomic
     def reject(self, actor=None, reason=''):
@@ -216,6 +232,11 @@ class Order(models.Model):
         ياخده هيلاقي الحالة بقت DELIVERED فيتوقف بدل ما يسجّل حركة مخزون
         تانية (خصم مزدوج) على نفس الطلب. الفاتورة كانت محمية أصلًا (hasattr
         check في Invoice.issue_for_order)، لكن حركة المخزون ماكانتش.
+
+        ملاحظة مرحلة 2: الفاتورة بقت بتتولد في confirm() مش هنا خالص — مفيش
+        نداء لـ Invoice.issue_for_order في الميثود دي تاني. لو الطلب اتنادى
+        عليه mark_delivered() من غير ما يتأكد الأول (confirm())، مش هيكون
+        عنده فاتورة أصلًا لحد ما مرحلة تحويل الفاتورة لنهائية تتضاف (مرحلة 3).
         """
         from django.core.exceptions import ValidationError
         from inventory.models import Inventory, StockMovement
@@ -252,9 +273,6 @@ class Order(models.Model):
         self._actor = actor
         self.status = self.Status.DELIVERED
         self.save()
-
-        from invoices.models import Invoice
-        Invoice.issue_for_order(self, actor=actor)
 
     @transaction.atomic
     def amend_item_quantity(self, item, new_quantity, actor=None):
