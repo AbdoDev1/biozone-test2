@@ -11,7 +11,7 @@ from accounts.models import Employee
 from activity.models import ActivityLog
 from activity.services import diff_summary
 from activity.services import log_activity
-from inventory.models import Inventory, StockMovement
+from inventory.models import Inventory, PriceChange, StockMovement
 from products.models import Product, ProductUnit
 from staff.permissions import perm_required
 from staff.reports_queries import resolve_period, PERIOD_CHOICES
@@ -21,14 +21,20 @@ _TRACKED_INVENTORY_FIELDS = ['min_quantity', 'is_available']
 
 STAFF_LIST_PAGE_SIZE = 30
 
-# سجل حركات المخزون مقصور على حركات الرصيد الفعلية بس (StockMovement:
-# وارد/صادر/حجز/إلغاء حجز) — تغيير السعر وتعديل إعدادات الصنف (الحد
-# الأدنى/الإتاحة) مش حركة مخزون حقيقية (الرصيد نفسه مابيتغيرش)، فمالهاش
-# داعي تظهر هنا أصلًا، لا بالتفصيل ولا حتى بشكل مختصر. أي حدث من النوع ده
-# بيفضل ظاهر بس في تاب "سجل النشاط" الخاص بكل صنف (activity/_panel.html)،
-# واللي أصلًا بيستثني تفاصيل الأسعار/الخصومات (راجع
-# ActivityLogQuerySet.exclude_pricing_details).
-ALL_MOVEMENT_TYPES = list(StockMovement.MovementType.choices)
+# نوع "حركة" وهمي (مش من StockMovement.MovementType) بيمثّل تغيير سعر
+# (PriceChange) — بيتعامل معاه زي أي نوع حركة تاني في سجل حركات المخزون
+# (فلتر النوع، البادج، ...) رغم إنه مش StockMovement فعليًا ومالوش أي أثر
+# على رصيد المخزون. راجع inventory.models.PriceChange لسبب وجوده كموديل
+# مستقل بدل ما يتضاف كـ MovementType جديد على StockMovement نفسه (اللي
+# بنيته وvalidation بتاعته مبنية على وجود كمية فعلية بتتطبّق على الرصيد).
+PRICE_CHANGE_KIND = 'PRICE_CHANGE'
+PRICE_CHANGE_LABEL = 'تغيير سعر'
+
+# سجل حركات المخزون بيغطي حركات الرصيد الفعلية (StockMovement: وارد/صادر/
+# حجز/إلغاء حجز) + تغييرات السعر (PriceChange) كعنصر مستقل جنبها — تعديل
+# إعدادات الصنف (الحد الأدنى/الإتاحة) هو بس اللي فضل في تاب "سجل النشاط"
+# الخاص بكل صنف (activity/_panel.html)، لأنه مش حركة ولا سعر.
+ALL_MOVEMENT_TYPES = list(StockMovement.MovementType.choices) + [(PRICE_CHANGE_KIND, PRICE_CHANGE_LABEL)]
 
 
 @dataclass
@@ -58,6 +64,25 @@ def _stock_movement_to_row(movement):
         note=movement.note or '—',
         created_by=movement.created_by,
         created_at=movement.created_at,
+    )
+
+
+def _price_change_to_row(change):
+    """صف عرض واحد لتغيير سعر (PriceChange) — نفس شكل صف حركة المخزون
+    بالظبط، عشان الاتنين يتعرضوا في نفس الجدول من غير أي تفريع في التمبلت.
+    'الكمية' هنا مش كمية فعلية، فبتتعرض كـ 'من X إلى Y' بدل رقم، وعمود
+    '= بالقطعة' مالوش معنى هنا (السعر مش رصيد) فبيتعرض '—'."""
+    return MovementFeedRow(
+        kind=PRICE_CHANGE_KIND,
+        type_display=PRICE_CHANGE_LABEL,
+        product_name=change.inventory.product.display_name,
+        inventory_pk=change.inventory_id,
+        unit_name=change.unit.name,
+        quantity_display=f'من {change.old_price} إلى {change.new_price}',
+        pieces_display='—',
+        note=change.note or '—',
+        created_by=change.created_by,
+        created_at=change.created_at,
     )
 
 
@@ -120,6 +145,28 @@ def _stock_tab_context(request):
     }
 
 
+def _filtered_by_common(qs, search_q, start, end, employee_id):
+    """فلاتر البحث/الفترة/الموظف المشتركة بين StockMovement وPriceChange —
+    الاتنين عندهم نفس أسماء الحقول (inventory__product__..، created_at،
+    created_by_id) فمفيش داعي نكرر نفس السلسلة مرتين."""
+    if search_q:
+        qs = qs.filter(
+            Q(inventory__product__name_ar__icontains=search_q)
+            | Q(inventory__product__name_en__icontains=search_q)
+            | Q(inventory__product__code__icontains=search_q)
+            | Q(inventory__product__barcode__iexact=search_q)
+            | Q(inventory__product__barcode_2__iexact=search_q)
+            | Q(inventory__product__barcode_3__iexact=search_q)
+        )
+    if start:
+        qs = qs.filter(created_at__gte=start)
+    if end:
+        qs = qs.filter(created_at__lte=end)
+    if employee_id:
+        qs = qs.filter(created_by_id=employee_id)
+    return qs
+
+
 def _movements_tab_context(request):
     """
     سجل كل حركات المخزون (كل الأصناف مع بعض) قابل للبحث والفلترة بالنوع —
@@ -129,13 +176,17 @@ def _movements_tab_context(request):
     مصدر بيتفوت من هنا. مصدر كل حركة (وارد من المخزن، استيراد Excel،
     تسليم طلب...) واضح من عمود "ملاحظة" لأن كل مسار تلقائي بيسجّل ملاحظته
     الخاصة وقت الإنشاء.
+    تغييرات السعر (PriceChange) بتتضاف جنب حركات الرصيد الفعلية في نفس
+    السجل والفلتر (نوع "تغيير سعر") — راجع inventory.models.PriceChange
+    وPRICE_CHANGE_KIND فوق.
     عكس inventory_detail اللي بيعرض آخر 20 حركة لصنف واحد بس، التبويب ده
     مخصص لمراجعة الحركة على مستوى المخزون كله.
     """
     search_q = request.GET.get('q', '').strip()
 
     movement_type = request.GET.get('type', '').strip()
-    if movement_type not in StockMovement.MovementType.values:
+    valid_types = set(StockMovement.MovementType.values) | {PRICE_CHANGE_KIND}
+    if movement_type not in valid_types:
         movement_type = ''
 
     # نفس شريط الفلاتر الموحّد المستخدم في قسم التقارير (الفترة الزمنية
@@ -144,28 +195,31 @@ def _movements_tab_context(request):
     start, end, period = resolve_period(request)
     employee_id = request.GET.get('employee', '').strip()
 
-    movements_qs = StockMovement.objects.select_related(
-        'inventory__product', 'unit', 'created_by'
-    ).order_by('-created_at')
-    if search_q:
-        movements_qs = movements_qs.filter(
-            Q(inventory__product__name_ar__icontains=search_q)
-            | Q(inventory__product__name_en__icontains=search_q)
-            | Q(inventory__product__code__icontains=search_q)
-            | Q(inventory__product__barcode__iexact=search_q)
-            | Q(inventory__product__barcode_2__iexact=search_q)
-            | Q(inventory__product__barcode_3__iexact=search_q)
-        )
-    if movement_type:
-        movements_qs = movements_qs.filter(movement_type=movement_type)
-    if start:
-        movements_qs = movements_qs.filter(created_at__gte=start)
-    if end:
-        movements_qs = movements_qs.filter(created_at__lte=end)
-    if employee_id:
-        movements_qs = movements_qs.filter(created_by_id=employee_id)
+    rows = []
 
-    rows = [_stock_movement_to_row(m) for m in movements_qs]
+    # لو الفلتر محدد نوع حركة رصيد فعلي (IN/OUT/..)، أو مفيش فلتر خالص
+    # (كل الأنواع)، نجيب StockMovement. لو الفلتر "تغيير سعر" بالظبط،
+    # نتجاهل StockMovement تمامًا (مفيش داعي نستعلم عليه أصلًا).
+    if movement_type != PRICE_CHANGE_KIND:
+        movements_qs = StockMovement.objects.select_related(
+            'inventory__product', 'unit', 'created_by'
+        ).order_by('-created_at')
+        movements_qs = _filtered_by_common(movements_qs, search_q, start, end, employee_id)
+        if movement_type:
+            movements_qs = movements_qs.filter(movement_type=movement_type)
+        rows.extend(_stock_movement_to_row(m) for m in movements_qs)
+
+    # لو الفلتر محدد "تغيير سعر" بالظبط، أو مفيش فلتر خالص، نجيب PriceChange.
+    if not movement_type or movement_type == PRICE_CHANGE_KIND:
+        price_changes_qs = PriceChange.objects.select_related(
+            'inventory__product', 'unit', 'created_by'
+        ).order_by('-created_at')
+        price_changes_qs = _filtered_by_common(price_changes_qs, search_q, start, end, employee_id)
+        rows.extend(_price_change_to_row(c) for c in price_changes_qs)
+
+    # الاتنين اتجابوا مرتبين لوحدهم (كل واحد بترتيب -created_at خاص بيه)،
+    # فبعد الدمج لازم نرتب تاني عشان يفضلوا متداخلين صح مع بعض بالتاريخ.
+    rows.sort(key=lambda r: r.created_at, reverse=True)
 
     paginator = Paginator(rows, STAFF_LIST_PAGE_SIZE)
     page_obj = paginator.get_page(request.GET.get('page'))
@@ -189,13 +243,18 @@ def _movements_tab_context(request):
 def inventory_detail(request, pk):
     item = get_object_or_404(Inventory, pk=pk)
     movements_qs = item.movements.select_related('created_by', 'unit').order_by('-created_at')
+    price_changes_qs = item.price_changes.select_related('created_by', 'unit').order_by('-created_at')
 
-    # تاب "الحركات" هنا مقصور على حركات الرصيد الفعلية بس (StockMovement) —
-    # تغيير السعر وتعديل إعدادات الصنف (الحد الأدنى/الإتاحة) ظاهرين بدل كده
-    # في تاب "سجل النشاط" (activity/_panel.html) جنبه، مش هنا (راجع نفس
-    # القرار في _movements_tab_context فوق).
-    movements_count = movements_qs.count()
-    movements = [_stock_movement_to_row(m) for m in movements_qs[:20]]
+    # تاب "الحركات" هنا بيجمع حركات الرصيد الفعلية (StockMovement) وتغييرات
+    # السعر (PriceChange) مع بعض في نفس القائمة — تعديل إعدادات الصنف (الحد
+    # الأدنى/الإتاحة) هو بس اللي فضل ظاهر في تاب "سجل النشاط"
+    # (activity/_panel.html) جنبه، مش هنا (راجع نفس القرار في
+    # _movements_tab_context فوق).
+    movements_count = movements_qs.count() + price_changes_qs.count()
+    rows = [_stock_movement_to_row(m) for m in movements_qs[:20]]
+    rows.extend(_price_change_to_row(c) for c in price_changes_qs[:20])
+    rows.sort(key=lambda r: r.created_at, reverse=True)
+    movements = rows[:20]
     units = list(item.product.units.all())
 
     return render(request, 'staff/inventory/detail.html', {

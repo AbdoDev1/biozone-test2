@@ -29,6 +29,7 @@ BADGE_COLOR_MAPS = {
         'OUT': 'red',
         'OUT_RESERVED': 'rose',
         'RESERVE': 'yellow',
+        'PRICE_CHANGE': 'blue',
     },
     'tx_kind': {
         'INVOICE': 'blue',

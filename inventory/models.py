@@ -211,3 +211,45 @@ class StockMovement(models.Model):
             inv_qs.update(reserved=F('reserved') - stock_qty)
         self.inventory.refresh_from_db()
         self.inventory.sync_availability()
+
+
+class PriceChange(models.Model):
+    """
+    تسجيل مستقل لتغيير سعر وحدة (قطعة/كرتونة) — عنصر مستقل في سجل حركات
+    الصنف (زي StockMovement بالظبط)، لكن من غير أي أثر على رصيد المخزون
+    نفسه (السعر مش كمية). كان قبل كده بيتسجّل كملخص عام في ActivityLog
+    بس، ومستثنى من العرض تمامًا (راجع ActivityLogQuerySet.exclude_pricing_details)
+    بطلب صاحب النظام وقتها — القرار اتغيّر: تغيير السعر لازم يبقى ظاهر
+    كعنصر مستقل في سجل حركات المخزون (بالتفصيل: من سعر/لسعر)، وقابل
+    للفلترة زي أي نوع حركة تاني. راجع inventory.services.record_price_change
+    للطريقة الموحّدة لإنشاء سجل من هنا (بدل ما كل مكان يستخدم .create()
+    مباشرة ويفوّت مثلاً حالة "السعر لم يتغيّر فعليًا").
+    """
+    inventory = models.ForeignKey(
+        Inventory,
+        on_delete=models.CASCADE,
+        related_name='price_changes',
+    )
+    unit = models.ForeignKey(
+        ProductUnit,
+        on_delete=models.PROTECT,
+        verbose_name='الوحدة',
+    )
+    old_price = models.DecimalField(max_digits=10, decimal_places=2, verbose_name='السعر القديم')
+    new_price = models.DecimalField(max_digits=10, decimal_places=2, verbose_name='السعر الجديد')
+    note = models.TextField(blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    created_by = models.ForeignKey(
+        'accounts.User',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+    )
+
+    class Meta:
+        verbose_name = 'تغيير سعر'
+        verbose_name_plural = 'تغييرات الأسعار'
+        ordering = ['-created_at']
+
+    def __str__(self):
+        return f"{self.inventory.product.display_name}: {self.old_price} → {self.new_price}"

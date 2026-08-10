@@ -1,5 +1,5 @@
 from django.contrib import admin
-from .models import Inventory, StockMovement
+from .models import Inventory, PriceChange, StockMovement
 
 
 class StockMovementInline(admin.TabularInline):
@@ -32,6 +32,19 @@ class StockMovementAdmin(admin.ModelAdmin):
     list_display = ('inventory', 'unit', 'movement_type', 'quantity', 'created_by', 'created_at')
     list_filter = ('movement_type',)
     readonly_fields = ('inventory', 'unit', 'movement_type', 'quantity', 'note', 'created_by', 'created_at')
+
+    def has_add_permission(self, request):
+        return False
+
+    def has_delete_permission(self, request, obj=None):
+        return False
+
+
+@admin.register(PriceChange)
+class PriceChangeAdmin(admin.ModelAdmin):
+    list_display = ('inventory', 'unit', 'old_price', 'new_price', 'created_by', 'created_at')
+    list_filter = ('unit__size',)
+    readonly_fields = ('inventory', 'unit', 'old_price', 'new_price', 'note', 'created_by', 'created_at')
 
     def has_add_permission(self, request):
         return False

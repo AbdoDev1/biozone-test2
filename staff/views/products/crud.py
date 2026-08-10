@@ -26,6 +26,7 @@ from staff.utils import list_qs, url_with_qs, redirect_with_qs
 from django.contrib.contenttypes.models import ContentType
 from activity.models import ActivityLog
 from activity.services import log_activity, diff_summary, delete_activity_logs_for
+from inventory.services import record_price_change
 from followups.services import delete_followups_for
 from tags.services import tags_for, tags_for_many
 
@@ -217,6 +218,11 @@ def product_quick_update_price(request, unit_pk):
             log_activity(
                 unit.product, ActivityLog.Event.UPDATED, user=request.user,
                 changes_summary=f'تم تعديل سعر {unit.name} (تعديل سريع)',
+            )
+            # عنصر مستقل في سجل حركات المخزون (تفصيل من/لـ) — راجع
+            # inventory.models.PriceChange لسبب الفصل عن ActivityLog.
+            record_price_change(
+                unit, old_price, new_price, user=request.user, note='تعديل سريع من صفحة المنتجات',
             )
 
     return render(request, 'staff/products/partials/price_cell.html', {
@@ -436,6 +442,17 @@ def product_edit(request, pk):
             combined_summary = '، '.join(part for part in [summary, unit_summary] if part)
             if combined_summary:
                 log_activity(product, ActivityLog.Event.UPDATED, user=request.user, changes_summary=combined_summary)
+
+            # عنصر مستقل بالتفصيل (من سعر/لسعر) لكل وحدة اتغيّر سعرها، في
+            # سجل حركات المخزون — راجع inventory.models.PriceChange.
+            for unit in product.units.all():
+                old = old_unit_prices.get(unit.id)
+                if old is None:
+                    continue
+                record_price_change(
+                    unit, old['unit_price'], unit.unit_price,
+                    user=request.user, note='تعديل من صفحة الصنف',
+                )
 
             messages.success(request, f'تم تعديل المنتج "{product.name_ar}" بنجاح.')
             return redirect_with_qs(request, 'staff:product_list')

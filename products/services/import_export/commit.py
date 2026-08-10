@@ -10,6 +10,7 @@ from accounts.models import AccountType
 from activity.models import ActivityLog
 from activity.services import log_activity
 from inventory.models import Inventory, StockMovement
+from inventory.services import record_price_change
 from products.models import Product, ProductUnit, UnitDiscount
 
 from .common import get_or_create_category
@@ -89,6 +90,13 @@ def commit_product(row_data, target_pk, user, account_types_by_pk, category_cach
     for size, unit_data in (('S', row_data['small']), ('L', row_data['large'])):
         if not unit_data:
             continue
+        # لازم ناخد السعر القديم *قبل* update_or_create عشان نقدر نسجّله
+        # كعنصر مستقل في سجل حركات المخزون لو اتغيّر فعليًا (راجع
+        # inventory.services.record_price_change) — بعد update_or_create
+        # القيمة القديمة بتبقى ضاعت خالص من الـ instance.
+        existing_unit = ProductUnit.objects.filter(product=product, size=size).first()
+        old_price = existing_unit.unit_price if existing_unit else None
+
         unit, _ = ProductUnit.objects.update_or_create(
             product=product, size=size,
             defaults={
@@ -97,6 +105,11 @@ def commit_product(row_data, target_pk, user, account_types_by_pk, category_cach
                 'qty_in_small': unit_data['qty_in_small'],
             },
         )
+        if old_price is not None:
+            record_price_change(
+                unit, old_price, unit.unit_price, user=user,
+                note='تحديث من ملف Excel', inventory=inventory,
+            )
         if unit_data['quantity'] > 0:
             StockMovement.objects.create(
                 inventory=inventory, unit=unit, movement_type='IN',
