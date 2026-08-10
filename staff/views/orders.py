@@ -81,7 +81,8 @@ def order_confirmed_invoice_print(request, pk):
     دي بشكل رسمي فيه الأسعار والخصومات والإجمالي (زي شكل invoices/print.html
     بالظبط)، لكن بدون رقم فاتورة رسمي ولا حركة حساب، وموضّح عليها بوضوح إنها
     مش نهائية وإن رقم الفاتورة الحقيقي هيتولّد بس لحظة التسليم الفعلي
-    (Invoice.issue_for_order عن طريق Order.mark_delivered).
+    (Invoice.issue_for_order بعد Order.mark_delivered مباشرة — راجع
+    action == 'deliver' تحت).
 
     لو الطلب لسه مش CONFIRMED (أو خلاص اتسلّم وبقى له فاتورة حقيقية)، مفيش
     داعي للمستند المؤقت ده — بنرجّع الموظف لصفحة تفاصيل الطلب بدل ما نعرض
@@ -214,6 +215,15 @@ def order_detail(request, pk):
                 try:
                     with transaction.atomic():
                         order.mark_delivered(actor=request.user)
+                    # الفاتورة في transaction قصيرة منفصلة بعد ما التسليم
+                    # يتأكد خالص — عشان صف عداد الفواتير المشترك
+                    # (InvoiceSequence) يتقفل لثواني بس وقت توليد الرقم،
+                    # مش طول مدة التسليم كله. issue_for_order idempotent
+                    # (بترجع الفاتورة الموجودة لو الطلب اتسلّم بالفعل)، فمفيش
+                    # خطر تكرار حتى لو الصفحة اتحدّثت أو الزرار اتضغط تاني.
+                    from invoices.models import Invoice
+                    with transaction.atomic():
+                        Invoice.issue_for_order(order, actor=request.user)
                     messages.success(request, f'تم تسليم الطلب #{order.pk} وإصدار الفاتورة.')
                 except ValidationError as e:
                     messages.error(request, f'تعذّر تسليم الطلب: {"، ".join(e.messages)}')

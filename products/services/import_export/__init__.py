@@ -14,7 +14,7 @@
 `products.services.import_export.<اسم الدالة>` يفضل شغّال زي ما هو
 بالظبط من غير أي تعديل — التقسيم داخلي بس.
 """
-from .commit import commit_import_batch, commit_product
+from .commit import ImportBatchError, commit_import_batch, commit_product
 from .common import (
     DISCOUNT_COL_PREFIX,
     FUZZY_MATCH_THRESHOLD,
@@ -39,6 +39,8 @@ __all__ = [
     'read_import_workbook',
     'commit_product',
     'commit_import_batch',
+    'ImportBatchError',
     'build_products_export_workbook',
     'build_import_template_workbook',
 ]
+

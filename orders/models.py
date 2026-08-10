@@ -214,8 +214,12 @@ class Order(models.Model):
         الطلب. عشان كده لازم نقفل صف الطلب نفسه (select_for_update) ونتأكد إنه
         مش DELIVERED بالفعل *بعد* أخذ القفل — الطلب التاني هيستنى القفل، ولما
         ياخده هيلاقي الحالة بقت DELIVERED فيتوقف بدل ما يسجّل حركة مخزون
-        تانية (خصم مزدوج) على نفس الطلب. الفاتورة كانت محمية أصلًا (hasattr
-        check في Invoice.issue_for_order)، لكن حركة المخزون ماكانتش.
+        تانية (خصم مزدوج) على نفس الطلب.
+
+        ملحوظة: توليد الفاتورة (Invoice.issue_for_order) بقى بيتنادى من
+        بره الميثود دي (شوف staff/views/orders.py)، مش هنا — عشان صف عداد
+        الفواتير المشترك (InvoiceSequence، صف واحد لكل سنة) يتقفل لثواني
+        بس وقت توليد الرقم، مش طول مدة التسليم كله (خصم المخزون + الحفظ).
         """
         from django.core.exceptions import ValidationError
         from inventory.models import Inventory, StockMovement
@@ -252,9 +256,6 @@ class Order(models.Model):
         self._actor = actor
         self.status = self.Status.DELIVERED
         self.save()
-
-        from invoices.models import Invoice
-        Invoice.issue_for_order(self, actor=actor)
 
     @transaction.atomic
     def amend_item_quantity(self, item, new_quantity, actor=None):

@@ -1,10 +1,13 @@
 """
 مرحلة الحفظ الفعلي بعد موافقة الموظف على قرارات المراجعة (parsing.py) —
-الخطوة الأخيرة في استيراد إكسل. الـ transaction بيتحكم فيها المستدعي
-(الـ view) عشان تفضل الدوال دي قابلة لإعادة الاستخدام برّة سياق request
-لو احتجنا.
+الخطوة الأخيرة في استيراد إكسل. commit_import_batch بتتحكم في الـ
+transactions بنفسها (دفعات صغيرة، شوف CHUNK_SIZE تحت) بدل ما تسيبها
+للمستدعي، عشان الملفات الكبيرة ما تقفلش صفوف المنتجات/المخزون لمدة
+طويلة (لحد ما الملف كله يخلص) — كل دفعة بتتأكد (commit) لوحدها.
 """
 from decimal import Decimal
+
+from django.db import transaction
 
 from accounts.models import AccountType
 from activity.models import ActivityLog
@@ -17,7 +20,28 @@ from .common import get_or_create_category
 __all__ = [
     'commit_product',
     'commit_import_batch',
+    'ImportBatchError',
 ]
+
+# حجم الدفعة الواحدة (عدد الصفوف) قبل ما تتأكد (commit) وتفك أقفالها.
+# رقم صغير كفاية إن أي عملية تانية (طلب بيتسلّم، تعديل صنف يدوي) متستناش
+# غير لثواني بدل ما تستنى الملف كله يخلص، وكبير كفاية إن الاستيراد نفسه
+# مايتبطأش بشكل ملحوظ من كتر عدد الـ commits.
+CHUNK_SIZE = 100
+
+
+class ImportBatchError(Exception):
+    """
+    اتوقف الاستيراد وسط الشغل بسبب خطأ في صف معين. الدفعات (chunks) اللي
+    قبل الدفعة اللي فيها الخطأ اتحفظت فعليًا بالفعل (مش هترجع)، عكس
+    السلوك القديم (transaction واحدة كبيرة = كله أو ولا حاجة). created/
+    updated/restocked بيحملوا عدد الأصناف اللي فعلًا اتحفظت قبل التوقف.
+    """
+    def __init__(self, original_exception, created, updated, restocked):
+        super().__init__(str(original_exception))
+        self.created = created
+        self.updated = updated
+        self.restocked = restocked
 
 
 def commit_product(row_data, target_pk, user, account_types_by_pk, category_cache=None,
@@ -163,21 +187,35 @@ def commit_import_batch(rows, decisions, user):
     }
 
     created_count = updated_count = restocked_count = 0
-    for row_data in rows:
-        if row_data['action'] == 'review':
-            decision = decisions.get(row_data['row_num'], 'new')
-            target_pk = int(decision) if decision != 'new' else None
-        else:
-            target_pk = row_data.get('match_pk')
-        created, restocked = commit_product(
-            row_data, target_pk, user, account_types_by_pk,
-            category_cache=category_cache,
-            product_cache=product_cache, inventory_cache=inventory_cache,
-        )
-        if created:
-            created_count += 1
-        else:
-            updated_count += 1
-            if restocked:
-                restocked_count += 1
+    for chunk_start in range(0, len(rows), CHUNK_SIZE):
+        chunk = rows[chunk_start:chunk_start + CHUNK_SIZE]
+        chunk_created = chunk_updated = chunk_restocked = 0
+        try:
+            with transaction.atomic():
+                for row_data in chunk:
+                    if row_data['action'] == 'review':
+                        decision = decisions.get(row_data['row_num'], 'new')
+                        target_pk = int(decision) if decision != 'new' else None
+                    else:
+                        target_pk = row_data.get('match_pk')
+                    created, restocked = commit_product(
+                        row_data, target_pk, user, account_types_by_pk,
+                        category_cache=category_cache,
+                        product_cache=product_cache, inventory_cache=inventory_cache,
+                    )
+                    if created:
+                        chunk_created += 1
+                    else:
+                        chunk_updated += 1
+                        if restocked:
+                            chunk_restocked += 1
+        except Exception as e:
+            # الدفعة دي اتلغت بالكامل (rollback)، لكن الدفعات اللي قبلها
+            # اتأكدت (commit) فعلًا بالفعل — عشان كده created_count/
+            # updated_count/restocked_count الحاليين (من غير أرقام الدفعة
+            # اللي فشلت) هما اللي بيتبعتوا مع الخطأ.
+            raise ImportBatchError(e, created_count, updated_count, restocked_count) from e
+        created_count += chunk_created
+        updated_count += chunk_updated
+        restocked_count += chunk_restocked
     return created_count, updated_count, restocked_count
