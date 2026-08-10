@@ -30,15 +30,28 @@
 </div>
 {% endif %}
 
-{{ products_json|json_script:"products-data" }}
-
+<!-- التحديد المتراكم (selected) عايش هنا في الجذر، مش جوه الجزء اللي
+     htmx بيستبدله (export-table-region) — عشان لو غيّرت صفحة أو بحثت
+     تاني، أي صنف حددته قبل كده يفضل متحدد حتى لو مش ظاهر دلوقتي. -->
 <div x-data="exportSelector()" x-init="init()">
 
-    <!-- شريط البحث والفلاتر -->
-    <div class="bg-white rounded-2xl shadow-sm p-4 mb-4 flex flex-col sm:flex-row gap-3 sm:items-center">
-        <input type="text" x-model="search" placeholder="ابحث بالاسم أو الكود..."
+    <!-- شريط البحث والفلاتر: أي تغيير هنا بيبعت طلب htmx يجيب صفحة 1
+         تاني بالفلتر الجديد (شوف hx-trigger تحت). لازم <form> فعلي (مش
+         <div>) عشان htmx يضمن إرسال قيم الحقلين (q وcategory) مع بعض في
+         كل طلب أيًا كان الحقل اللي عمل الـ trigger — من غير form، htmx
+         بيبعت بس قيمة العنصر اللي أطلق الحدث نفسه. hx-on:submit بيمنع
+         submit طبيعي للفورم لو المستخدم ضغط Enter جوه خانة البحث (مفيش
+         داعي له، البحث بيتبعت أصلاً مع كل keyup). -->
+    <form hx-boost="false"
+         hx-get="{% url 'staff:export_products_table' %}"
+         hx-target="#export-table-region" hx-swap="innerHTML"
+         hx-trigger="keyup changed delay:400ms from:#export-search, change from:#export-category"
+         hx-indicator="#export-loading" hx-on:submit="event.preventDefault()"
+         class="bg-white rounded-2xl shadow-sm p-4 mb-4 flex flex-col sm:flex-row gap-3 sm:items-center">
+        <input id="export-search" type="text" name="q" x-model="search"
+               placeholder="ابحث بالاسم أو الكود..."
                class="flex-1 border border-gray-200 rounded-lg px-3 py-2.5 text-sm outline-none focus:border-primary-400">
-        <select x-model="categoryFilter"
+        <select id="export-category" name="category" x-model="categoryFilter"
                 class="border border-gray-200 rounded-lg px-3 py-2.5 text-sm outline-none focus:border-primary-400">
             <option value="">كل الأقسام</option>
             {% for cat in categories %}
@@ -51,15 +64,13 @@
                 class="text-sm px-4 py-2.5 rounded-lg transition whitespace-nowrap">
             تحديد القسم كامل
         </button>
-    </div>
+        <span id="export-loading" class="htmx-indicator text-xs text-gray-400">جارِ التحميل...</span>
+    </form>
 
     <!-- ملخص التحديد -->
     <div class="bg-primary-50 border border-primary-200 rounded-xl p-4 mb-4 flex flex-wrap items-center justify-between gap-3">
         <p class="text-sm text-primary-800">
             <span class="font-bold" x-text="selected.length"></span> صنف محدد
-            <span class="text-primary-500" x-show="filteredProducts.length !== products.length">
-                (من <span x-text="filteredProducts.length"></span> ظاهر بعد الفلترة)
-            </span>
         </p>
         <div class="flex gap-2 flex-wrap">
             <button type="button" @click="selectAllVisible()"
@@ -80,36 +91,18 @@
     <!-- قائمة الأصناف -->
     <form method="post" action="{% url 'staff:export_products_selected' %}" hx-boost="false">
         {% csrf_token %}
-        <div class="bg-white rounded-2xl shadow-sm overflow-hidden mb-4">
-            <div class="overflow-x-auto overflow-y-auto" style="max-height: 55vh;">
-                <table class="w-full text-sm">
-                    <thead class="bg-gray-50 text-gray-600 sticky top-0">
-                        <tr>
-                            <th class="px-4 py-3 w-10"></th>
-                            <th class="px-4 py-3 text-right">الصنف</th>
-                            <th class="px-4 py-3 text-right">الكود</th>
-                            <th class="px-4 py-3 text-right">القسم</th>
-                        </tr>
-                    </thead>
-                    <tbody class="divide-y divide-gray-100">
-                        <template x-for="product in filteredProducts" :key="product.id">
-                            <tr class="hover:bg-gray-50" :class="selected.includes(product.id) ? 'bg-primary-50/40' : ''">
-                                <td class="px-4 py-2.5">
-                                    <input type="checkbox" name="product_ids" :value="product.id" x-model.number="selected"
-                                           class="w-4 h-4 accent-primary-600">
-                                </td>
-                                <td class="px-4 py-2.5 font-medium" x-text="product.name"></td>
-                                <td class="px-4 py-2.5 text-gray-400 font-mono text-xs" x-text="product.code || '—'"></td>
-                                <td class="px-4 py-2.5 text-gray-500 text-xs" x-text="product.category_name"></td>
-                            </tr>
-                        </template>
-                        <tr x-show="filteredProducts.length === 0">
-                            <td colspan="4" class="px-4 py-8 text-center text-gray-400">لا يوجد أصناف مطابقة</td>
-                        </tr>
-                    </tbody>
-                </table>
-            </div>
+
+        <div id="export-table-region">
+            {% include 'staff/products/partials/export_table.html' %}
         </div>
+
+        <!-- التحديد المتراكم بالكامل (كل الصفحات) بيتحوّل لـ hidden inputs
+             وقت الإرسال بس — الـ checkboxes الظاهرة في الجدول بتتحكم في
+             Alpine (selected) عن طريق toggleOne()، ومفيهاش name/value
+             خالص عشان ميحصلش تكرار مع الـ inputs دي. -->
+        <template x-for="id in selected" :key="id">
+            <input type="hidden" name="product_ids" :value="id">
+        </template>
 
         <button type="submit" :disabled="selected.length === 0"
                 :class="selected.length === 0 ? 'bg-gray-200 text-gray-400 cursor-not-allowed' : 'bg-primary-600 hover:bg-primary-700 text-white'"
@@ -122,33 +115,35 @@
 <script>
 function exportSelector() {
     return {
-        products: [],
         search: '',
         categoryFilter: '',
         selected: [],
-        init() {
-            this.products = JSON.parse(document.getElementById('products-data').textContent);
+        init() {},
+        // IDs صفحة الجدول الظاهرة دلوقتي بس (مش الكتالوج كله) — بتترقّم
+        // من جديد مع كل htmx swap (شوف export_table.html).
+        currentPageIds() {
+            const el = document.getElementById('export-page-ids');
+            return el ? JSON.parse(el.textContent) : [];
         },
-        get filteredProducts() {
-            const q = this.search.trim().toLowerCase();
-            return this.products.filter(p => {
-                const matchesSearch = !q || p.name.toLowerCase().includes(q) || (p.code || '').toLowerCase().includes(q);
-                const matchesCategory = !this.categoryFilter || p.category_slug === this.categoryFilter;
-                return matchesSearch && matchesCategory;
-            });
+        toggleOne(id) {
+            const i = this.selected.indexOf(id);
+            if (i === -1) this.selected.push(id);
+            else this.selected.splice(i, 1);
         },
         selectAllVisible() {
-            const visibleIds = this.filteredProducts.map(p => p.id);
+            const visibleIds = this.currentPageIds();
             this.selected = Array.from(new Set([...this.selected, ...visibleIds]));
         },
         deselectAllVisible() {
-            const visibleIds = new Set(this.filteredProducts.map(p => p.id));
+            const visibleIds = new Set(this.currentPageIds());
             this.selected = this.selected.filter(id => !visibleIds.has(id));
         },
-        selectWholeCategory() {
+        async selectWholeCategory() {
             if (!this.categoryFilter) return;
-            const ids = this.products.filter(p => p.category_slug === this.categoryFilter).map(p => p.id);
-            this.selected = Array.from(new Set([...this.selected, ...ids]));
+            const url = "{% url 'staff:export_products_category_ids' %}?category=" + encodeURIComponent(this.categoryFilter);
+            const res = await fetch(url);
+            const data = await res.json();
+            this.selected = Array.from(new Set([...this.selected, ...data.ids]));
         },
     };
 }

@@ -38,9 +38,21 @@
             {% endfor %}
         </select>
     </div>
+    <div class="w-full sm:w-44">
+        <label for="act_created_by" class="text-xs text-gray-500 mb-1 block">بواسطة</label>
+        <select name="created_by" id="act_created_by" class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm outline-none focus:border-primary-400">
+            <option value="" {% if not created_by_filter %}selected{% endif %}>الكل</option>
+            {% for user in created_by_choices %}
+            <option value="{{ user.pk }}" {% if created_by_filter == user.pk|stringformat:"s" %}selected{% endif %}>{{ user.username }}</option>
+            {% endfor %}
+        </select>
+    </div>
     <button type="submit" class="bg-gray-800 text-white text-sm px-4 py-2 rounded-lg hover:bg-gray-700 transition">
         بحث
     </button>
+    {% if search_q or event_filter or content_type_filter or created_by_filter %}
+    <a href="{% url 'staff:activity_list' %}" class="text-xs text-gray-400 hover:text-red-500 inline-flex items-center gap-1 pb-2.5"><svg class="w-3.5 h-3.5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/></svg>مسح الفلاتر</a>
+    {% endif %}
 </form>
 
 <div class="bg-white rounded-2xl shadow-sm overflow-x-auto">
@@ -68,7 +80,14 @@
                     {% status_badge log.get_event_display color="gray" %}
                     {% endif %}
                 </td>
-                <td class="px-4 py-3 text-gray-600">{{ log.content_type.name }} #{{ log.object_id }}</td>
+                <td class="px-4 py-3 text-gray-600">
+                    {% if log.entity_label %}
+                    {{ log.entity_label }}
+                    {% else %}
+                    {{ log.content_type.name }} #{{ log.object_id }}
+                    <span class="text-xs text-red-400">(محذوف)</span>
+                    {% endif %}
+                </td>
                 <td class="px-4 py-3 text-gray-700 max-w-md">
                     {% if log.event == 'NOTE' %}{{ log.note }}{% else %}{{ log.changes_summary|default:"—" }}{% endif %}
                 </td>

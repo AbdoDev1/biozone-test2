@@ -4,12 +4,14 @@ from django.contrib import messages
 from django.core.exceptions import ValidationError
 from django.db import transaction
 from django.db.models import Q
+from accounts.models import Employee
 from activity.models import ActivityLog
 from activity.services import diff_summary
 from activity.services import log_activity
 from inventory.models import Inventory, StockMovement
 from products.models import ProductUnit
 from staff.permissions import perm_required
+from staff.reports_queries import resolve_period, PERIOD_CHOICES
 from staff.utils import list_qs, url_with_qs, redirect_with_qs
 
 _TRACKED_INVENTORY_FIELDS = ['min_quantity', 'is_available']
@@ -19,6 +21,27 @@ STAFF_LIST_PAGE_SIZE = 30
 
 @perm_required('inventory.view_inventory')
 def inventory_list(request):
+    """
+    صفحة المخزون الرئيسية — تبويبين ("المخزون" و"سجل الحركات") جوه نفس
+    الصفحة/الـURL بدل ما يكونوا صفحتين منفصلتين، عشان التنقل بينهم يبقى
+    زرار فلتر عادي (GET) مش خطوة تنقل لمكان تاني في السيستم. كل تبويب ليه
+    فلاتر وترقيم صفحات مستقلين، فمفيش تعارض بينهم ومفيش استعلامين
+    بيتنفذوا مع بعض من غير داعي.
+    """
+    tab = request.GET.get('tab')
+    if tab != 'movements':
+        tab = 'stock'
+
+    context = {'active_tab': tab}
+    if tab == 'movements':
+        context.update(_movements_tab_context(request))
+    else:
+        context.update(_stock_tab_context(request))
+
+    return render(request, 'staff/inventory/list.html', context)
+
+
+def _stock_tab_context(request):
     items_qs = Inventory.objects.select_related(
         'product__category'
     ).prefetch_related('product__units').order_by('product__name_ar')
@@ -47,12 +70,76 @@ def inventory_list(request):
     paginator = Paginator(items_qs, STAFF_LIST_PAGE_SIZE)
     page_obj = paginator.get_page(request.GET.get('page'))
 
-    return render(request, 'staff/inventory/list.html', {
+    return {
         'items': page_obj,
         'page_obj': page_obj,
         'search_q': search_q,
         'low_only': low_only,
-    })
+    }
+
+
+def _movements_tab_context(request):
+    """
+    سجل كل حركات المخزون (كل الأصناف مع بعض) قابل للبحث والفلترة بالنوع —
+    بيغطي كل مصادر الحركة تلقائيًا (تسجيل يدوي، رصيد ابتدائي عند إضافة
+    صنف/وحدة جديدة، استيراد Excel، تسليم الطلبات) لأنها كلها بتتسجّل عن
+    طريق StockMovement.save() نفسها (راجع inventory/models.py)، فمفيش
+    مصدر بيتفوت من هنا. مصدر كل حركة (وارد من المخزن، استيراد Excel،
+    تسليم طلب...) واضح من عمود "ملاحظة" لأن كل مسار تلقائي بيسجّل ملاحظته
+    الخاصة وقت الإنشاء.
+    عكس inventory_detail اللي بيعرض آخر 20 حركة لصنف واحد بس، التبويب ده
+    مخصص لمراجعة الحركة على مستوى المخزون كله.
+    """
+    movements_qs = StockMovement.objects.select_related(
+        'inventory__product', 'unit', 'created_by'
+    ).order_by('-created_at')
+
+    search_q = request.GET.get('q', '').strip()
+    if search_q:
+        movements_qs = movements_qs.filter(
+            Q(inventory__product__name_ar__icontains=search_q)
+            | Q(inventory__product__name_en__icontains=search_q)
+            | Q(inventory__product__code__icontains=search_q)
+            | Q(inventory__product__barcode__iexact=search_q)
+            | Q(inventory__product__barcode_2__iexact=search_q)
+            | Q(inventory__product__barcode_3__iexact=search_q)
+        )
+
+    movement_type = request.GET.get('type', '').strip()
+    if movement_type not in StockMovement.MovementType.values:
+        movement_type = ''
+    if movement_type:
+        movements_qs = movements_qs.filter(movement_type=movement_type)
+
+    # نفس شريط الفلاتر الموحّد المستخدم في قسم التقارير (الفترة الزمنية
+    # الجاهزة + فترة مخصصة + الموظف) — resolve_period هي نفس الدالة
+    # المستخدمة في staff/reports_queries.py، فمفيش منطق تاريخ مكرر.
+    start, end, period = resolve_period(request)
+    if start:
+        movements_qs = movements_qs.filter(created_at__gte=start)
+    if end:
+        movements_qs = movements_qs.filter(created_at__lte=end)
+
+    employee_id = request.GET.get('employee', '').strip()
+    if employee_id:
+        movements_qs = movements_qs.filter(created_by_id=employee_id)
+
+    paginator = Paginator(movements_qs, STAFF_LIST_PAGE_SIZE)
+    page_obj = paginator.get_page(request.GET.get('page'))
+
+    return {
+        'movements': page_obj,
+        'page_obj': page_obj,
+        'search_q': search_q,
+        'movement_type': movement_type,
+        'movement_types': StockMovement.MovementType.choices,
+        'period_choices': PERIOD_CHOICES,
+        'selected_period': period,
+        'date_from': request.GET.get('date_from', '').strip(),
+        'date_to': request.GET.get('date_to', '').strip(),
+        'employees': Employee.objects.all().order_by('username'),
+        'selected_employee': employee_id,
+    }
 
 
 @perm_required('inventory.view_inventory')

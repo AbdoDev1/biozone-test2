@@ -8,11 +8,14 @@
 بـ request/session — هنا بس تنسيق الـ HTTP request/response وrenders.
 """
 from django.core.paginator import Paginator
+from django.http import JsonResponse
 from django.shortcuts import render, redirect
 from django.contrib import messages
 from django.db import transaction
+from django.db.models import Q
 
 from products.models import Category, Product
+from products.matching import normalize_name
 from products.new_arrivals import NEW_ARRIVALS_WINDOW_DAYS
 from products.services import import_export as import_export_service
 from staff.permissions import perm_required
@@ -36,6 +39,16 @@ IMPORT_MAX_ROWS = 3000
 REVIEW_LIST_PAGE_SIZE = 50
 # عدد مجموعات الإيرورز (بعد التجميع) المعروضة افتراضيًا قبل الحاجة لـ "عرض الكل".
 REVIEW_ERRORS_PREVIEW_COUNT = 15
+
+# صفحة اختيار الأصناف للتصدير (export_products_select) كانت بتسحب كل
+# أصناف المتجر دفعة واحدة كـ JSON وتفلتر/تقسّم صفحات في المتصفح بالكامل —
+# مع كتالوج كبير ده بيبطّئ فتح الصفحة (تحميل + parse لكل الأصناف حتى لو
+# الموظف هيصدّر 5 بس). دلوقتي البحث/الفلترة/تقسيم الصفحات بيحصلوا في
+# السيرفر (زي staff:product_list بالظبط) والصفحة الحالية بس اللي بتوصل
+# للمتصفح — التحديد نفسه (IDs) لسه متراكم في Alpine مستقل عن أي صفحة
+# ظاهرة حاليًا، عشان التنقل بين الصفحات أو تغيير الفلتر ميمسحش أي تحديد
+# سابق (نفس السبب اللي كان خلّى التصميم الأصلي يحمّل كل حاجة مرة واحدة).
+EXPORT_PICKER_PAGE_SIZE = 50
 
 # Backward-compat: بعض الكود القديم (أو أي كود خارجي) كان بيستورد الثوابت
 # دي من هنا مباشرة قبل الفصل — بتفضل متاحة كـ alias للمصدر الحقيقي.
@@ -224,29 +237,86 @@ def export_products(request):
     return workbook_response(wb, 'biozone_products_export.xlsx')
 
 
+def _export_picker_queryset(request):
+    """
+    الاستعلام المشترك بين صفحة الاختيار (أول تحميل) وendpoint الجدول
+    (htmx بعد أي بحث/فلتر/تنقل صفحات) — عشان الاتنين يفلتروا بنفس
+    المنطق بالظبط. نفس حقول البحث المستخدمة في staff:product_list
+    (name_ar/name_en/name_key المُطبَّع/code) عشان سلوك متسق في كل
+    شاشات المنتجات.
+    """
+    q = request.GET.get('q', '').strip()
+    category_slug = request.GET.get('category', '').strip()
+    products = Product.objects.select_related('category').order_by('name_ar')
+    if category_slug:
+        products = products.filter(category__slug=category_slug)
+    if q:
+        normalized_q = normalize_name(q)
+        products = products.filter(
+            Q(name_ar__icontains=q)
+            | Q(name_en__icontains=q)
+            | Q(name_key__icontains=normalized_q)
+            | Q(code__icontains=q)
+        )
+    return products, q, category_slug
+
+
+def _export_picker_page_context(request):
+    products, q, category_slug = _export_picker_queryset(request)
+    paginator = Paginator(products, EXPORT_PICKER_PAGE_SIZE)
+    page_obj = paginator.get_page(request.GET.get('page'))
+    return {
+        'page_obj': page_obj,
+        'page_ids': [p.pk for p in page_obj],
+        'query': q,
+        'category_slug': category_slug,
+    }
+
+
 @perm_required('products.view_product')
 def export_products_select(request):
     """
     صفحة اختيار الأصناف قبل التصدير: تقدر تبحث وتحدد أصناف بعينها، أو
     تحدد قسم كامل (وبعدين تشيل منه أي صنف مش عايزه)، والنظام هيصدّر بس
     اللي محدد فعليًا لملف إكسل بنفس صيغة "تصدير الأصناف الحالية".
+
+    الجدول نفسه (صفحة 1 افتراضيًا) بيترندر هنا بنفس الـ partial اللي
+    endpoint الـ htmx (export_products_table) بيستخدمه، عشان الصفحة
+    الأولى تظهر فورًا من غير طلب htmx إضافي بعد التحميل.
     """
     categories = Category.objects.filter(is_active=True).order_by('name')
-    products = Product.objects.select_related('category').order_by('name_ar')
-    products_data = [
-        {
-            'id': p.pk,
-            'name': p.name_ar,
-            'code': p.code,
-            'category_slug': p.category.slug,
-            'category_name': p.category.name,
-        }
-        for p in products
-    ]
-    return render(request, 'staff/products/export_select.html', {
-        'categories': categories,
-        'products_json': products_data,
-    })
+    context = _export_picker_page_context(request)
+    context['categories'] = categories
+    return render(request, 'staff/products/export_select.html', context)
+
+
+@perm_required('products.view_product')
+def export_products_table(request):
+    """
+    partial الجدول + التقسيم لصفحات — بيترجع نفس الجزء اللي export_products_select
+    بيرندره أول مرة، بس مستدعى عن طريق htmx بعد أي تغيير في البحث/الفلتر/
+    رقم الصفحة (شوف hx-get في export_select.html).
+    """
+    context = _export_picker_page_context(request)
+    return render(request, 'staff/products/partials/export_table.html', context)
+
+
+@perm_required('products.view_product')
+def export_products_category_ids(request):
+    """
+    كل IDs الأصناف في قسم معيّن (مش بس اللي ظاهرة في الصفحة الحالية) —
+    بيُستخدم لزرار "تحديد القسم كامل" عشان يضيف القسم بالكامل للتحديد
+    المتراكم حتى لو القسم بيمتد على أكتر من صفحة. زي التصميم الأصلي،
+    مش بيتأثر بخانة البحث — تحديد قسم كامل يعني القسم كله بغض النظر عن
+    أي فلتر بحث حالي.
+    """
+    category_slug = request.GET.get('category', '').strip()
+    if not category_slug:
+        return JsonResponse({'ids': []})
+    ids = list(
+        Product.objects.filter(category__slug=category_slug).values_list('pk', flat=True)
+    )
+    return JsonResponse({'ids': ids})
 
 
 @perm_required('products.view_product')

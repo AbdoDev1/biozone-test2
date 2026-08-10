@@ -204,7 +204,10 @@
         </table>
         </div>
         {% if movements_count > 20 %}
-        <p class="text-xs text-gray-400 text-center py-3">بيعرض آخر 20 حركة من إجمالي {{ movements_count }}.</p>
+        <p class="text-xs text-gray-400 text-center py-3">
+            بيعرض آخر 20 حركة من إجمالي {{ movements_count }}.
+            <a href="{% url 'staff:inventory' %}?tab=movements&q={{ item.product.code|urlencode }}" class="text-primary-600 hover:underline">عرض كل الحركات</a>
+        </p>
         {% endif %}
     </div>
 

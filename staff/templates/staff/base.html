@@ -210,7 +210,18 @@
         // الحقيقية (WebSocket، التايمرات، العداد) عايشة في كائن مشترك مستقل
         // (window.__biozoneNotifState) مش جوه x-data، فمفيش داعي لأي استثناء
         // يدوي هنا (hx-preserve أو x-ignore) — initTree عادي وبسيط يكفي.
-        document.body.addEventListener('htmx:afterSwap', (evt) => {
+        //
+        // ليه afterSettle مش afterSwap: htmx بينفّذ أي <script> جوه المحتوى
+        // الجديد (allowScriptTags) في مرحلة الـ "settle" اللي بتيجي بعد
+        // afterSwap بـ setTimeout (مش فورًا)، و"afterSettle" هو اللي بيتفعّل
+        // بعد ما المرحلة دي تخلص فعلاً. لو Alpine.initTree اتنفّذ على
+        // afterSwap زي ما كان، أي صفحة فيها <script> بيعرّف دالة يستخدمها
+        // x-data (زي exportSelector() في export_select.html) هتفشل: Alpine
+        // بيحاول ينادي الدالة قبل ما الـ script يتنفذ أصلاً فيرمي خطأ بصمت
+        // ومفيش أي تفاعل بيشتغل (الجدول وعداد التحديد فاضيين) — لحد ما تعمل
+        // هارد ريفريش، لأن وقتها المتصفح بيقرا ويشغل الـ script العادي أثناء
+        // تحليل الصفحة قبل ما Alpine (defer) يشتغل أصلاً، فمفيش سباق توقيت.
+        document.body.addEventListener('htmx:afterSettle', (evt) => {
             if (window.Alpine) window.Alpine.initTree(evt.detail.target);
         });
         // انتقال ناعم (fade) بين الصفحات لو المتصفح بيدعم View Transitions

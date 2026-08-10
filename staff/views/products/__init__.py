@@ -46,6 +46,7 @@ from .import_export import (
     IMPORT_MAX_FILE_SIZE_MB,
     IMPORT_MAX_ROWS,
     REVIEW_LIST_PAGE_SIZE,
+    EXPORT_PICKER_PAGE_SIZE,
     FUZZY_MATCH_THRESHOLD,
     DISCOUNT_COL_PREFIX,
     import_products,
@@ -55,6 +56,8 @@ from .import_export import (
     download_template,
     export_products,
     export_products_select,
+    export_products_table,
+    export_products_category_ids,
     export_products_selected,
 )
 
@@ -82,6 +85,7 @@ __all__ = [
     'IMPORT_MAX_FILE_SIZE_MB',
     'IMPORT_MAX_ROWS',
     'REVIEW_LIST_PAGE_SIZE',
+    'EXPORT_PICKER_PAGE_SIZE',
     'FUZZY_MATCH_THRESHOLD',
     'DISCOUNT_COL_PREFIX',
     'import_products',
@@ -91,5 +95,7 @@ __all__ = [
     'download_template',
     'export_products',
     'export_products_select',
+    'export_products_table',
+    'export_products_category_ids',
     'export_products_selected',
 ]

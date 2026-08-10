@@ -1,43 +1,188 @@
 {% extends 'staff/base.html' %}
 {% load staff_ui %}
-{% block title %}المخزون — Biozone{% endblock %}
+{% block title %}{% if active_tab == 'movements' %}سجل حركات المخزون{% else %}المخزون{% endif %} — Biozone{% endblock %}
 {% block breadcrumbs %}
 <nav class="flex items-center text-sm text-gray-500 mb-4">
+    {% if active_tab == 'movements' %}
+    {% crumb "الرئيسية" "staff:dashboard" %}
+    {% crumb "المخزون" "staff:inventory" %}
+    {% crumb "سجل الحركات" %}
+    {% else %}
     {% crumb "الرئيسية" "staff:dashboard" %}
     {% crumb "المخزون" %}
+    {% endif %}
 </nav>
 {% endblock %}
 {% block content %}
 
-<div class="mb-6">
-    <h1 class="text-2xl font-bold text-gray-800">تقرير المخزون</h1>
-    {% if low_only %}
-    <p class="text-sm text-red-600 mt-1 flex items-center gap-2">
-        عرض الأصناف تحت الحد الأدنى بس
-        <a href="{% url 'staff:inventory' %}" class="text-xs text-gray-400 hover:text-primary-600 underline">(عرض كل المخزون)</a>
-    </p>
-    {% endif %}
+<h1 class="text-2xl font-bold text-gray-800 mb-4">{% if active_tab == 'movements' %}سجل حركات المخزون{% else %}تقرير المخزون{% endif %}</h1>
+
+<!-- تبويبين على نفس الصفحة (زي تبويبات صفحة تفاصيل الصنف) بدل ما "سجل
+     الحركات" يكون صفحة منفصلة — تنقل بضغطة واحدة، بدون خطوة زيادة. -->
+<div class="flex items-center gap-1 border-b border-gray-200 mb-6">
+    <a href="{% url 'staff:inventory' %}"
+       class="px-4 py-2.5 text-sm font-medium border-b-2 -mb-px transition {% if active_tab == 'stock' %}border-primary-600 text-primary-600{% else %}border-transparent text-gray-500 hover:text-gray-700{% endif %}">
+        المخزون
+    </a>
+    <a href="{% url 'staff:inventory' %}?tab=movements"
+       class="px-4 py-2.5 text-sm font-medium border-b-2 -mb-px transition {% if active_tab == 'movements' %}border-primary-600 text-primary-600{% else %}border-transparent text-gray-500 hover:text-gray-700{% endif %}">
+        سجل الحركات
+    </a>
 </div>
 
-<!-- شريط البحث: بالاسم أو الكود أو الباركود (اضغط في الخانة وامسح بالاسكانر مباشرة) -->
-<form method="get" class="mb-4">
-    {% if low_only %}<input type="hidden" name="low" value="1">{% endif %}
-    <div class="relative max-w-md">
-        <svg class="w-4 h-4 text-gray-400 absolute top-1/2 -translate-y-1/2 right-3 pointer-events-none"
-             fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                  d="M21 21l-4.35-4.35M11 19a8 8 0 100-16 8 8 0 000 16z M7 11h1 M9 11h1"/>
-        </svg>
-        <input type="text" name="q" value="{{ search_q }}" autofocus autocomplete="off"
-               placeholder="ابحث بالاسم، الكود، أو امسح الباركود بالاسكانر..."
-               class="w-full border border-gray-200 rounded-lg pr-9 pl-3 py-2.5 text-sm outline-none focus:border-primary-400 bg-white shadow-sm">
+{% if active_tab == 'movements' %}
+
+<!-- فلاتر سجل الحركات: بحث + نوع الحركة + نفس شريط الفلاتر الموحّد
+     المستخدم في قسم التقارير (الفترة الزمنية + الموظف) -->
+<form method="get" hx-boost="false" x-data="{ period: '{{ selected_period }}' }"
+      class="bg-white rounded-2xl shadow-sm p-4 mb-6">
+    <input type="hidden" name="tab" value="movements">
+    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-6 gap-3">
+        <div>
+            <label for="mv_search" class="text-xs text-gray-500 mb-1 block">بحث</label>
+            <input type="text" name="q" id="mv_search" value="{{ search_q }}" autocomplete="off"
+                   placeholder="بالاسم، الكود، أو الباركود..."
+                   class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm outline-none focus:border-primary-400">
+        </div>
+        <div>
+            <label for="mv_type" class="text-xs text-gray-500 mb-1 block">نوع الحركة</label>
+            <select name="type" id="mv_type"
+                    class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm outline-none focus:border-primary-400">
+                <option value="">كل الأنواع</option>
+                {% for value, label in movement_types %}
+                <option value="{{ value }}" {% if movement_type == value %}selected{% endif %}>{{ label }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        <div>
+            <label for="mv_period" class="text-xs text-gray-500 mb-1 block">الفترة الزمنية</label>
+            <select name="period" id="mv_period" x-model="period"
+                    class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm outline-none focus:border-primary-400">
+                {% for key, label in period_choices %}
+                <option value="{{ key }}" {% if key == selected_period %}selected{% endif %}>{{ label }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        <div x-show="period === 'custom'" x-cloak>
+            <label for="mv_date_from" class="text-xs text-gray-500 mb-1 block">من تاريخ</label>
+            <input type="date" name="date_from" id="mv_date_from" value="{{ date_from }}"
+                   class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm outline-none focus:border-primary-400">
+        </div>
+        <div x-show="period === 'custom'" x-cloak>
+            <label for="mv_date_to" class="text-xs text-gray-500 mb-1 block">إلى تاريخ</label>
+            <input type="date" name="date_to" id="mv_date_to" value="{{ date_to }}"
+                   class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm outline-none focus:border-primary-400">
+        </div>
+        <div>
+            <label for="mv_employee" class="text-xs text-gray-500 mb-1 block">بواسطة</label>
+            <select name="employee" id="mv_employee"
+                    class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm outline-none focus:border-primary-400">
+                <option value="">كل الموظفين</option>
+                {% for emp in employees %}
+                <option value="{{ emp.id }}" {% if selected_employee == emp.id|stringformat:"s" %}selected{% endif %}>{{ emp.username }}</option>
+                {% endfor %}
+            </select>
+        </div>
     </div>
-    <p class="text-xs text-gray-400 mt-1.5 flex items-start gap-1.5">
-        <svg class="w-3.5 h-3.5 shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="1.8"><path stroke-linecap="round" stroke-linejoin="round" d="M3.75 4.5v4.5m0-4.5h4.5m-4.5 0L9 9M20.25 4.5v4.5m0-4.5h-4.5m4.5 0L15 9M3.75 19.5v-4.5m0 4.5h4.5m-4.5 0L9 15m11.25 4.5v-4.5m0 4.5h-4.5m4.5 0L15 15M7.5 7.5v9m3-9v9m3-9v9m3-9v9"/></svg>
-        <span>مخصّص لقارئ الباركود: دوس في الخانة وامسح — القارئ بيدخل الرقم ويبعت تلقائيًا من غير ما تحتاج تدوس Enter.</span>
-    </p>
-    {% if search_q %}
-    <a href="{% url 'staff:inventory' %}{% if low_only %}?low=1{% endif %}" class="text-xs text-gray-400 hover:text-red-500 mt-1 inline-flex items-center gap-1"><svg class="w-3 h-3 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/></svg>مسح البحث</a>
+    <div class="flex flex-wrap gap-2 mt-4">
+        {% btn "تطبيق الفلاتر" type="submit" variant="primary" size="sm" %}
+        {% if search_q or movement_type or selected_period != 'month' or selected_employee %}
+        <a href="{% url 'staff:inventory' %}?tab=movements" class="text-sm text-gray-400 hover:text-gray-600 self-center">إعادة تعيين</a>
+        {% endif %}
+    </div>
+</form>
+
+<div class="bg-white rounded-2xl shadow-sm overflow-x-auto">
+    <table class="w-full text-sm min-w-[720px]">
+        <thead class="bg-gray-50 text-gray-600">
+            <tr>
+                <th class="px-4 py-3 text-right sticky-col">الصنف</th>
+                <th class="px-4 py-3 text-right">النوع</th>
+                <th class="px-4 py-3 text-right">الوحدة</th>
+                <th class="px-4 py-3 text-right">الكمية</th>
+                <th class="px-4 py-3 text-right">= بالقطعة</th>
+                <th class="px-4 py-3 text-right">ملاحظة</th>
+                <th class="px-4 py-3 text-right">بواسطة</th>
+                <th class="px-4 py-3 text-right">التاريخ</th>
+            </tr>
+        </thead>
+        <tbody class="divide-y divide-gray-100">
+            {% for movement in movements %}
+            <tr class="hover:bg-gray-50">
+                <td class="px-4 py-3 font-medium sticky-col">
+                    <a href="{% url 'staff:inventory_detail' movement.inventory_id %}" class="hover:text-primary-600 hover:underline">
+                        {{ movement.inventory.product.display_name }}
+                    </a>
+                </td>
+                <td class="px-4 py-3">
+                    {% status_badge movement.get_movement_type_display group="movement_type" key=movement.movement_type %}
+                </td>
+                <td class="px-4 py-3 text-gray-500">{{ movement.unit.name }}</td>
+                <td class="px-4 py-3 font-medium">{{ movement.quantity }}</td>
+                <td class="px-4 py-3 text-gray-500">{{ movement.stock_qty }}</td>
+                <td class="px-4 py-3 text-gray-500">{{ movement.note|default:"—" }}</td>
+                <td class="px-4 py-3">{{ movement.created_by.username|default:"—" }}</td>
+                <td class="px-4 py-3 text-gray-500">{{ movement.created_at|date:"Y-m-d H:i" }}</td>
+            </tr>
+            {% empty %}
+            <tr>
+                <td colspan="8" class="px-4 py-8 text-center text-gray-400">لا يوجد حركات مطابقة</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+
+{% if page_obj.paginator.num_pages > 1 %}
+<div class="flex items-center justify-center gap-2 mt-4 text-sm">
+    {% if page_obj.has_previous %}
+    <a href="?tab=movements&page={{ page_obj.previous_page_number }}{% if search_q %}&q={{ search_q|urlencode }}{% endif %}{% if movement_type %}&type={{ movement_type }}{% endif %}{% if selected_period %}&period={{ selected_period }}{% endif %}{% if date_from %}&date_from={{ date_from }}{% endif %}{% if date_to %}&date_to={{ date_to }}{% endif %}{% if selected_employee %}&employee={{ selected_employee }}{% endif %}"
+       class="px-3 py-2 rounded-lg bg-white shadow-sm hover:bg-primary-50 text-gray-600">السابق</a>
+    {% endif %}
+    <span class="text-gray-500 px-2">صفحة {{ page_obj.number }} من {{ page_obj.paginator.num_pages }}</span>
+    {% if page_obj.has_next %}
+    <a href="?tab=movements&page={{ page_obj.next_page_number }}{% if search_q %}&q={{ search_q|urlencode }}{% endif %}{% if movement_type %}&type={{ movement_type }}{% endif %}{% if selected_period %}&period={{ selected_period }}{% endif %}{% if date_from %}&date_from={{ date_from }}{% endif %}{% if date_to %}&date_to={{ date_to }}{% endif %}{% if selected_employee %}&employee={{ selected_employee }}{% endif %}"
+       class="px-3 py-2 rounded-lg bg-white shadow-sm hover:bg-primary-50 text-gray-600">التالي</a>
+    {% endif %}
+</div>
+{% endif %}
+
+{% else %}
+
+<!-- لوحة البحث والفلاتر — نفس نمط بطاقة الفلاتر المستخدمة في صفحة المنتجات
+     (staff/templates/staff/products/list.html): بطاقة بيضاء، حقول بعنوان
+     صغير فوقها، وترتيب متجاوب (flex-wrap) بدل صف بحث مفرد. -->
+<form method="get" class="bg-white rounded-2xl shadow-sm p-4 mb-6 flex flex-col sm:flex-row gap-3 sm:items-end sm:flex-wrap">
+    <div class="flex-1 min-w-[220px]">
+        <label for="inv_search" class="text-xs text-gray-500 mb-1 block">بحث</label>
+        <div class="relative">
+            <svg class="w-4 h-4 text-gray-400 absolute top-1/2 -translate-y-1/2 right-3 pointer-events-none"
+                 fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M21 21l-4.35-4.35M11 19a8 8 0 100-16 8 8 0 000 16z"/>
+            </svg>
+            <input type="text" name="q" id="inv_search" value="{{ search_q }}" autofocus autocomplete="off"
+                   placeholder="ابحث بالاسم، الكود، أو امسح الباركود بالاسكانر..."
+                   class="w-full border border-gray-200 rounded-lg pr-9 pl-3 py-2 text-sm outline-none focus:border-primary-400">
+        </div>
+        <p class="text-xs text-gray-400 mt-1.5 flex items-start gap-1.5">
+            <svg class="w-3.5 h-3.5 shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="1.8"><path stroke-linecap="round" stroke-linejoin="round" d="M3.75 4.5v4.5m0-4.5h4.5m-4.5 0L9 9M20.25 4.5v4.5m0-4.5h-4.5m4.5 0L15 9M3.75 19.5v-4.5m0 4.5h4.5m-4.5 0L9 15m11.25 4.5v-4.5m0 4.5h-4.5m4.5 0L15 15M7.5 7.5v9m3-9v9m3-9v9m3-9v9"/></svg>
+            <span>مخصّص لقارئ الباركود: دوس في الخانة وامسح — القارئ بيدخل الرقم ويبعت تلقائيًا من غير ما تحتاج تدوس Enter.</span>
+        </p>
+    </div>
+    <div class="w-full sm:w-44">
+        <label for="inv_status" class="text-xs text-gray-500 mb-1 block">الحالة</label>
+        <select name="low" id="inv_status" onchange="this.form.submit()"
+                class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm outline-none focus:border-primary-400">
+            <option value="" {% if not low_only %}selected{% endif %}>كل الأصناف</option>
+            <option value="1" {% if low_only %}selected{% endif %}>تحت الحد الأدنى فقط</option>
+        </select>
+    </div>
+    <button type="submit"
+            class="bg-gray-800 text-white text-sm px-4 py-2 rounded-lg hover:bg-gray-700 transition">
+        بحث
+    </button>
+    {% if search_q or low_only %}
+    <a href="{% url 'staff:inventory' %}" class="text-xs text-gray-400 hover:text-red-500 inline-flex items-center gap-1 pb-2.5"><svg class="w-3.5 h-3.5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/></svg>مسح الفلاتر</a>
     {% endif %}
 </form>
 
@@ -101,6 +246,8 @@
        class="px-3 py-2 rounded-lg bg-white shadow-sm hover:bg-primary-50 text-gray-600">التالي</a>
     {% endif %}
 </div>
+{% endif %}
+
 {% endif %}
 
 {% endblock %}
