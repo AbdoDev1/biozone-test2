@@ -3,6 +3,8 @@ from django.core.paginator import Paginator
 from django.shortcuts import get_object_or_404, redirect, render
 from django.views.decorators.http import require_POST
 
+from invoices.models import merge_orders_with_returns
+
 from ..cart import Cart
 from ..models import Cart as CartModel, Order
 from .decorators import client_required
@@ -41,9 +43,12 @@ def order_items(request, pk):
 @client_required
 def order_list(request):
     orders_qs = Order.objects.filter(client=request.user).prefetch_related('items')
-    paginator = Paginator(orders_qs, 20)
+    # حركة المرتجع (إشعارات المرتجع على فواتير العميل) بتظهر في نفس القائمة
+    # كصف مستقل زي أي طلب، من غير تفاصيل أصنافها (راجع merge_orders_with_returns).
+    rows = merge_orders_with_returns(orders_qs, request.user)
+    paginator = Paginator(rows, 20)
     page_obj = paginator.get_page(request.GET.get('page'))
-    return render(request, 'orders/order_list.html', {'orders': page_obj, 'page_obj': page_obj})
+    return render(request, 'orders/order_list.html', {'rows': page_obj, 'page_obj': page_obj})
 
 
 @client_required

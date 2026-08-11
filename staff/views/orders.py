@@ -8,6 +8,7 @@ from django.db import transaction
 from django.shortcuts import render, redirect, get_object_or_404
 from django.urls import reverse
 
+from invoices.models import InvoiceReversal
 from orders.models import Order, OrderItem
 from staff.permissions import perm_required
 from tags.services import tags_for_many
@@ -25,17 +26,35 @@ def order_list(request):
     if status:
         orders = orders.filter(status=status)
 
-    paginator = Paginator(orders, STAFF_LIST_PAGE_SIZE)
+    # إشعارات المرتجع بتتحط في نفس قائمة الطلبات كصف مستقل (رقم الإشعار،
+    # العميل، القيمة، التاريخ) — من غير تفاصيل الأصناف المرتجعة (دي موجودة
+    # في صفحة طباعة الإشعار نفسها لو الستاف عايز يفتحها). بتظهر بس في تبويب
+    # "الكل" لأن حالات الطلب (PENDING/CONFIRMED/...) مش منطبقة على إشعار مرتجع.
+    rows = [{'kind': 'order', 'obj': order, 'created_at': order.created_at} for order in orders]
+    if not status:
+        reversals = InvoiceReversal.objects.select_related(
+            'invoice__order__client',
+        )
+        rows += [
+            {'kind': 'return', 'obj': reversal, 'created_at': reversal.created_at}
+            for reversal in reversals
+        ]
+
+    rows.sort(key=lambda row: row['created_at'], reverse=True)
+
+    paginator = Paginator(rows, STAFF_LIST_PAGE_SIZE)
     page_obj = paginator.get_page(request.GET.get('page'))
 
     # وسم كل طلب في الصفحة الحالية باستعلام واحد بدل ما نستدعي tags_for
     # لكل صف على حدة (N+1) — الوسوم بتتعرض صغيرة تحت رقم الطلب في الجدول.
-    tags_by_order_id = tags_for_many(Order, [order.pk for order in page_obj])
-    for order in page_obj:
-        order.tag_list = tags_by_order_id.get(order.pk, [])
+    order_ids_on_page = [row['obj'].pk for row in page_obj if row['kind'] == 'order']
+    tags_by_order_id = tags_for_many(Order, order_ids_on_page)
+    for row in page_obj:
+        if row['kind'] == 'order':
+            row['obj'].tag_list = tags_by_order_id.get(row['obj'].pk, [])
 
     context = {
-        'orders': page_obj,
+        'rows': page_obj,
         'page_obj': page_obj,
         'selected_status': status,
         'status_choices': Order.Status.choices,

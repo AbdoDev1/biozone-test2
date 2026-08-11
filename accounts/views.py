@@ -107,6 +107,7 @@ def dashboard_view(request):
     from django.contrib.auth import update_session_auth_hash
     from django.db.models import F, Sum, Window
     from accounting.models import AccountTransaction
+    from invoices.models import merge_orders_with_returns
     from orders.models import Order
     from .forms import ClientPasswordChangeForm
 
@@ -150,7 +151,10 @@ def dashboard_view(request):
     orders_qs = Order.objects.filter(client=request.user).prefetch_related('items').order_by('-created_at')
     recent_orders = orders_qs[:5]
 
-    orders_paginator = Paginator(orders_qs, ORDERS_TAB_PAGE_SIZE)
+    # تبويب "طلباتي" هنا بيعرض حركة المرتجع جنب الطلبات (زي orders:order_list
+    # بالظبط) — راجع merge_orders_with_returns لتفاصيل الدمج والترتيب.
+    orders_rows = merge_orders_with_returns(orders_qs, request.user)
+    orders_paginator = Paginator(orders_rows, ORDERS_TAB_PAGE_SIZE)
     orders_page_obj = orders_paginator.get_page(request.GET.get('orders_page'))
 
     return render(request, 'accounts/dashboard.html', {

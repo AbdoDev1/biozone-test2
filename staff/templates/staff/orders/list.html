@@ -41,7 +41,9 @@
             </tr>
         </thead>
         <tbody class="divide-y divide-gray-100">
-            {% for order in orders %}
+            {% for row in rows %}
+            {% if row.kind == 'order' %}
+            {% with order=row.obj %}
             <tr class="hover:bg-gray-50">
                 <td class="px-4 py-3 font-medium sticky-col">
                     #{{ order.pk }}
@@ -63,6 +65,25 @@
                     {% endif %}
                 </td>
             </tr>
+            {% endwith %}
+            {% else %}
+            {% with reversal=row.obj %}
+            <tr class="hover:bg-rose-50/40">
+                <td class="px-4 py-3 font-medium sticky-col">
+                    <span class="font-semibold">{{ reversal.return_number }}</span>
+                </td>
+                <td class="px-4 py-3">{{ reversal.invoice.order.client.username }}</td>
+                <td class="px-4 py-3 font-semibold text-rose-700">{{ reversal.amount }} ج.م</td>
+                <td class="px-4 py-3">
+                    {% status_badge "مرتجع" group="tx_kind" key="RETURN" %}
+                </td>
+                <td class="px-4 py-3 text-gray-500">{{ reversal.created_at|date:"Y-m-d H:i" }}</td>
+                <td class="px-4 py-3">
+                    <a href="{% url 'invoices:reversal_print' reversal.pk %}" target="_blank" class="text-rose-600 hover:underline text-xs">عرض/طباعة</a>
+                </td>
+            </tr>
+            {% endwith %}
+            {% endif %}
             {% empty %}
             <tr>
                 <td colspan="6" class="px-4 py-8 text-center text-gray-400">لا يوجد طلبات</td>

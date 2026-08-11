@@ -189,12 +189,13 @@
         <div class="flex flex-wrap items-center justify-between gap-2 text-sm border-b pb-2">
             <div>
                 {% status_badge "مرتجع" group="tx_kind" key="RETURN" %}
-                <span class="font-semibold mr-1">{{ reversal.return_number }}</span>
+                <a href="{% url 'invoices:reversal_print' reversal.pk %}" target="_blank" class="font-semibold mr-1 text-rose-700 hover:underline">{{ reversal.return_number }}</a>
                 {% if reversal.note %}<span class="text-gray-500">— {{ reversal.note }}</span>{% endif %}
             </div>
-            <div class="text-gray-500 text-xs">
+            <div class="text-gray-500 text-xs flex items-center gap-2">
                 {{ reversal.amount }} ج.م — {{ reversal.created_at|date:"Y-m-d H:i" }}
                 {% if reversal.created_by %} — بواسطة {{ reversal.created_by.username }}{% endif %}
+                <a href="{% url 'invoices:reversal_print' reversal.pk %}" target="_blank" class="text-primary-600 hover:underline">طباعة</a>
             </div>
         </div>
         {% endfor %}

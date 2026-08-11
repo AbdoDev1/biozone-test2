@@ -123,7 +123,9 @@
         <div x-show="tab === 'orders'" class="p-4 md:p-6">
             {% if orders_page_obj %}
             <div class="space-y-3">
-                {% for order in orders_page_obj %}
+                {% for row in orders_page_obj %}
+                {% if row.kind == 'order' %}
+                {% with order=row.obj %}
                 <a href="{% url 'orders:order_detail' order.pk %}"
                    class="bg-white border border-gray-100 rounded-2xl shadow-sm p-5 flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3 hover:shadow-md transition block">
                     <div>
@@ -142,6 +144,24 @@
                         <span class="font-bold text-primary-700">{{ order.total }} ج.م</span>
                     </div>
                 </a>
+                {% endwith %}
+                {% else %}
+                {% with reversal=row.obj %}
+                <a href="{% url 'invoices:reversal_print' reversal.pk %}" target="_blank"
+                   class="bg-white border border-rose-100 rounded-2xl shadow-sm p-5 flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3 hover:shadow-md transition block">
+                    <div>
+                        <p class="font-bold text-gray-800">{{ reversal.return_number }}</p>
+                        <p class="text-xs text-gray-400 mt-1">{{ reversal.created_at|date:"d/m/Y" }}</p>
+                    </div>
+                    <div class="flex items-center gap-4">
+                        <span class="px-3 py-1 rounded-full text-xs font-medium bg-rose-100 text-rose-700">
+                            مرتجع
+                        </span>
+                        <span class="font-bold text-rose-700">{{ reversal.amount }} ج.م</span>
+                    </div>
+                </a>
+                {% endwith %}
+                {% endif %}
                 {% endfor %}
             </div>
 

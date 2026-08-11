@@ -413,11 +413,55 @@ class InvoiceReversal(models.Model):
             created_by=actor,
         )
 
+        # تنبيه العميل بحركة المرتجع على طلبه (نقطة 4 من طلب المرتجعات) —
+        # نفس أسلوب تنبيه "تم تسجيل دفعة على حسابك" في staff/views/accounting.py.
+        # exclude_actor احتياطًا فقط (المرتجعات بتتنشأ من الستاف دايمًا حاليًا،
+        # مش من العميل نفسه، فمفيش سيناريو فعلي بيستبعد حد هنا).
+        from notifications.services import notify
+        from notifications.models import Notification
+        notify(
+            order.client,
+            kind=Notification.Kind.RETURN_CREATED,
+            title='تم تسجيل مرتجع على طلبك',
+            message=f'تم تسجيل إشعار مرتجع {reversal.return_number} بقيمة {total_amount} ج.م على طلب #{order.pk}.',
+            url_name='orders:order_list',
+            exclude_actor=actor,
+        )
+
         return reversal
 
     @staticmethod
     def _lock_invoice(invoice):
         return Invoice.objects.select_for_update().get(pk=invoice.pk)
+
+    @classmethod
+    def rows_for_client(cls, client):
+        """
+        بترجع كل إشعارات المرتجع الخاصة بفواتير طلبات عميل معيّن — مستخدمة
+        عشان نحطها كصف مستقل جنب طلباته في "طلباتي" (راجع orders/order_list.html
+        و accounts/dashboard.html)، بنفس فلسفة merge_orders_with_returns تحت.
+        """
+        return cls.objects.filter(
+            invoice__order__client=client,
+        ).select_related('invoice__order')
+
+
+def merge_orders_with_returns(orders_qs, client):
+    """
+    بتدمج قائمة طلبات عميل مع إشعارات المرتجع بتاعته في قائمة واحدة مرتبة
+    بالتاريخ (الأحدث فوق) — كل عنصر dict فيه 'kind' ('order' أو 'return')
+    و'obj' و'created_at'. مستخدمة في أكتر من مكان (orders:order_list
+    وتبويب "طلباتي" في accounts:dashboard) عشان العميل يشوف حركة المرتجع
+    في نفس قائمة طلباته، من غير تفاصيل الأصناف (زي أي طلب في القائمة) —
+    تفاصيل الإشعار نفسه موجودة في صفحة طباعته لو حبّ يفتحها.
+    """
+    rows = [{'kind': 'order', 'obj': order, 'created_at': order.created_at} for order in orders_qs]
+    rows += [
+        {'kind': 'return', 'obj': reversal, 'created_at': reversal.created_at}
+        for reversal in InvoiceReversal.rows_for_client(client)
+    ]
+    rows.sort(key=lambda row: row['created_at'], reverse=True)
+    return rows
 
 
 class InvoiceReversalItem(models.Model):

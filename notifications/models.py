@@ -22,6 +22,7 @@ class Notification(models.Model):
         NEW_CLIENT_REGISTRATION = 'NEW_CLIENT_REGISTRATION', 'طلب تسجيل عميل جديد'
         NEW_ARRIVALS = 'NEW_ARRIVALS', 'وارد جديد في المتجر'
         PAYMENT_RECEIVED = 'PAYMENT_RECEIVED', 'تم تسجيل دفعة على حسابك'
+        RETURN_CREATED = 'RETURN_CREATED', 'تم تسجيل مرتجع على طلبك'
         BACKUP_FAILED = 'BACKUP_FAILED', 'فشل النسخ الاحتياطي'
 
     recipient = models.ForeignKey(User, on_delete=models.CASCADE, related_name='notifications')
