@@ -38,6 +38,18 @@ class AccountTransaction(models.Model):
         'invoices.Invoice', on_delete=models.PROTECT, null=True, blank=True,
         related_name='account_transactions',
     )
+    # لو الحركة دي ناتجة عن إشعار مرتجع (InvoiceReversal — سواء PRE_DELIVERY
+    # "رفض طلب بعد التأكيد" أو POST_DELIVERY "مرتجع صنف/كمية بعد التسليم")،
+    # بيتربط هنا. بيُستخدم بس للعرض (display_kind/display_kind_label/
+    # display_reference تحت) عشان الحركة تتعرض للعميل/الستاف باسم "مرتجع"
+    # وبرقم إشعار المرتجع بدل "تسوية" ورقم الفاتورة العادي — من غير ما
+    # يتغيّر kind الفعلي (لسه ADJUSTMENT محاسبيًا، القيمة والتصنيف الحقيقي
+    # زي ما هو). null لأي تسوية يدوية عادية (خصم/إضافة استثنائية) مش ناتجة
+    # عن مرتجع.
+    invoice_reversal = models.ForeignKey(
+        'invoices.InvoiceReversal', on_delete=models.PROTECT, null=True, blank=True,
+        related_name='account_transactions',
+    )
     method = models.CharField(max_length=20, choices=PaymentMethod.choices, blank=True)
     note = models.TextField(blank=True)
 
@@ -53,6 +65,35 @@ class AccountTransaction(models.Model):
 
     def __str__(self):
         return f'{self.get_kind_display()} — {self.client.username} — {self.amount}'
+
+    @property
+    def is_return(self):
+        """True لو الحركة دي عبارة عن مرتجع (مربوطة بـ InvoiceReversal) مش تسوية يدوية عادية."""
+        return self.invoice_reversal_id is not None
+
+    @property
+    def display_kind(self):
+        """
+        'RETURN' لو الحركة مرتجع، غير كده kind العادي (INVOICE/PAYMENT/
+        ADJUSTMENT) — مستخدمة في القوالب لتحديد لون/تصنيف الشارة المعروضة
+        (راجع staff_ui.BADGE_COLOR_MAPS['tx_kind']['RETURN']).
+        """
+        return 'RETURN' if self.is_return else self.kind
+
+    @property
+    def display_kind_label(self):
+        """نص الشارة المعروض: 'مرتجع' للحركات المرتبطة بإشعار مرتجع، وإلا get_kind_display() العادي."""
+        return 'مرتجع' if self.is_return else self.get_kind_display()
+
+    @property
+    def display_reference(self):
+        """
+        المرجع المعروض في عمود 'تفاصيل': رقم إشعار المرتجع (RTN-...) لو
+        الحركة مرتجع، وإلا رقم الفاتورة العادي (أو فاضي لو مفيش فاتورة).
+        """
+        if self.is_return:
+            return self.invoice_reversal.return_number
+        return self.invoice.invoice_number if self.invoice_id else ''
 
     def clean(self):
         if self.kind == self.Kind.INVOICE and self.amount <= 0:

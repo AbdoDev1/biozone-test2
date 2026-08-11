@@ -1,0 +1,102 @@
+{% extends 'staff/base.html' %}
+{% load staff_ui %}
+{% block title %}إشعار مرتجع — طلب #{{ order.pk }} — Biozone{% endblock %}
+{% block breadcrumbs %}
+<nav class="flex items-center text-sm text-gray-500 mb-4">
+    {% crumb "الرئيسية" "staff:dashboard" %}
+    {% crumb "الطلبات" "staff:order_list" %}
+    {% crumb order_crumb_label "staff:order_detail" order.pk %}
+    <span class="text-gray-700 font-medium">إشعار مرتجع</span>
+</nav>
+{% endblock %}
+
+{% block content %}
+<div class="mb-4">
+    <h1 class="text-xl font-bold text-gray-800">إنشاء إشعار مرتجع</h1>
+    <p class="text-gray-500 text-sm mt-1">
+        على فاتورة <span class="font-medium text-primary-700">{{ invoice.invoice_number }}</span>
+        — طلب #{{ order.pk }} — العميل: <span class="font-medium text-gray-700">{{ order.client.username }}</span>
+    </p>
+</div>
+
+<div class="bg-blue-50 border border-blue-200 text-blue-800 rounded-xl px-4 py-3 mb-6 text-sm">
+    حدّد الكمية اللي هترجع من كل صنف (تقدر تسيب أي صنف من غير مرتجع بترك خانته فاضية أو صفر).
+    الكمية القصوى المسموحة لكل صنف هي المتبقي بعد خصم أي مرتجعات سابقة على نفس الفاتورة.
+</div>
+
+{% if not has_returnable_items %}
+<div class="bg-white rounded-2xl shadow-sm p-6 text-center text-gray-400">
+    كل أصناف هذه الفاتورة تم إرجاعها بالكامل بالفعل، لا يوجد شيء متاح للمرتجع.
+</div>
+{% else %}
+<form method="post" class="bg-white rounded-2xl shadow-sm overflow-hidden">
+    {% csrf_token %}
+    <div class="overflow-x-auto">
+        <table class="w-full text-sm min-w-[640px]">
+            <thead class="bg-gray-50 text-gray-600">
+                <tr>
+                    <th class="px-4 py-3 text-right">الصنف</th>
+                    <th class="px-4 py-3 text-right">الوحدة</th>
+                    <th class="px-4 py-3 text-right">الكمية الأصلية</th>
+                    <th class="px-4 py-3 text-right">اترجع سابقًا</th>
+                    <th class="px-4 py-3 text-right">المتاح للإرجاع</th>
+                    <th class="px-4 py-3 text-right">كمية المرتجع</th>
+                </tr>
+            </thead>
+            <tbody class="divide-y divide-gray-100">
+                {% for row in items_rows %}
+                <tr class="{% if row.remaining == 0 %}opacity-50{% endif %}">
+                    <td class="px-4 py-3 font-medium text-gray-800">{{ row.item.product_name }}</td>
+                    <td class="px-4 py-3 text-gray-500">{{ row.item.unit_name }}</td>
+                    <td class="px-4 py-3">{{ row.item.quantity }}</td>
+                    <td class="px-4 py-3 text-gray-500">{{ row.item.returned_quantity }}</td>
+                    <td class="px-4 py-3 font-medium">{{ row.remaining }}</td>
+                    <td class="px-4 py-3">
+                        {% if row.remaining > 0 %}
+                        <input type="number" name="quantity_{{ row.item.pk }}" min="0" max="{{ row.remaining }}"
+                               placeholder="0" class="w-24 border border-gray-200 rounded-lg px-3 py-1.5 text-sm outline-none focus:border-primary-400">
+                        {% else %}
+                        <span class="text-gray-400">—</span>
+                        {% endif %}
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+
+    <div class="px-4 py-4 border-t bg-gray-50">
+        <label class="block text-sm font-medium text-gray-700 mb-1">ملاحظة (اختياري)</label>
+        <textarea name="note" rows="2" placeholder="سبب المرتجع، ملاحظات إضافية..."
+                  class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm outline-none focus:border-primary-400"></textarea>
+    </div>
+
+    <div class="px-4 py-4 border-t flex flex-wrap gap-3">
+        {% btn "إنشاء إشعار المرتجع" type="submit" variant="warning" icon="check" %}
+        {% btn "إلغاء" href=cancel_url variant="secondary" %}
+    </div>
+</form>
+{% endif %}
+
+{% if invoice.reversals.all %}
+<div class="bg-white rounded-2xl shadow-sm p-6 mt-6">
+    <h2 class="font-semibold text-gray-700 mb-4">إشعارات مرتجع سابقة على هذه الفاتورة</h2>
+    <div class="space-y-3">
+        {% for reversal in invoice.reversals.all %}
+        <div class="text-sm border-b pb-2">
+            <p class="text-gray-700">
+                <span class="font-semibold">{{ reversal.return_number }}</span>
+                — {{ reversal.amount }} ج.م
+                {% if reversal.note %}— {{ reversal.note }}{% endif %}
+            </p>
+            <p class="text-xs text-gray-400 mt-0.5">
+                {{ reversal.created_at|date:"Y-m-d H:i" }}
+                {% if reversal.created_by %} — بواسطة {{ reversal.created_by.username }}{% endif %}
+            </p>
+        </div>
+        {% endfor %}
+    </div>
+</div>
+{% endif %}
+
+{% endblock %}

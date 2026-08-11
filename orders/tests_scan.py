@@ -56,6 +56,16 @@ class OrderFindItemByBarcodeTestCase(TestCase):
     def test_matches_secondary_barcode_field(self):
         self.assertEqual(self.order.find_item_by_barcode('2222'), self.item_a)
 
+    def test_matches_product_code(self):
+        """خانة الكود (code) بتتقرا برضه كباركود — المخزن ممكن يمسحها بالاسكانر
+        زي أي باركود تاني على كارت الصنف."""
+        self.assertEqual(self.order.find_item_by_barcode(self.product_a.code), self.item_a)
+
+    def test_match_by_code_is_case_insensitive_and_trims_whitespace(self):
+        self.assertEqual(
+            self.order.find_item_by_barcode(f'  {self.product_a.code.lower()}  '), self.item_a,
+        )
+
     def test_match_is_case_insensitive_and_trims_whitespace(self):
         self.assertEqual(self.order.find_item_by_barcode('  1111  '), self.item_a)
 

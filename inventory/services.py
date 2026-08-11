@@ -22,7 +22,7 @@ def record_price_change(unit, old_price, new_price, user=None, note='', inventor
         return None
     if inventory is None:
         inventory, _ = Inventory.objects.get_or_create(
-            product_id=unit.product_id, defaults={'quantity': 0, 'reserved': 0, 'min_quantity': 0},
+            product_id=unit.product_id, defaults={'quantity': 0, 'min_quantity': 0},
         )
     return PriceChange.objects.create(
         inventory=inventory,

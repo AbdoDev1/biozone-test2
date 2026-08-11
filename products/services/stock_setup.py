@@ -13,7 +13,7 @@ def apply_initial_stock(product, formset, user, note):
     """
     inventory, _ = Inventory.objects.get_or_create(
         product=product,
-        defaults={'quantity': 0, 'reserved': 0, 'min_quantity': 0},
+        defaults={'quantity': 0, 'min_quantity': 0},
     )
     for unit_form in formset.forms:
         if unit_form.cleaned_data.get('DELETE'):

@@ -99,9 +99,9 @@ def product_list(request):
     if stock_filter == 'low':
         # نفس شرط Inventory.is_low بس على مستوى الاستعلام — راجع
         # InventoryQuerySet.low_stock() في inventory/models.py لنفس المنطق.
-        products = products.filter(inventory__quantity__lte=F('inventory__reserved') + F('inventory__min_quantity'))
+        products = products.filter(inventory__quantity__lte=F('inventory__min_quantity'))
     elif stock_filter == 'out':
-        products = products.filter(inventory__quantity__lte=F('inventory__reserved'))
+        products = products.filter(inventory__quantity__lte=0)
 
     # سعر أصغر وحدة (القطعة عادةً، أو الوحدة الوحيدة لو المنتج بوحدة كبرى
     # بس) — بنفس منطق Product.smallest_unit، لكن كـ Subquery عشان يترتب
@@ -112,7 +112,7 @@ def product_list(request):
     )
     products = products.annotate(
         small_unit_price=smallest_unit_price,
-        available_qty=Coalesce(F('inventory__quantity') - F('inventory__reserved'), Value(0)),
+        available_qty=Coalesce(F('inventory__quantity'), Value(0)),
     )
 
     order_field = PRODUCT_SORT_FIELDS[sort]

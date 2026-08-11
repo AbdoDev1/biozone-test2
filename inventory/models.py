@@ -7,17 +7,17 @@ class InventoryQuerySet(models.QuerySet):
     def low_stock(self):
         """
         فلتر على مستوى قاعدة البيانات بنفس شرط الخاصية is_low بالظبط
-        (المتاح <= الحد الأدنى، أي quantity - reserved <= min_quantity).
-        الفرق إن is_low بيتحسب على مستوى الـ instance (بعد ما السجل يترجع من
-        القاعدة)، أما الميثود دي بتسمح نفلتر/نعدّ في القاعدة نفسها (queryset)
-        بدل ما نجيب كل المخزون ونفلتره في بايثون. اتعمل QuerySet method (مش
-        Manager عادي) عشان تفضل قابلة للتسلسل (chainable) فوق فلاتر تانية،
-        زي البحث في صفحة المخزون (staff/views/inventory.py?q=...&low=1).
-        مستخدمة في اللوحة الرئيسية (staff/views/dashboard.py)، صفحة المخزون،
-        ولوحة مؤشرات التقارير (staff/views/reports.py) — كانت العبارة دي
-        متكررة يدويًا في التلات أماكن قبل كده.
+        (الرصيد <= الحد الأدنى). الفرق إن is_low بيتحسب على مستوى الـ
+        instance (بعد ما السجل يترجع من القاعدة)، أما الميثود دي بتسمح
+        نفلتر/نعدّ في القاعدة نفسها (queryset) بدل ما نجيب كل المخزون
+        ونفلتره في بايثون. اتعمل QuerySet method (مش Manager عادي) عشان
+        تفضل قابلة للتسلسل (chainable) فوق فلاتر تانية، زي البحث في صفحة
+        المخزون (staff/views/inventory.py?q=...&low=1). مستخدمة في اللوحة
+        الرئيسية (staff/views/dashboard.py)، صفحة المخزون، ولوحة مؤشرات
+        التقارير (staff/views/reports.py) — كانت العبارة دي متكررة يدويًا
+        في التلات أماكن قبل كده.
         """
-        return self.filter(quantity__lte=models.F('reserved') + models.F('min_quantity'))
+        return self.filter(quantity__lte=models.F('min_quantity'))
 
 
 class Inventory(models.Model):
@@ -34,7 +34,6 @@ class Inventory(models.Model):
         related_name='inventory',
     )
     quantity = models.PositiveIntegerField(default=0, verbose_name='الرصيد (بالقطعة)')
-    reserved = models.PositiveIntegerField(default=0, verbose_name='المحجوز (بالقطعة)')
     min_quantity = models.PositiveIntegerField(default=0, verbose_name='الحد الأدنى (بالقطعة)')
     is_available = models.BooleanField(
         default=True,
@@ -52,7 +51,7 @@ class Inventory(models.Model):
 
     @property
     def available(self):
-        return self.quantity - self.reserved
+        return self.quantity
 
     @property
     def is_low(self):
@@ -98,11 +97,6 @@ class Inventory(models.Model):
         return self._format_in_large_unit(self.quantity)
 
     @property
-    def reserved_display(self):
-        """المحجوز معروضًا بالوحدة الكبرى — للاستخدام في تقرير المخزون."""
-        return self._format_in_large_unit(self.reserved)
-
-    @property
     def available_display(self):
         """المتاح معروضًا بالوحدة الكبرى — للاستخدام في تقرير المخزون."""
         return self._format_in_large_unit(self.available)
@@ -120,10 +114,7 @@ class Inventory(models.Model):
 class StockMovement(models.Model):
     class MovementType(models.TextChoices):
         IN = 'IN', 'وارد'
-        OUT = 'OUT', 'صادر (مباشر)'
-        OUT_RESERVED = 'OUT_RESERVED', 'صادر (من محجوز عند التسليم)'
-        RESERVE = 'RESERVE', 'حجز'
-        RELEASE = 'RELEASE', 'إلغاء حجز'
+        OUT = 'OUT', 'صادر'
 
     inventory = models.ForeignKey(
         Inventory,
@@ -136,6 +127,17 @@ class StockMovement(models.Model):
         verbose_name='الوحدة',
         help_text='الوحدة التي سُجّلت بها الحركة (كرتونة/قطعة) — الكمية أدناه بوحدة هذه الوحدة.',
     )
+    # max_length فضل 13 حرف زي الأول (مش اتقصّر لـ 3) رغم إن أطول قيمة
+    # متاحة دلوقتي في MovementType هي 'OUT' (3 أحرف بس) — عشان صفوف
+    # StockMovement القديمة (قبل إلغاء نظام الحجز) ممكن يكون فيها قيم
+    # زي 'RESERVE'، 'RELEASE'، 'OUT_RESERVED' لسه محفوظة في قاعدة
+    # البيانات كسجل تاريخي (سجل حركات المخزون immutable، مفيش حذف).
+    # تقصير العمود كان هيفشل فعليًا على أي قاعدة بيانات فيها بيانات
+    # حقيقية (StringDataRightTruncation)، حتى لو شغال على قاعدة فاضية
+    # في التطوير المحلي. القيم القديمة دي هتفضل موجودة كنص خام (مش هتظهر
+    # لها ترجمة عربية جميلة في get_movement_type_display بعد النهاردة،
+    # لأنها بقت مش موجودة في choices)، لكن من غير أي فقدان بيانات أو
+    # فشل ميجريشن.
     movement_type = models.CharField(max_length=13, choices=MovementType.choices)
     quantity = models.PositiveIntegerField(
         verbose_name='الكمية (بوحدة الحركة)',
@@ -173,14 +175,8 @@ class StockMovement(models.Model):
             stock_qty = self.quantity * self.unit.qty_in_small
             if self.movement_type == self.MovementType.OUT and stock_qty > self.inventory.available:
                 raise ValidationError(
-                    'الكمية المطلوبة أكبر من الكمية المتاحة (غير المحجوزة) في المخزون.'
+                    'الكمية المطلوبة أكبر من الكمية المتاحة في المخزون.'
                 )
-            if self.movement_type == self.MovementType.OUT_RESERVED and stock_qty > self.inventory.reserved:
-                raise ValidationError(
-                    'الكمية المطلوب تسليمها أكبر من الكمية المحجوزة فعليًا لهذا الطلب.'
-                )
-            if self.movement_type == self.MovementType.RELEASE and stock_qty > self.inventory.reserved:
-                raise ValidationError('لا يمكن إلغاء حجز أكبر من الكمية المحجوزة فعليًا.')
 
     def save(self, *args, **kwargs):
         # full_clean() تلقائي هنا (بنفس أسلوب AccountTransaction.save()) —
@@ -203,12 +199,8 @@ class StockMovement(models.Model):
             # لفترة معيّنة (راجع products.new_arrivals) — النقطة المركزية دي
             # بتغطي كل مسارات إضافة الرصيد (يدوي، استيراد إكسل، ...) تلقائيًا.
             Product.objects.filter(pk=self.inventory.product_id).update(new_arrival_at=timezone.now())
-        elif self.movement_type in (self.MovementType.OUT, self.MovementType.OUT_RESERVED):
+        elif self.movement_type == self.MovementType.OUT:
             inv_qs.update(quantity=F('quantity') - stock_qty)
-        elif self.movement_type == self.MovementType.RESERVE:
-            inv_qs.update(reserved=F('reserved') + stock_qty)
-        elif self.movement_type == self.MovementType.RELEASE:
-            inv_qs.update(reserved=F('reserved') - stock_qty)
         self.inventory.refresh_from_db()
         self.inventory.sync_availability()
 

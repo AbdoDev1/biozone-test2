@@ -99,6 +99,13 @@ PERMISSION_SECTIONS = [
         ],
     },
     {
+        'key': 'returns',
+        'label': '↩️ المرتجعات',
+        'perms': [
+            ('staff', 'returns', 'create', 'إنشاء إشعار مرتجع (مرتجع بعد التأكيد/التسليم)'),
+        ],
+    },
+    {
         'key': 'clients',
         'label': '👥 حسابات العملاء',
         'perms': [

@@ -150,6 +150,7 @@ class Invoice(models.Model):
             # نعتمد على المنتج (راجع OrderItem.is_service_fee).
             InvoiceItem.objects.create(
                 invoice=invoice,
+                order_item=item,
                 product_name=item.display_name,
                 unit_name='—' if item.is_service_fee else item.product_unit.name,
                 quantity=item.quantity,
@@ -174,6 +175,17 @@ class Invoice(models.Model):
 class InvoiceItem(models.Model):
     """صنف داخل الفاتورة — Snapshot ثابت لاسم المنتج/الوحدة/الكمية/السعر وقت الإصدار."""
     invoice = models.ForeignKey(Invoice, on_delete=models.CASCADE, related_name='items')
+    # رابط اختياري لصنف الطلب الأصلي (OrderItem) — مضاف مع نظام المرتجعات
+    # (POST_DELIVERY) عشان لحظة عمل مرتجع نقدر نلاقي المنتج/الوحدة الفعلية
+    # (product_unit) اللي نرجّع بيها الكمية للمخزون، من غير ما نعتمد على
+    # product_name/unit_name النصية (Snapshot) اللي مالهاش FK حقيقي للمنتج.
+    # null دايمًا للفواتير القديمة اللي اتصدرت قبل الحقل ده (مفيش مرتجع
+    # ممكن يترجع مخزون تلقائي لأصنافها، بس التسوية المحاسبية اليدوية تفضل
+    # ممكنة برضه لو احتاج الأدمن). on_delete=SET_NULL عشان حذف OrderItem
+    # (لو حصل نظريًا) ميكسرش الفاتورة الثابتة نفسها.
+    order_item = models.ForeignKey(
+        'orders.OrderItem', on_delete=models.SET_NULL, null=True, blank=True, related_name='invoice_items',
+    )
     product_name = models.CharField(max_length=255)
     unit_name = models.CharField(max_length=100)
     quantity = models.PositiveIntegerField()
@@ -204,6 +216,20 @@ class InvoiceItem(models.Model):
         """قيمة الخصم بالجنيه (إجمالي سعر الجمهور - الإجمالي بعد الخصم)."""
         return self.public_subtotal - self.subtotal
 
+    @property
+    def returned_quantity(self):
+        """
+        إجمالي الكمية اللي اترجعت لهذا الصنف عبر كل إشعارات المرتجع
+        (POST_DELIVERY) المرتبطة بيه لحد الآن — بيسمح بتعدد إشعارات
+        مرتجع على نفس الفاتورة/الصنف بمرور الوقت طالما المجموع مايتعداش quantity.
+        """
+        return self.reversal_items.aggregate(total=models.Sum('quantity'))['total'] or 0
+
+    @property
+    def remaining_quantity(self):
+        """الكمية المتبقية القابلة للإرجاع لهذا الصنف (الأصلية - اللي اترجعت فعلًا)."""
+        return self.quantity - self.returned_quantity
+
     def save(self, *args, **kwargs):
         if self.pk is not None:
             raise ValidationError('صنف الفاتورة immutable، مينفعش يتعدّل.')
@@ -222,12 +248,15 @@ class InvoiceReversal(models.Model):
 
     قرار صريح (راجع الخطة الأصلية، الجزء الخامس): مفيش موديلين أو مسارا كود
     منفصلين لتمييز "إلغاء قبل التسليم" عن "مرتجع بعد التسليم" — الفرق بينهم
-    مجرد تسمية/توضيح لمكان توقف العملية (`stage`)، مش بنية مختلفة. التنفيذ
-    الحالي بيغطي `PRE_DELIVERY` بس (رفض/إلغاء طلب `CONFIRMED` — راجع
-    `Order._reverse_confirmed_order_effects`). `POST_DELIVERY` (نظام مرتجعات
-    كامل بعد التسليم فعليًا) لسه ماتبنيش، لكن حقل `stage` موجود من الأساس
-    عشان الجلسة القادمة تضيف بس قيمته ومنطقها الخاص من غير ما تحتاج تعمل
-    migration جديدة لبنية الجدول.
+    مجرد تسمية/توضيح لمكان توقف العملية (`stage`)، مش بنية مختلفة.
+
+    نظام المرتجعات (POST_DELIVERY — راجع `create_post_delivery_return` تحت
+    و`InvoiceReversalItem`): بيغطي مرتجع جزئي بالصنف (صنف معيّن أو الطلب
+    كله، بكمية جزئية أو كلها)، بينشئه ستاف عنده صلاحية 'staff.create_returns'
+    بس (الأدمن دايمًا عنده تلقائيًا، وهو الوحيد اللي يقدر يمنحها لموظف —
+    راجع staff/permissions.py). كل إشعار مرتجع (سواء PRE أو POST) بيظهر
+    للعميل/الستاف باسم "مرتجع" مش "تسوية" (راجع AccountTransaction.display_kind_label)،
+    وبرقم إشعار مميز (`return_number`) بدل رقم الفاتورة العادي.
     """
     class Stage(models.TextChoices):
         PRE_DELIVERY = 'PRE_DELIVERY', 'قبل التسليم'
@@ -235,11 +264,20 @@ class InvoiceReversal(models.Model):
 
     invoice = models.ForeignKey(Invoice, on_delete=models.PROTECT, related_name='reversals')
     stage = models.CharField(max_length=20, choices=Stage.choices)
+    # رقم إشعار المرتجع — مشتق من رقم الفاتورة + تسلسل داخلي لنفس الفاتورة
+    # (RTN-2026-000006-01، RTN-2026-000006-02، ...)، بيتولد تلقائيًا في
+    # save() تحت (مش عند الإنشاء يدويًا) عشان أي مكان ينشئ InvoiceReversal
+    # (المسار القديم PRE_DELIVERY أو الجديد POST_DELIVERY) ياخد رقم فريد
+    # تلقائيًا من غير ما يعرف تفاصيل التوليد. مقفول ضد التزامن بقفل صف
+    # الفاتورة نفسها (select_for_update) وقت التوليد، مش قفل صفوف
+    # الإشعارات الحالية (اللي ممكن تكون صفر أول مرة فمفيش حاجة تتقفل).
+    return_number = models.CharField(max_length=30, blank=True, db_index=True, editable=False)
     note = models.TextField(blank=True)
     # قيمة الإلغاء بالجنيه — بتتسجّل موجبة دايمًا (بتمثّل إجمالي الفاتورة
-    # اللي اتلغت)، عكس AccountTransaction.amount اللي بيتسجّل سالب هناك
-    # عمدًا (هو حركة "بتقلّل المديونية"، أما ده مجرد توثيق لقيمة الإلغاء
-    # نفسها بغض النظر عن اتجاهها المحاسبي).
+    # اللي اتلغت، أو إجمالي الأصناف المرتجعة في حالة POST_DELIVERY)، عكس
+    # AccountTransaction.amount اللي بيتسجّل سالب هناك عمدًا (هو حركة
+    # "بتقلّل المديونية"، أما ده مجرد توثيق لقيمة الإلغاء نفسها بغض النظر
+    # عن اتجاهها المحاسبي).
     amount = models.DecimalField(max_digits=12, decimal_places=2)
     created_by = models.ForeignKey(
         User, on_delete=models.SET_NULL, null=True, blank=True,
@@ -248,9 +286,169 @@ class InvoiceReversal(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
-        verbose_name = 'إشعار إلغاء فاتورة'
-        verbose_name_plural = 'إشعارات إلغاء الفواتير'
+        verbose_name = 'إشعار مرتجع'
+        verbose_name_plural = 'إشعارات المرتجع'
         ordering = ['-created_at']
 
     def __str__(self):
-        return f'إلغاء {self.invoice.invoice_number} — {self.get_stage_display()}'
+        return self.return_number or f'إلغاء {self.invoice.invoice_number} — {self.get_stage_display()}'
+
+    def save(self, *args, **kwargs):
+        if not self.pk and not self.return_number:
+            with transaction.atomic():
+                locked_invoice = Invoice.objects.select_for_update().get(pk=self.invoice_id)
+                existing_count = InvoiceReversal.objects.filter(invoice=locked_invoice).count()
+                # invoice_number بصيغة INV-{سنة}-{رقم}؛ رقم الإشعار بياخد نفس
+                # الجزء (سنة-رقم) بدل INV، زائد تسلسل بترتيب إنشائه لنفس الفاتورة.
+                suffix = locked_invoice.invoice_number.split('-', 1)[1]
+                self.return_number = f'RTN-{suffix}-{existing_count + 1:02d}'
+                super().save(*args, **kwargs)
+            return
+        super().save(*args, **kwargs)
+
+    @classmethod
+    @transaction.atomic
+    def create_post_delivery_return(cls, invoice, items, actor=None, note=''):
+        """
+        ينشئ إشعار مرتجع بعد التسليم/التأكيد (POST_DELIVERY) لصنف أو أكتر
+        من فاتورة، بكمية جزئية أو الكمية كلها — الاستخدام الفعلي لنظام
+        المرتجعات (راجع شرح الموديل فوق).
+
+        items: قائمة (InvoiceItem instance, quantity) — بترجع صنف واحد أو
+        أكتر بكميات مختلفة؛ أي عنصر بكمية صفر أو أقل بيتجاهل.
+
+        الخطوات (كل واحدة جوه نفس الـ transaction):
+        - قفل صف الفاتورة (select_for_update) ضد تزامن مرتجعين على نفس
+          الفاتورة في نفس اللحظة (يحمي حساب remaining_quantity تحت من race).
+        - فحص إن كل كمية مطلوبة ≤ remaining_quantity الفعلي وقت القفل.
+        - إنشاء InvoiceReversal(stage=POST_DELIVERY) + InvoiceReversalItem
+          لكل صنف (توثيق الكمية والسعر وقت الإرجاع).
+        - إرجاع الكمية للمخزون الصالح للبيع (StockMovement IN) لكل صنف
+          عنده order_item.product_unit فعلي (الأصناف الخدمية أو صنف
+          فاتورة قديم من غير order_item بيتجاهل الإرجاع المخزني، بس
+          المحاسبة بتترجع عادي).
+        - تسجيل AccountTransaction (ADJUSTMENT سالبة) بقيمة إجمالي
+          الأصناف المرتجعة، مربوطة بـ invoice_reversal عشان تتعرض باسم
+          "مرتجع" في كشوف الحساب بدل "تسوية".
+        - تسجيل OrderLog على الطلب المرتبط بالفاتورة.
+
+        بترجع الـ InvoiceReversal الجديد. بترمي ValueError لأي مشكلة
+        (مفيش كمية محددة، كمية أكبر من المتاح للإرجاع، صنف مش تابع لنفس
+        الفاتورة).
+        """
+        from decimal import Decimal
+        from inventory.models import Inventory, StockMovement
+        from accounting.models import AccountTransaction
+        from orders.models import OrderLog
+
+        locked_invoice = cls._lock_invoice(invoice)
+
+        prepared = []
+        total_amount = Decimal('0')
+        for invoice_item, quantity in items:
+            quantity = int(quantity or 0)
+            if quantity <= 0:
+                continue
+            if invoice_item.invoice_id != locked_invoice.pk:
+                raise ValueError('صنف لا ينتمي لهذه الفاتورة.')
+            remaining = invoice_item.remaining_quantity
+            if quantity > remaining:
+                raise ValueError(
+                    f'الكمية المطلوب إرجاعها لـ "{invoice_item.product_name}" ({quantity}) '
+                    f'أكبر من الكمية المتاحة للإرجاع ({remaining}).'
+                )
+            prepared.append((invoice_item, quantity))
+            total_amount += invoice_item.unit_price * quantity
+
+        if not prepared:
+            raise ValueError('لازم تحدد كمية صنف واحد على الأقل لإنشاء إشعار مرتجع.')
+
+        reversal = cls.objects.create(
+            invoice=locked_invoice,
+            stage=cls.Stage.POST_DELIVERY,
+            amount=total_amount,
+            note=note,
+            created_by=actor,
+        )
+
+        order = locked_invoice.order
+        locked_inventories = {}
+        for invoice_item, quantity in prepared:
+            InvoiceReversalItem.objects.create(
+                reversal=reversal, invoice_item=invoice_item,
+                quantity=quantity, unit_price=invoice_item.unit_price,
+            )
+            order_item = invoice_item.order_item
+            if order_item is None or order_item.is_service_fee or order_item.product_unit_id is None:
+                # صنف خدمي، أو صنف فاتورة قديم من غير ربط order_item —
+                # مفيش مخزون فعلي يترجع (المحاسبة اترجعت عادي فوق).
+                continue
+            product_id = order_item.product_unit.product_id
+            inv = locked_inventories.get(product_id)
+            if inv is None:
+                inv = Inventory.objects.select_for_update().filter(product_id=product_id).first()
+                locked_inventories[product_id] = inv
+            if inv is not None:
+                StockMovement.objects.create(
+                    inventory=inv, unit=order_item.product_unit,
+                    movement_type=StockMovement.MovementType.IN, quantity=quantity,
+                    note=f'مرتجع {reversal.return_number} على الفاتورة {locked_invoice.invoice_number}',
+                    created_by=actor,
+                )
+
+        AccountTransaction.objects.create(
+            client=order.client,
+            kind=AccountTransaction.Kind.ADJUSTMENT,
+            amount=-total_amount,
+            invoice=locked_invoice,
+            invoice_reversal=reversal,
+            note=f'إشعار مرتجع {reversal.return_number} على الفاتورة {locked_invoice.invoice_number}.',
+            created_by=actor,
+        )
+
+        OrderLog.objects.create(
+            order=order,
+            event=OrderLog.Event.NOTE,
+            note=f'تم إنشاء إشعار مرتجع {reversal.return_number} بقيمة {total_amount} ج.م.',
+            created_by=actor,
+        )
+
+        return reversal
+
+    @staticmethod
+    def _lock_invoice(invoice):
+        return Invoice.objects.select_for_update().get(pk=invoice.pk)
+
+
+class InvoiceReversalItem(models.Model):
+    """
+    صنف داخل إشعار مرتجع (POST_DELIVERY) — توثيق ثابت للكمية والسعر
+    اللي اترجعوا من صنف فاتورة معيّن (InvoiceItem). زي InvoiceItem بالظبط،
+    immutable بعد الإنشاء. مجموع quantity لكل صنوف invoice_item الواحد عبر
+    كل الإشعارات هو returned_quantity (راجع InvoiceItem.returned_quantity).
+    """
+    reversal = models.ForeignKey(InvoiceReversal, on_delete=models.CASCADE, related_name='items')
+    invoice_item = models.ForeignKey(InvoiceItem, on_delete=models.PROTECT, related_name='reversal_items')
+    quantity = models.PositiveIntegerField()
+    # سعر الوحدة وقت الإرجاع — Snapshot من invoice_item.unit_price وقت
+    # إنشاء الإشعار (نفس سعر البيع الأصلي دايمًا، مش سعر جديد).
+    unit_price = models.DecimalField(max_digits=10, decimal_places=2)
+
+    class Meta:
+        verbose_name = 'صنف في إشعار المرتجع'
+        verbose_name_plural = 'أصناف إشعارات المرتجع'
+
+    def __str__(self):
+        return f'{self.invoice_item.product_name} x{self.quantity}'
+
+    @property
+    def subtotal(self):
+        return self.unit_price * self.quantity
+
+    def save(self, *args, **kwargs):
+        if self.pk is not None:
+            raise ValidationError('صنف إشعار المرتجع immutable، مينفعش يتعدّل.')
+        super().save(*args, **kwargs)
+
+    def delete(self, *args, **kwargs):
+        raise ValidationError('صنف إشعار المرتجع immutable، مينفعش يتحذف.')

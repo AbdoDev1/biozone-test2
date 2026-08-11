@@ -27,14 +27,15 @@ BADGE_COLOR_MAPS = {
     'movement_type': {
         'IN': 'green',
         'OUT': 'red',
-        'OUT_RESERVED': 'rose',
-        'RESERVE': 'yellow',
         'PRICE_CHANGE': 'blue',
     },
     'tx_kind': {
         'INVOICE': 'blue',
         'PAYMENT': 'green',
         'ADJUSTMENT': 'orange',
+        # مرتجع (AccountTransaction مربوطة بـ InvoiceReversal) — لون مميز
+        # عن التسوية اليدوية العادية (orange)، راجع AccountTransaction.display_kind.
+        'RETURN': 'rose',
     },
     'user_status': {
         'ACTIVE': 'green',

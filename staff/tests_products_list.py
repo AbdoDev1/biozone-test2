@@ -66,16 +66,16 @@ class ProductListFilterTestCase(TestCase):
         self.category = Category.objects.create(name='أدوية', slug='meds')
 
         self.active_ok_stock = Product.objects.create(category=self.category, name_ar='نشط ومخزون كويس', is_active=True)
-        Inventory.objects.create(product=self.active_ok_stock, quantity=100, reserved=0, min_quantity=5)
+        Inventory.objects.create(product=self.active_ok_stock, quantity=100, min_quantity=5)
 
         self.active_low_stock = Product.objects.create(category=self.category, name_ar='نشط ومخزون منخفض', is_active=True)
-        Inventory.objects.create(product=self.active_low_stock, quantity=3, reserved=0, min_quantity=5)
+        Inventory.objects.create(product=self.active_low_stock, quantity=3, min_quantity=5)
 
         self.inactive = Product.objects.create(category=self.category, name_ar='معطل', is_active=False)
-        Inventory.objects.create(product=self.inactive, quantity=50, reserved=0, min_quantity=5)
+        Inventory.objects.create(product=self.inactive, quantity=50, min_quantity=5)
 
         self.out_of_stock = Product.objects.create(category=self.category, name_ar='نافذ من المخزون', is_active=True)
-        Inventory.objects.create(product=self.out_of_stock, quantity=2, reserved=2, min_quantity=5)
+        Inventory.objects.create(product=self.out_of_stock, quantity=0, min_quantity=5)
 
     def test_status_filter_active_excludes_inactive(self):
         response = self.http.get(reverse('staff:product_list'), {'status': 'active'})

@@ -33,12 +33,6 @@ class InventorySuggestedReorderTestCase(TestCase):
         self.assertTrue(inv.is_low)
         self.assertEqual(inv.suggested_reorder_qty, 7)
 
-    def test_suggested_qty_accounts_for_reserved(self):
-        """المتاح = الرصيد - المحجوز، فالمقترح لازم يحسب على المتاح مش الرصيد الكلي."""
-        inv = Inventory.objects.create(product=self.product, quantity=20, reserved=15, min_quantity=10)
-        self.assertEqual(inv.available, 5)
-        self.assertEqual(inv.suggested_reorder_qty, 5)
-
 
 class SupplySuggestionsViewTestCase(TestCase):
     def setUp(self):

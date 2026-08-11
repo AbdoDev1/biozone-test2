@@ -184,14 +184,19 @@
                             <td class="px-3 py-2 text-gray-500">{{ tx.created_at|date:"Y-m-d" }}</td>
                             <td class="px-3 py-2">
                                 <span class="px-2 py-0.5 rounded-full text-xs
-                                    {% if tx.kind == 'INVOICE' %}bg-primary-100 text-primary-700
+                                    {% if tx.is_return %}bg-rose-100 text-rose-700
+                                    {% elif tx.kind == 'INVOICE' %}bg-primary-100 text-primary-700
                                     {% elif tx.kind == 'PAYMENT' %}bg-green-100 text-green-700
                                     {% else %}bg-orange-100 text-orange-700{% endif %}">
-                                    {{ tx.get_kind_display }}
+                                    {{ tx.display_kind_label }}
                                 </span>
                             </td>
                             <td class="px-3 py-2 text-gray-500">
-                                {% if tx.invoice %}
+                                {% if tx.is_return %}
+                                    <a href="{% url 'invoices:reversal_print' tx.invoice_reversal.pk %}" target="_blank" class="text-rose-600 hover:underline">
+                                        ↳ {{ tx.display_reference }}
+                                    </a>
+                                {% elif tx.invoice %}
                                     <a href="{% url 'invoices:print' tx.invoice.pk %}" target="_blank" class="text-primary-600 hover:underline">
                                         {{ tx.invoice.invoice_number }}
                                     </a>

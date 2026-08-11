@@ -193,7 +193,6 @@
                 <th class="px-4 py-3 text-right sticky-col">المنتج</th>
                 <th class="px-4 py-3 text-right">الوحدات</th>
                 <th class="px-4 py-3 text-right">الرصيد</th>
-                <th class="px-4 py-3 text-right">محجوز</th>
                 <th class="px-4 py-3 text-right">متاح</th>
                 <th class="px-4 py-3 text-right">الحالة</th>
                 <th class="px-4 py-3 text-right">تفاصيل</th>
@@ -209,7 +208,6 @@
                     {% endfor %}
                 </td>
                 <td class="px-4 py-3">{{ item.quantity_display }}</td>
-                <td class="px-4 py-3 text-yellow-600">{{ item.reserved_display }}</td>
                 <td class="px-4 py-3 font-bold">{{ item.available_display }}</td>
                 <td class="px-4 py-3">
                     {% if item.is_low %}

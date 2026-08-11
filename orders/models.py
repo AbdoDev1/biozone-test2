@@ -359,20 +359,27 @@ class Order(models.Model):
                 ).save()
 
         invoice = self.invoice
+
+        # بننشئ InvoiceReversal الأول (مش AccountTransaction) عشان نقدر
+        # نربط الحركة المحاسبية بإشعار المرتجع من الإنشاء (invoice_reversal)،
+        # فتتعرض للعميل/الستاف باسم "مرتجع" برقم إشعار مميز (return_number)
+        # بدل "تسوية" برقم الفاتورة العادي — راجع AccountTransaction.display_kind_label
+        # و invoices.models.InvoiceReversal.
+        reversal = InvoiceReversal.objects.create(
+            invoice=invoice,
+            stage=InvoiceReversal.Stage.PRE_DELIVERY,
+            amount=invoice.total,
+            note=f'إلغاء الطلب #{self.pk} بعد التأكيد وقبل التسليم — لم تُسلَّم أي بضاعة للعميل.',
+            created_by=actor,
+        )
+
         AccountTransaction.objects.create(
             client=self.client,
             kind=AccountTransaction.Kind.ADJUSTMENT,
             amount=-invoice.total,
             invoice=invoice,
+            invoice_reversal=reversal,
             note=f'عكس مديونية الفاتورة {invoice.invoice_number} — إلغاء الطلب #{self.pk} بعد التأكيد.',
-            created_by=actor,
-        )
-
-        InvoiceReversal.objects.create(
-            invoice=invoice,
-            stage=InvoiceReversal.Stage.PRE_DELIVERY,
-            amount=invoice.total,
-            note=f'إلغاء الطلب #{self.pk} بعد التأكيد وقبل التسليم — لم تُسلَّم أي بضاعة للعميل.',
             created_by=actor,
         )
 
@@ -426,12 +433,14 @@ class Order(models.Model):
         """
         مرحلة 6 — شاشة المراجعة بالسكانر. يدوّر على صنف حقيقي (مش خدمي) في
         الطلب ده بمنتج باركوده يطابق `barcode` تمامًا (case-insensitive، على
-        أي من الحقول التلاتة barcode/barcode_2/barcode_3). كل منتج بيظهر في
-        سطر واحد بس في نفس الطلب (مفيش أكتر من وحدة لنفس الصنف في طلب واحد)،
-        فمفيش أي غموض ممكن في المطابقة — أول تطابق هو التطابق الوحيد الممكن.
-        بيرجع الصنف (OrderItem) لو لقاه، أو None لو الباركود فاضي أو مالوش
-        تطابق في هذا الطلب بالذات (ممكن يكون باركود حقيقي لمنتج تاني مش
-        مطلوب هنا).
+        أي من الحقول التلاتة barcode/barcode_2/barcode_3)، أو كوده الداخلي
+        (code، زي BZ-00001) — خانة الكود مطبوعة برضه كباركود على كارت
+        الصنف، فلازم تتقرا بنفس طريقة أي باركود تاني في شاشة المراجعة دي.
+        كل منتج بيظهر في سطر واحد بس في نفس الطلب (مفيش أكتر من وحدة لنفس
+        الصنف في طلب واحد)، فمفيش أي غموض ممكن في المطابقة — أول تطابق هو
+        التطابق الوحيد الممكن. بيرجع الصنف (OrderItem) لو لقاه، أو None لو
+        الباركود فاضي أو مالوش تطابق في هذا الطلب بالذات (ممكن يكون باركود
+        حقيقي لمنتج تاني مش مطلوب هنا).
         """
         barcode = (barcode or '').strip()
         if not barcode:
@@ -445,6 +454,7 @@ class Order(models.Model):
                 (product.barcode or '').lower(),
                 (product.barcode_2 or '').lower(),
                 (product.barcode_3 or '').lower(),
+                (product.code or '').lower(),
             ):
                 return item
         return None

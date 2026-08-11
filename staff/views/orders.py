@@ -223,6 +223,7 @@ def order_detail(request, pk):
         'order': order,
         'items_page': items_page,
         'order_actions': order_actions,
+        'hasattr_invoice': hasattr(order, 'invoice'),
     })
 
 

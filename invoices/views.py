@@ -4,7 +4,7 @@ from django.db.models import Sum
 from django.shortcuts import render, get_object_or_404
 
 from accounting.models import AccountTransaction
-from .models import Invoice
+from .models import Invoice, InvoiceReversal
 from .utils import amount_to_arabic_words
 
 ITEMS_PER_PRINT_PAGE = 14  # لو الأصناف زادت عن كده، الفاتورة بتتقسم لصفحات مرقّمة 1/ن، 2/ن...
@@ -71,3 +71,32 @@ def invoice_print(request, pk):
         'amount_in_words': amount_to_arabic_words(invoice.total),
     }
     return render(request, 'invoices/print.html', context)
+
+
+@login_required
+def reversal_print(request, pk):
+    """
+    عرض إشعار المرتجع بشكل جاهز للطباعة — بنفس فلسفة invoice_print تمامًا
+    (الستاف يشوف أي إشعار، والعميل يشوف بس إشعارات فواتيره هو). دور
+    العميل هنا "تسميعي" بحت (راجع طلب Abdo، النقطة 5) — مفيش أي فعل ممكن
+    ياخده هنا غير المشاهدة/الطباعة.
+    """
+    reversal = get_object_or_404(
+        InvoiceReversal.objects.select_related(
+            'invoice', 'invoice__order', 'invoice__order__client', 'created_by',
+        ).prefetch_related('items__invoice_item'),
+        pk=pk,
+    )
+
+    is_staff = _is_staff(request.user)
+    if not is_staff and reversal.invoice.order.client_id != request.user.id:
+        raise PermissionDenied('مينفعش تشوف إشعار مرتجع لعميل تاني.')
+
+    context = {
+        'reversal': reversal,
+        'invoice': reversal.invoice,
+        'is_staff': is_staff,
+        'reversal_items': list(reversal.items.all()),
+        'amount_in_words': amount_to_arabic_words(reversal.amount),
+    }
+    return render(request, 'invoices/reversal_print.html', context)

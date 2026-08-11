@@ -81,7 +81,7 @@ def commit_product(row_data, target_pk, user, account_types_by_pk, category_cach
     inventory = (inventory_cache or {}).get(product.pk)
     if inventory is None:
         inventory, _ = Inventory.objects.get_or_create(
-            product=product, defaults={'quantity': 0, 'reserved': 0, 'min_quantity': 0},
+            product=product, defaults={'quantity': 0, 'min_quantity': 0},
         )
         if inventory_cache is not None:
             inventory_cache[product.pk] = inventory
