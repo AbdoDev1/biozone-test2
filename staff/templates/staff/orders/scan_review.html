@@ -1,0 +1,52 @@
+{% extends 'staff/base.html' %}
+{% block title %}مراجعة الفاتورة — طلب #{{ order.pk }} — Biozone{% endblock %}
+{% block breadcrumbs %}
+{% load staff_ui %}
+<nav class="flex items-center text-sm text-gray-500 mb-4">
+    {% crumb "الرئيسية" "staff:dashboard" %}
+    {% crumb "الطلبات" "staff:order_list" %}
+    {% crumb order_label "staff:order_detail" order.pk %}
+    <span class="text-gray-700 font-medium">مراجعة الفاتورة</span>
+</nav>
+{% endblock %}
+
+{% block content %}
+<div class="flex items-center justify-between mb-4">
+    <div>
+        <h1 class="text-xl font-bold text-gray-800">مراجعة فاتورة طلب #{{ order.pk }}</h1>
+        <p class="text-gray-500 text-sm mt-1">
+            العميل: <span class="font-medium text-gray-700">{{ order.client.username }}</span>
+            — واجهة مساعدة للمخزن، ما بتأثرش على تأكيد أو رفض الطلب.
+        </p>
+    </div>
+    <a href="{% url 'staff:order_detail' order.pk %}" class="text-sm text-gray-500 hover:text-gray-700 flex items-center gap-1">
+        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="1.8"><path stroke-linecap="round" stroke-linejoin="round" d="M10.5 19.5L3 12m0 0l7.5-7.5M3 12h18"/></svg>
+        رجوع لتفاصيل الطلب
+    </a>
+</div>
+
+<!-- حقل مسح الباركود: مصمم عشان يستقبل إدخال السكانر (بيتصرف كلوحة مفاتيح
+     وبيبعت Enter في الآخر) وبرضه يقبل الكتابة اليدوية بنفس الطريقة.
+     الحقل بيفضل مرتبط بأصناف الفاتورة الحالية بس: لو الباركود تابع لصنف
+     فيها، الرقم بيتمسح تلقائيًا عشان تكمل اللي بعده. لو مش تابع لها،
+     الرقم بيفضل ظاهر في الحقل مع تنبيه واضح إنه مش مسجل في الفاتورة دي،
+     عشان تقدر تراجعه أو تعدّله. -->
+<div class="bg-white rounded-2xl shadow-sm border border-gray-100 px-4 py-4 mb-4">
+    <form method="post" hx-post="{% url 'staff:order_scan_review' order.pk %}"
+          hx-target="#scan-panel" hx-swap="outerHTML"
+          hx-trigger="keyup[key=='Enter'] from:#scan-input"
+          hx-on:submit="event.preventDefault()">
+        {% csrf_token %}
+        <input type="hidden" name="action" value="scan_barcode">
+        <label for="scan-input" class="block text-sm font-medium text-gray-700 mb-2">امسح الباركود أو اكتبه يدويًا</label>
+        <input type="text" id="scan-input" name="barcode" autofocus autocomplete="off"
+               placeholder="وجّه السكانر هنا أو اكتب رقم الباركود..."
+               class="w-full rounded-xl border-gray-200 focus:border-primary-500 focus:ring-primary-500 text-lg py-3">
+        <p id="scan-input-hint" class="hidden mt-2 text-sm text-red-600">
+            الباركود ده مش مسجل في الفاتورة الحالية.
+        </p>
+    </form>
+</div>
+
+{% include 'staff/orders/partials/scan_panel.html' %}
+{% endblock %}

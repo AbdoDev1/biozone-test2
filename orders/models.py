@@ -1,5 +1,6 @@
 from django.db import models
 from django.db import transaction
+from django.utils import timezone
 from accounts.models import User
 from products.models import ProductUnit
 
@@ -421,6 +422,33 @@ class Order(models.Model):
         self.status = self.Status.DELIVERED
         self.save()
 
+    def find_item_by_barcode(self, barcode):
+        """
+        مرحلة 6 — شاشة المراجعة بالسكانر. يدوّر على صنف حقيقي (مش خدمي) في
+        الطلب ده بمنتج باركوده يطابق `barcode` تمامًا (case-insensitive، على
+        أي من الحقول التلاتة barcode/barcode_2/barcode_3). كل منتج بيظهر في
+        سطر واحد بس في نفس الطلب (مفيش أكتر من وحدة لنفس الصنف في طلب واحد)،
+        فمفيش أي غموض ممكن في المطابقة — أول تطابق هو التطابق الوحيد الممكن.
+        بيرجع الصنف (OrderItem) لو لقاه، أو None لو الباركود فاضي أو مالوش
+        تطابق في هذا الطلب بالذات (ممكن يكون باركود حقيقي لمنتج تاني مش
+        مطلوب هنا).
+        """
+        barcode = (barcode or '').strip()
+        if not barcode:
+            return None
+        barcode = barcode.lower()
+        for item in self.items.select_related('product_unit__product').all():
+            if item.is_service_fee:
+                continue
+            product = item.product_unit.product
+            if barcode in (
+                (product.barcode or '').lower(),
+                (product.barcode_2 or '').lower(),
+                (product.barcode_3 or '').lower(),
+            ):
+                return item
+        return None
+
     @transaction.atomic
     def amend_item_quantity(self, item, new_quantity, actor=None):
         """
@@ -579,6 +607,12 @@ class OrderItem(models.Model):
     unit_price   = models.DecimalField(max_digits=10, decimal_places=2)
     original_quantity   = models.PositiveIntegerField(null=True, blank=True)
     original_unit_price = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
+    # مرحلة 6 — شاشة المراجعة بالسكانر. علامة عرض بحتة (تكهين وجود الصنف في
+    # المخزن فعليًا قبل التأكيد)، مالهاش أي تأثير على منطق حالة الطلب ولا
+    # المخزون ولا الفاتورة — واجهة مساعدة للمخزن بس. دايمًا False للأصناف
+    # الخدمية (is_service_fee)، مش متوقع تتغيّر لها خالص.
+    scanned = models.BooleanField(default=False, verbose_name='اتفحص بالسكانر')
+    scanned_at = models.DateTimeField(null=True, blank=True, verbose_name='وقت الفحص')
 
     class Meta:
         verbose_name = 'صنف في الطلب'
@@ -612,6 +646,17 @@ class OrderItem(models.Model):
         if self.is_service_fee:
             return '—'
         return self.product_unit.name
+
+    def set_scanned(self, value):
+        """
+        مرحلة 6 — تعليم/إلغاء تعليم الصنف كـ"اتفحص" (سواء عن طريق مطابقة
+        باركود أو تعليم يدوي من الموظف كبديل لو السكانر فشل). عملية idempotent
+        بحتة على مستوى العرض فقط — لا تُستدعى أبدًا من confirm/reject/mark_delivered
+        ولا تؤثر على أي منها.
+        """
+        self.scanned = value
+        self.scanned_at = timezone.now() if value else None
+        self.save(update_fields=['scanned', 'scanned_at'])
 
     def save(self, *args, **kwargs):
         # سطر واحد بس إما صنف منتج فعلي (له product_unit ومفيش service_name)

@@ -200,6 +200,35 @@
         document.body.addEventListener('htmx:configRequest', (evt) => {
             evt.detail.headers['X-CSRFToken'] = getCookie('csrftoken');
         });
+        // شاشة مراجعة الفاتورة بالسكانر (staff/orders/scan_review.html):
+        // بعد كل مسح باركود، السيرفر بيبعت حدث "scan-result" (عن طريق
+        // HX-Trigger) فيه حالة آخر باركود وقيمته. مربوط هنا على body (مش
+        // hx-on على الفورم نفسه) لسببين: (1) hx-on بيحول أي اسم حدث فيه
+        // "-" لـ camelCase تلقائيًا (scan-result → scanResult)، فالاستماع
+        // المباشر باسم الحدث الحرفي هنا هو الطريقة الموثوقة الوحيدة. (2)
+        // body بيفضل موجود عبر أي boosted swap (عكس الفورم اللي بيتجدد مع
+        // كل تنقل)، فمفيش داعي تعيد الربط بعد كل مرة. الحدث بيتفلتر هنا
+        // بمجرد التأكد إن حقل الإدخال (scan-input) موجود فعلاً في الصفحة
+        // الحالية، فمفيش أي أثر على صفحات تانية.
+        document.body.addEventListener('scan-result', (evt) => {
+            const input = document.getElementById('scan-input');
+            const hint = document.getElementById('scan-input-hint');
+            if (!input || !hint) return;
+            const { status, barcode } = evt.detail;
+            if (status === 'not_found') {
+                input.value = barcode;
+                input.classList.add('border-red-400', 'focus:border-red-500', 'focus:ring-red-500', 'text-red-700');
+                input.classList.remove('border-gray-200', 'focus:border-primary-500', 'focus:ring-primary-500');
+                hint.classList.remove('hidden');
+                input.select();
+            } else {
+                input.value = '';
+                input.classList.remove('border-red-400', 'focus:border-red-500', 'focus:ring-red-500', 'text-red-700');
+                input.classList.add('border-gray-200', 'focus:border-primary-500', 'focus:ring-primary-500');
+                hint.classList.add('hidden');
+            }
+            input.focus();
+        });
         // Alpine.js بيبني تفاعليته وقت ما الصفحة تتحمّل أول مرة بس. لما
         // htmx يستبدل جزء من الـ DOM (بعد أي boost)، العناصر الجديدة (رسائل
         // التنبيه، الـ backdrop، إلخ) لازم Alpine يتعرف عليها يدويًا وإلا

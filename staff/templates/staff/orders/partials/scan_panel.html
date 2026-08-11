@@ -1,0 +1,100 @@
+{% load static %}
+<div id="scan-panel">
+    <!-- شريط تقدّم -->
+    <div class="bg-white rounded-2xl shadow-sm border border-gray-100 px-4 py-3 mb-4">
+        <div class="flex items-center justify-between text-sm mb-2">
+            <span class="font-medium text-gray-700">تقدّم المراجعة</span>
+            <span class="font-bold {% if found_count == total_count and total_count > 0 %}text-green-600{% else %}text-gray-700{% endif %}">
+                {{ found_count }} / {{ total_count }}
+            </span>
+        </div>
+        <div class="w-full h-2.5 rounded-full bg-gray-100 overflow-hidden">
+            <div class="h-full rounded-full transition-all duration-300 {% if found_count == total_count and total_count > 0 %}bg-green-500{% else %}bg-primary-500{% endif %}"
+                 style="width: {% if total_count %}{% widthratio found_count total_count 100 %}{% else %}0{% endif %}%"></div>
+        </div>
+    </div>
+
+    <!-- تمت مراجعة كل الأصناف: خيار واضح للرجوع بدل ما المستخدم يفضل واقف في صفحة خلصت غرضها -->
+    {% if total_count > 0 and found_count == total_count %}
+    <div class="bg-green-50 border border-green-200 rounded-2xl px-4 py-4 mb-4 flex items-center justify-between gap-3 flex-wrap">
+        <div class="flex items-center gap-2 text-green-800">
+            <svg class="w-5 h-5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M4.5 12.75l6 6 9-13.5"/></svg>
+            <span class="text-sm font-medium">تمت مراجعة كل أصناف الفاتورة ({{ found_count }}/{{ total_count }})</span>
+        </div>
+        <a href="{% url 'staff:order_detail' order.pk %}"
+           class="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-medium bg-green-600 text-white hover:bg-green-700 transition-colors">
+            رجوع لتفاصيل الطلب
+        </a>
+    </div>
+    {% endif %}
+
+    <!-- رسالة نتيجة آخر مسح -->
+    {% if feedback %}
+    <div class="rounded-xl px-4 py-3 mb-4 text-sm flex items-center gap-2
+        {% if feedback.status == 'found' %}bg-green-50 border border-green-200 text-green-800
+        {% elif feedback.status == 'already' %}bg-blue-50 border border-blue-200 text-blue-800
+        {% elif feedback.status == 'reset' %}bg-gray-50 border border-gray-200 text-gray-700
+        {% else %}bg-red-50 border border-red-200 text-red-700{% endif %}">
+        {% if feedback.status == 'found' %}
+        <svg class="w-4 h-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M4.5 12.75l6 6 9-13.5"/></svg>
+        {% elif feedback.status == 'not_found' or feedback.status == 'error' %}
+        <svg class="w-4 h-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/></svg>
+        {% else %}
+        <svg class="w-4 h-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+        {% endif %}
+        <span>{{ feedback.message }}</span>
+    </div>
+    {% endif %}
+
+    <!-- قائمة الأصناف -->
+    <div class="bg-white rounded-2xl shadow-sm border border-gray-100 divide-y divide-gray-100">
+        {% for item in items %}
+        <div class="flex items-center justify-between gap-3 px-4 py-3">
+            <div class="flex items-center gap-3 min-w-0">
+                <span class="w-8 h-8 rounded-full flex items-center justify-center shrink-0
+                    {% if item.scanned %}bg-green-100 text-green-600{% else %}bg-gray-100 text-gray-400{% endif %}">
+                    {% if item.scanned %}
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M4.5 12.75l6 6 9-13.5"/></svg>
+                    {% else %}
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><circle cx="12" cy="12" r="8.25"/></svg>
+                    {% endif %}
+                </span>
+                <div class="min-w-0">
+                    <p class="text-sm font-medium text-gray-800 truncate">{{ item.display_name }}</p>
+                    <p class="text-xs text-gray-500">{{ item.quantity }} × {{ item.unit_display_label }}</p>
+                </div>
+            </div>
+            <form hx-post="{% url 'staff:order_scan_review' order.pk %}"
+                  hx-target="#scan-panel" hx-swap="outerHTML"
+                  hx-on::after-settle="document.getElementById('scan-input')?.focus()">
+                {% csrf_token %}
+                <input type="hidden" name="action" value="toggle_manual">
+                <input type="hidden" name="item_id" value="{{ item.pk }}">
+                <button type="submit"
+                        class="text-xs font-medium px-2.5 py-1.5 rounded-lg border
+                        {% if item.scanned %}border-gray-200 text-gray-500 hover:bg-gray-50{% else %}border-primary-200 text-primary-700 hover:bg-primary-50{% endif %}">
+                    {% if item.scanned %}إلغاء التعليم{% else %}تعليم يدوي{% endif %}
+                </button>
+            </form>
+        </div>
+        {% empty %}
+        <div class="px-4 py-8 text-center">
+            <p class="text-sm text-gray-400 mb-4">مفيش أصناف تحتاج مراجعة في الطلب ده.</p>
+            <a href="{% url 'staff:order_detail' order.pk %}"
+               class="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-medium bg-primary-600 text-white hover:bg-primary-700 transition-colors">
+                رجوع لتفاصيل الطلب
+            </a>
+        </div>
+        {% endfor %}
+    </div>
+
+    <!-- خيار رجوع أساسي وواضح لحد ما المراجعة تخلص، عشان الصفحة متبقاش من غير أي فعل واضح -->
+    {% if total_count > 0 and found_count != total_count %}
+    <div class="mt-4 text-center">
+        <a href="{% url 'staff:order_detail' order.pk %}"
+           class="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-medium border border-gray-200 text-gray-600 hover:bg-gray-50 transition-colors">
+            رجوع لتفاصيل الطلب
+        </a>
+    </div>
+    {% endif %}
+</div>

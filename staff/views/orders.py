@@ -1,3 +1,4 @@
+import json
 from decimal import Decimal, InvalidOperation
 
 from django.contrib import messages
@@ -223,3 +224,92 @@ def order_detail(request, pk):
         'items_page': items_page,
         'order_actions': order_actions,
     })
+
+
+def _scan_panel_context(order):
+    """سياق الجزء المتغيّر من شاشة المراجعة بالسكانر (مرحلة 6) — بيتحسب من
+    جديد بعد أي إجراء (مسح باركود أو تعليم يدوي) عشان يترجع في الرد الجزئي
+    لـ htmx."""
+    items = list(
+        order.items.filter(is_service_fee=False)
+        .select_related('product_unit__product')
+        .order_by('pk')
+    )
+    found_count = sum(1 for item in items if item.scanned)
+    return {
+        'order': order,
+        'items': items,
+        'found_count': found_count,
+        'total_count': len(items),
+    }
+
+
+@perm_required('orders.view_order')
+def order_scan_review(request, pk):
+    """
+    مرحلة 6 — شاشة مراجعة تفاعلية بالسكانر لطلبات لسه ما اتأكدتش (PENDING/
+    NEEDS_APPROVAL، بنفس شرط توفر زر الطباعة اليدوية فوق). واجهة مساعدة
+    بحتة للمخزن قبل قرار التأكيد/الرفض — مفيش أي لمسة لمنطق حالة الطلب ولا
+    المخزون ولا الفاتورة هنا خالص (راجع OrderItem.set_scanned/Order.find_item_by_barcode).
+    الأصناف الخدمية (زي مصاريف التوصيل) مستبعدة تمامًا من الشاشة دي.
+    """
+    order = get_object_or_404(Order.objects.select_related('client'), pk=pk)
+
+    if order.status not in (Order.Status.PENDING, Order.Status.NEEDS_APPROVAL):
+        messages.error(request, 'شاشة المراجعة بالسكانر متاحة بس للطلبات اللي لسه ما اتأكدتش.')
+        return redirect('staff:order_detail', pk=order.pk)
+
+    is_htmx = bool(request.headers.get('HX-Request'))
+    feedback = None
+
+    if request.method == 'POST':
+        if not request.user.has_perm('orders.change_order'):
+            if is_htmx:
+                feedback = {'status': 'error', 'message': 'ليس لديك صلاحية تعديل الطلبات.'}
+            else:
+                messages.error(request, 'ليس لديك صلاحية تعديل الطلبات. تواصل مع الأدمن.')
+                return redirect('staff:order_scan_review', pk=order.pk)
+        else:
+            action = request.POST.get('action')
+
+            if action == 'scan_barcode':
+                barcode = request.POST.get('barcode', '')
+                item = order.find_item_by_barcode(barcode)
+                if item is None:
+                    feedback = {'status': 'not_found', 'message': f'الباركود "{barcode.strip()}" مش موجود في هذا الطلب.', 'barcode': barcode.strip()}
+                elif item.scanned:
+                    feedback = {'status': 'already', 'message': f'{item.display_name} — كان اتفحص بالفعل.', 'barcode': barcode.strip()}
+                else:
+                    item.set_scanned(True)
+                    feedback = {'status': 'found', 'message': f'تم تسجيل: {item.display_name}', 'barcode': barcode.strip()}
+
+            elif action == 'toggle_manual':
+                item = get_object_or_404(OrderItem, pk=request.POST.get('item_id'), order=order, is_service_fee=False)
+                item.set_scanned(not item.scanned)
+                feedback = {
+                    'status': 'found' if item.scanned else 'reset',
+                    'message': f'{item.display_name} — {"اتعلّم يدويًا" if item.scanned else "اتلغى تعليمه"}.',
+                }
+
+            if not is_htmx:
+                if feedback:
+                    level = messages.SUCCESS if feedback['status'] in ('found', 'reset') else messages.WARNING
+                    messages.add_message(request, level, feedback['message'])
+                return redirect('staff:order_scan_review', pk=order.pk)
+
+    context = _scan_panel_context(order)
+    context['feedback'] = feedback
+
+    if is_htmx:
+        response = render(request, 'staff/orders/partials/scan_panel.html', context)
+        if feedback and 'barcode' in feedback:
+            # بنبعت حدث للفرونت-إند فيه حالة آخر باركود اتقرا (وقيمته)، عشان
+            # حقل الإدخال يقرر يمسح نفسه (لو الصنف تابع للفاتورة) أو يفضّل
+            # محتفظ بالرقم مع تنبيه (لو مش تابع لها) — راجع scan_review.html.
+            response['HX-Trigger'] = json.dumps({
+                'scan-result': {'status': feedback['status'], 'barcode': feedback['barcode']},
+            })
+        return response
+
+    context['order_label'] = f'طلب #{order.pk}'
+    return render(request, 'staff/orders/scan_review.html', context)
