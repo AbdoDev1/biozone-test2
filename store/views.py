@@ -42,7 +42,10 @@ def _base_products_queryset():
                 output_field=BooleanField(),
             )
         )
-        .select_related('category', 'inventory')
+        .select_related('category', 'inventory', 'image')
+        # 'image' زودت من المرحلة 8 (STUDIO_PLAN.md) — كارت المنتج
+        # (product_card.html) بيوصل لـ product.image.thumbnail/.image،
+        # وده شبكة كاملة (PRODUCTS_PER_PAGE=24 منتج) فمن غيرها N+1 واضح.
         # 'units__discounts' (مش 'units' بس) — لأن كارت المنتج بيحسب السعر
         # بعد الخصم لكل صنف لو site_config.show_discounted_prices مفعّل،
         # وده بيوصل لـ unit.discounts.all() لكل وحدة. من غير الـ prefetch
@@ -159,11 +162,11 @@ def new_arrivals(request):
 def product_detail(request, pk):
     product = get_object_or_404(
         Product.objects.filter(is_active=True)
-        .select_related('category')
+        .select_related('category', 'image')
         .prefetch_related(
             'units__discounts',
-            'similar_products__units__discounts', 'similar_products__category', 'similar_products__inventory',
-            'complementary_products__units__discounts', 'complementary_products__category', 'complementary_products__inventory',
+            'similar_products__units__discounts', 'similar_products__category', 'similar_products__inventory', 'similar_products__image',
+            'complementary_products__units__discounts', 'complementary_products__category', 'complementary_products__inventory', 'complementary_products__image',
         ),
         pk=pk,
     )

@@ -1,5 +1,5 @@
 from django.urls import path
-from staff.views import dashboard, inventory, clients, products, orders, accounting, employees, account_types, reports, tags, activity, followups, backup, returns
+from staff.views import dashboard, inventory, clients, products, orders, accounting, employees, account_types, reports, tags, activity, followups, backup, returns, studio
 
 app_name = 'staff'
 
@@ -76,4 +76,12 @@ urlpatterns = [
     path('backup/', backup.backup_manual, name='backup_manual'),
     path('backup/run/', backup.backup_run_now, name='backup_run_now'),
     path('backup/error/', backup.backup_error_download, name='backup_error_download'),
+    path('studio/', studio.studio, name='studio'),
+    path('studio/picker/', studio.studio_picker, name='studio_picker'),
+    path('studio/upload/', studio.studio_upload, name='studio_upload'),
+    path('studio/delete/', studio.studio_delete, name='studio_delete'),
+    path('studio/move/', studio.studio_move_to_folder, name='studio_move_to_folder'),
+    path('studio/folders/create/', studio.studio_folder_create, name='studio_folder_create'),
+    path('studio/folders/<int:pk>/rename/', studio.studio_folder_rename, name='studio_folder_rename'),
+    path('studio/folders/<int:pk>/delete/', studio.studio_folder_delete, name='studio_folder_delete'),
 ]

@@ -31,7 +31,13 @@ hx-on:cartUpdated="htmx.ajax('GET','{% url 'orders:cart_badge' %}',{target:'#car
           <!-- صورة -->
           <div class="w-full sm:max-w-[200px] sm:mx-auto mb-4">
             {% if product.image %}
-              <img src="{{ product.image.url }}" alt="{{ product.name_ar }}"
+              {% comment %}
+              صفحة تفاصيل بس (منتج واحد، مش شبكة) — الصورة الأصلية كاملة
+              (product.image.image.url) بلا thumbnail، مطابق لملاحظة
+              المرحلة 8 في STUDIO_PLAN.md: "مفيش قلق أداء من استعلام/تحميل
+              إضافي هنا".
+              {% endcomment %}
+              <img src="{{ product.image.image.url }}" alt="{{ product.name_ar }}" loading="lazy"
                    class="w-full rounded-xl object-cover aspect-square">
             {% else %}
               <div class="w-full aspect-square bg-gray-100 rounded-xl flex items-center justify-center text-gray-300">

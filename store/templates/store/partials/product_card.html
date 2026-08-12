@@ -54,8 +54,14 @@
         </span>
       </div>
       {% if product.image %}
-        <img src="{{ product.image.url }}"
-             alt="{{ product.name_ar }}"
+        {% comment %}
+        المرحلة 8 (STUDIO_PLAN.md): بعد ربط Product.image بالاستوديو،
+        الكارت الصغير ده بيحمّل الـ thumbnail (300×300) بدل الصورة
+        الأصلية لو موجودة — بالظبط الحل اللي الخطة كلها بدأت بسببه
+        (نفس الملف الأصلي كان بيتحمّل حتى في الكروت الصغيرة).
+        {% endcomment %}
+        <img src="{% if product.image.thumbnail %}{{ product.image.thumbnail.url }}{% else %}{{ product.image.image.url }}{% endif %}"
+             alt="{{ product.name_ar }}" loading="lazy"
              class="w-full h-full object-contain p-2 group-hover:scale-105 transition duration-300">
       {% else %}
         <div class="w-full h-full flex items-center justify-center text-gray-300">

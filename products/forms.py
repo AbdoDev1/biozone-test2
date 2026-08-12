@@ -17,6 +17,15 @@ class CategoryForm(forms.ModelForm):
             'is_active': forms.CheckboxInput(attrs={
                 'class': 'accent-blue-600'
             }),
+            # المرحلة 8 (STUDIO_PLAN.md): image بقى ForeignKey على
+            # studio.StudioImage، مش ملف يترفع من هنا. الـ widget الافتراضي
+            # لأي ForeignKey هو Select (قائمة منسدلة بكل صور الاستوديو —
+            # مش عملي مع آلاف الصور، ومفيش معاينة بصرية). الفورم مش بيعرض
+            # الحقل ده أصلًا (image_picker.html partial بيبني hidden input
+            # بتاعه بنفسه، راجع products/partials/image_picker.html) —
+            # HiddenInput هنا مجرد أمان لو حد رندر {{ form.image }} غلط في
+            # مكان تاني بالخطأ، مش الطريقة المستخدمة فعليًا.
+            'image': forms.HiddenInput(),
         }
         labels = {
             'name': 'اسم القسم',
@@ -93,6 +102,9 @@ class ProductForm(forms.ModelForm):
             'is_active': forms.CheckboxInput(attrs={
                 'class': 'accent-blue-600'
             }),
+            # نفس ملاحظة CategoryForm.Meta.widgets['image'] فوق بالظبط —
+            # راجع products/partials/image_picker.html للطريقة الفعلية.
+            'image': forms.HiddenInput(),
         }
         labels = {
             'category': 'القسم',

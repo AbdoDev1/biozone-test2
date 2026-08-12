@@ -1,0 +1,92 @@
+{% comment %}
+منتقي صورة واحدة من الاستوديو (المرحلة 8 في STUDIO_PLAN.md) — بيتستخدم في
+فورم المنتج وفورم القسم بالظبط بنفس الشكل ({% include %} بس، بلا أي فرق
+كود بينهم). بدل خانة رفع ملف مباشرة (زي قبل المرحلة 8)، دلوقتي اختيار
+بصري (thumbnails) من صور موجودة أصلًا في الاستوديو — الرفع نفسه بقى
+مسؤولية شاشة الاستوديو فقط (staff:studio_upload)، مش فورم المنتج/القسم.
+
+يتوقع في الـ context: `form` (ProductForm أو CategoryForm)، وفيه حقل
+`image` (ForeignKey على studio.StudioImage من المرحلة 8).
+
+الحقل الفعلي المُرسل للسيرفر hidden input عادي باسم form.image.html_name
+(مش معتمد على Meta.widgets خالص) — قيمته الابتدائية form.instance.image_id،
+وده بيفضل صح حتى لو الفورم رجع بأخطاء تانية بعد اختيار صورة ناجح (Django
+بيبني الـ instance من cleaned_data الصحيح جوه _post_clean() قبل ما يفحص
+باقي حقول الفورم، حتى لو الفورم كله رجع invalid لسبب تاني).
+
+كل التفاعل (فتح المودال، البحث، الاختيار، المعاينة) Alpine.js + htmx بحت،
+بلا submit لأي فورم منفصل — عشان اختيار الصورة يفضل جزء من نفس عملية حفظ
+المنتج/القسم الكاملة (فورم واحد، زرار حفظ واحد بس).
+{% endcomment %}
+<div x-data="{
+        open: false,
+        selectedId: {{ form.instance.image_id|default:'null' }},
+        selectedThumb: {% if form.instance.image %}{% if form.instance.image.thumbnail %}'{{ form.instance.image.thumbnail.url|escapejs }}'{% else %}'{{ form.instance.image.image.url|escapejs }}'{% endif %}{% else %}''{% endif %},
+        selectedName: '{{ form.instance.image.original_filename|default:''|escapejs }}',
+        pick(id, thumb, name) {
+            this.selectedId = id;
+            this.selectedThumb = thumb;
+            this.selectedName = name;
+            this.open = false;
+        },
+        clear() {
+            this.selectedId = null;
+            this.selectedThumb = '';
+            this.selectedName = '';
+        },
+    }"
+>
+    <label class="text-sm font-medium text-gray-700 mb-1 block">{{ form.image.label }}</label>
+    <input type="hidden" name="{{ form.image.html_name }}" :value="selectedId ?? ''">
+
+    <div class="flex items-center gap-3">
+        <div class="w-20 h-20 rounded-lg border border-gray-200 bg-gray-50 flex items-center justify-center overflow-hidden shrink-0">
+            <img x-show="selectedThumb" x-cloak :src="selectedThumb" :alt="selectedName" class="w-full h-full object-cover">
+            <svg x-show="!selectedThumb" class="w-8 h-8 text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="1.5">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M2.25 15.75l5.159-5.159a2.25 2.25 0 013.182 0l5.159 5.159m-1.5-1.5l1.409-1.409a2.25 2.25 0 013.182 0l2.909 2.909m-18 3.75h16.5a1.5 1.5 0 001.5-1.5V6a1.5 1.5 0 00-1.5-1.5H3.75A1.5 1.5 0 002.25 6v12a1.5 1.5 0 001.5 1.5zm10.5-11.25h.008v.008h-.008V8.25zm.375 0a.375.375 0 11-.75 0 .375.375 0 01.75 0z" />
+            </svg>
+        </div>
+        <div class="flex flex-col gap-1.5">
+            <button type="button" @click="open = true" class="text-primary-600 text-sm font-semibold hover:underline text-right w-fit">
+                اختر من الاستوديو
+            </button>
+            <button type="button" x-show="selectedId" x-cloak @click="clear()" class="text-gray-400 text-xs hover:underline text-right w-fit">
+                إزالة الصورة
+            </button>
+        </div>
+    </div>
+
+    {% if form.image.errors %}
+    <p class="text-red-500 text-xs mt-1">{{ form.image.errors.0 }}</p>
+    {% endif %}
+
+    <!-- مودال الاختيار — Alpine x-show، بلا أي navigation لصفحة تانية
+         (زي بالظبط سبب استخدام data-confirm بدل صفحة تأكيد منفصلة في
+         حذف الاستوديو، المرحلة 5: أي تنقل هيفقد باقي بيانات فورم
+         المنتج/القسم غير المحفوظة). -->
+    <div x-show="open" x-cloak x-transition class="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4" @keydown.escape.window="open = false">
+        <div @click.outside="open = false" class="bg-white rounded-2xl shadow-xl w-full max-w-3xl max-h-[85vh] flex flex-col overflow-hidden">
+            <div class="p-4 border-b border-gray-100 flex items-center justify-between gap-3 shrink-0">
+                <h3 class="font-bold text-gray-800">اختر صورة من الاستوديو</h3>
+                <button type="button" @click="open = false" class="text-gray-400 hover:text-gray-600 text-xl leading-none">&times;</button>
+            </div>
+            <div class="p-4 border-b border-gray-100 shrink-0">
+                <input type="text" placeholder="بحث بالاسم..." autocomplete="off"
+                       class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm outline-none focus:border-primary-400"
+                       hx-get="{% url 'staff:studio_picker' %}"
+                       hx-trigger="keyup changed delay:300ms"
+                       hx-target="#studio-picker-results"
+                       hx-include="this"
+                       hx-boost="false"
+                       name="q">
+            </div>
+            <!-- hx-trigger="load" بيحصل مرة واحدة وقت ما العنصر بيتحمّل في الـ
+                 DOM (بغض النظر عن x-show/display:none بتاع Alpine) — نفس نتيجة
+                 تحميل أول صفحة من المعرض بس هنا partial بسيط بلا فلاتر. -->
+            <div id="studio-picker-results" class="p-4 overflow-y-auto flex-1"
+                 hx-get="{% url 'staff:studio_picker' %}" hx-trigger="load" hx-swap="innerHTML" hx-boost="false">
+                <p class="text-xs text-gray-400 text-center py-8">جارِ التحميل...</p>
+            </div>
+        </div>
+    </div>
+</div>

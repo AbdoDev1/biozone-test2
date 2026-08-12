@@ -1,15 +1,8 @@
-from django.core.exceptions import ValidationError
-
-# دجانجو مفيهوش حد افتراضي لحجم ملف مرفوع (FileExtensionValidator بيتحقق من
-# الامتداد بس، مش الحجم) — فأي صورة كبيرة جدًا (حتى لو .jpg سليمة) كانت
-# بتتقبل عادي وتتكتب على القرص من غير أي رفض. الـ validator ده بيحط سقف
-# واضح لصور المنتجات/الأقسام.
-MAX_IMAGE_SIZE_MB = 5
-
-
-def validate_image_size(file):
-    max_bytes = MAX_IMAGE_SIZE_MB * 1024 * 1024
-    if file.size > max_bytes:
-        raise ValidationError(
-            f'حجم الصورة أكبر من الحد المسموح ({MAX_IMAGE_SIZE_MB} ميجا).'
-        )
+# نُقل المحتوى الفعلي لهذا الملف إلى studio/validators.py (المرحلة 1 من
+# خطة الاستوديو — راجع STUDIO_PLAN.md، القرار رقم 7 وملاحظة الأمان في
+# المرحلة 8) عشان يبقى مصدر واحد للتحقق من الصور يُستخدم من
+# studio.StudioImage مباشرة، ولاحقًا من Product/Category بعد تحويلهم
+# لـ ForeignKey. الاستيراد هنا موجود بس للتوافق الخلفي مع أي كود قديم
+# بيستورد validate_image_size من products.validators مباشرة — مش نسخة
+# تانية من المنطق.
+from studio.validators import MAX_IMAGE_SIZE_MB, validate_image_size  # noqa: F401

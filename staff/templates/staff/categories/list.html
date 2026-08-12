@@ -48,7 +48,12 @@
                 <td class="px-4 py-3">
                     <div class="flex items-center gap-3">
                         {% if category.image %}
-                            <img src="{{ category.image.url }}" alt="{{ category.name }}" class="w-10 h-10 rounded-lg object-cover">
+                            {% comment %}
+                            المرحلة 8: مربع 40×40 — thumbnail بس، بالظبط مربع
+                            المخزن اللي اتفتحت بسببه الخطة كلها في الأول.
+                            {% endcomment %}
+                            <img src="{% if category.image.thumbnail %}{{ category.image.thumbnail.url }}{% else %}{{ category.image.image.url }}{% endif %}"
+                                 alt="{{ category.name }}" loading="lazy" class="w-10 h-10 rounded-lg object-cover">
                         {% else %}
                             <div class="w-10 h-10 rounded-lg bg-gray-100 flex items-center justify-center text-gray-300 text-xs">
                                 لا صورة

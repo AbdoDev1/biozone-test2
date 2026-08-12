@@ -147,11 +147,11 @@
             </div>
 
             <div>
-                <label for="{{ form.image.id_for_label }}" class="text-sm font-medium text-gray-700 mb-1 block">{{ form.image.label }}</label>
-                {% if is_edit and product.image %}
-                    <img src="{{ product.image.url }}" alt="{{ product.display_name }}" class="w-20 h-20 object-cover rounded-lg mb-2">
-                {% endif %}
-                {{ form.image }}
+                {% comment %}
+                المرحلة 8 (STUDIO_PLAN.md): بدل خانة رفع ملف مباشرة، اختيار
+                بصري من صور موجودة أصلًا في الاستوديو.
+                {% endcomment %}
+                {% include 'staff/products/partials/image_picker.html' %}
             </div>
 
             <div class="md:col-span-2">

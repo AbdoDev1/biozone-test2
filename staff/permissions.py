@@ -147,6 +147,15 @@ PERMISSION_SECTIONS = [
             ('followups', 'followup', 'delete', 'إلغاء متابعة'),
         ],
     },
+    {
+        'key': 'studio',
+        'label': '🖼️ الاستوديو',
+        'perms': [
+            ('studio', 'studioimage', 'view', 'عرض معرض الاستوديو'),
+            ('studio', 'studioimage', 'add', 'رفع صور جديدة'),
+            ('studio', 'studioimage', 'delete', 'حذف صور'),
+        ],
+    },
 ]
 
 

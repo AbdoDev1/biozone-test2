@@ -57,7 +57,11 @@ PRODUCT_SORT_FIELDS = {
 
 @perm_required('products.view_product')
 def product_list(request):
-    products = Product.objects.select_related('category', 'inventory').prefetch_related('units').all()
+    # 'image' مضافة لـ select_related من المرحلة 8 (STUDIO_PLAN.md) — عمود
+    # الصورة المصغّرة في الجدول (list.html) بيوصل لـ product.image.thumbnail
+    # / product.image.image، فبلاها كان هيبقى استعلام إضافي منفصل لكل صف
+    # (N+1) على صفحة فيها لحد 30 منتج.
+    products = Product.objects.select_related('category', 'inventory', 'image').prefetch_related('units').all()
     categories = Category.objects.filter(is_active=True)
     selected_category = request.GET.get('category', '')
     # .strip() هي أهم سطر هنا: من غيرها، مسافة زيادة قبل/بعد النص المكتوب
@@ -384,7 +388,7 @@ def _discount_context_for_product(product):
 @perm_required('products.change_product')
 def product_edit(request, pk):
     product = get_object_or_404(
-        Product.objects.prefetch_related(
+        Product.objects.select_related('image').prefetch_related(
             'similar_products', 'complementary_products',
         ),
         pk=pk,

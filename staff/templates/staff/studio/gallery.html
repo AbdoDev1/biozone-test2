@@ -1,0 +1,325 @@
+{% extends 'staff/base.html' %}
+{% load staff_ui %}
+{% block title %}الاستوديو — Biozone{% endblock %}
+{% block breadcrumbs %}
+<nav class="flex items-center text-sm text-gray-500 mb-4">
+    {% crumb "الرئيسية" "staff:dashboard" %}
+    {% crumb "الاستوديو" %}
+</nav>
+{% endblock %}
+{% block content %}
+
+<div class="flex justify-between items-center mb-6">
+    <h1 class="text-2xl font-bold text-gray-800">الاستوديو</h1>
+</div>
+
+{% if perms.studio.add_studioimage %}
+<!-- منطقة رفع بالسحب أو الاختيار — كل ملف بياخد صف StudioImage منفصل
+     (بلا فحص تكرار اسم/محتوى، راجع قرار رقم 5 و6 في STUDIO_PLAN.md).
+     hx-boost="false" ضروري هنا زي أي فورم رفع ملف حقيقي في الصفحة —
+     htmx مش مصمم يبعت multipart/form-data بنفس الطريقة العادية. -->
+<div
+    x-data="{ dragging: false }"
+    @dragover.prevent="dragging = true"
+    @dragleave.prevent="dragging = false"
+    @drop.prevent="dragging = false; $refs.studioFileInput.files = $event.dataTransfer.files; $refs.studioUploadForm.requestSubmit()"
+    :class="dragging ? 'border-primary-500 bg-primary-50' : 'border-gray-300 bg-white'"
+    class="border-2 border-dashed rounded-2xl p-10 text-center transition mb-6"
+>
+    <form x-ref="studioUploadForm" method="POST" action="{% url 'staff:studio_upload' %}"
+          enctype="multipart/form-data" hx-boost="false">
+        {% csrf_token %}
+        <input x-ref="studioFileInput" type="file" name="images" multiple
+               accept="image/jpeg,image/png,image/webp" class="hidden"
+               @change="$refs.studioUploadForm.requestSubmit()">
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+             class="w-10 h-10 mx-auto mb-3 text-gray-400">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5"
+                  d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5m-13.5-9L12 3m0 0l4.5 4.5M12 3v13.5" />
+        </svg>
+        <button type="button" @click="$refs.studioFileInput.click()"
+                class="text-primary-600 font-semibold hover:underline">اختر صورًا</button>
+        <span class="text-gray-400"> أو اسحبها وأفلتها هنا</span>
+        <p class="text-xs text-gray-400 mt-2">jpg, jpeg, png, webp — حتى 5 ميجا لكل صورة</p>
+    </form>
+</div>
+{% endif %}
+
+
+<!-- فلتر الاستخدام (المرحلة 4) — لسه الكل هيظهر "غير مستخدمة" مؤقتًا لحد
+     ما المرحلة 8 تربط الصور فعليًا بالمنتجات/الأقسام؛ راجع تعليق
+     StudioImage.get_usage() و staff/views/studio.py.
+     فلتر المجلد (المرحلة 6) بجنبه — عمود FK حقيقي، فبيترشّح على مستوى
+     الـ queryset في الـ view (مش زي فلتر الاستخدام). -->
+<form method="GET" hx-boost="false" class="bg-white rounded-2xl shadow-sm p-4 mb-6 flex flex-wrap items-end gap-3">
+    <div class="w-full sm:w-48">
+        <label for="sf_usage" class="text-xs text-gray-500 mb-1 block">حالة الاستخدام</label>
+        <select name="usage" id="sf_usage" onchange="this.form.submit()"
+                class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm outline-none focus:border-primary-400">
+            <option value="" {% if not usage_filter %}selected{% endif %}>الكل</option>
+            <option value="used" {% if usage_filter == 'used' %}selected{% endif %}>مستخدمة</option>
+            <option value="unused" {% if usage_filter == 'unused' %}selected{% endif %}>غير مستخدمة</option>
+        </select>
+    </div>
+    <div class="w-full sm:w-48">
+        <label for="sf_folder" class="text-xs text-gray-500 mb-1 block">المجلد</label>
+        <select name="folder" id="sf_folder" onchange="this.form.submit()"
+                class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm outline-none focus:border-primary-400">
+            <option value="" {% if not folder_filter %}selected{% endif %}>كل المجلدات</option>
+            <option value="none" {% if folder_filter == 'none' %}selected{% endif %}>بلا مجلد</option>
+            {% for f in folders %}
+            <option value="{{ f.pk }}" {% if folder_filter == f.pk|stringformat:"s" %}selected{% endif %}>{{ f.name }}</option>
+            {% endfor %}
+        </select>
+    </div>
+</form>
+
+{% if perms.studio.add_studioimage or perms.studio.delete_studioimage %}
+<!-- إدارة المجلدات (المرحلة 6) — لوحة مطوية بسيطة (إنشاء + إعادة تسمية
+     + حذف)، بنفس صلاحيات رفع/حذف الصور (مفيش صلاحية منفصلة للمجلدات،
+     راجع تعليق studio_folder_create في staff/views/studio.py). -->
+<div x-data="{ managingFolders: false }" class="mb-6">
+    <button type="button" @click="managingFolders = !managingFolders"
+            class="text-sm text-primary-600 font-semibold hover:underline flex items-center gap-1">
+        إدارة المجلدات
+        <svg class="w-3.5 h-3.5 transition" :class="managingFolders ? 'rotate-180' : ''" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M19.5 8.25l-7.5 7.5-7.5-7.5" />
+        </svg>
+    </button>
+    <div x-show="managingFolders" x-cloak x-transition class="bg-white rounded-2xl shadow-sm p-4 mt-2 space-y-3">
+        {% if perms.studio.add_studioimage %}
+        <form method="POST" action="{% url 'staff:studio_folder_create' %}{% if request.GET.urlencode %}?{{ request.GET.urlencode }}{% endif %}"
+              class="flex items-center gap-2">
+            {% csrf_token %}
+            <input type="text" name="name" placeholder="اسم مجلد جديد" required maxlength="100"
+                   class="flex-1 border border-gray-200 rounded-lg px-3 py-1.5 text-sm outline-none focus:border-primary-400">
+            <button type="submit"
+                    class="bg-primary-600 hover:bg-primary-700 text-white text-xs font-semibold px-3 py-1.5 rounded-lg transition">إنشاء</button>
+        </form>
+        {% endif %}
+
+        {% if folders %}
+        <ul class="divide-y divide-gray-100">
+            {% for f in folders %}
+            <li class="flex items-center justify-between gap-2 py-2 text-sm" x-data="{ editing: false }">
+                <span x-show="!editing" class="text-gray-700">{{ f.name }}</span>
+                {% if perms.studio.add_studioimage %}
+                <form x-show="editing" x-cloak method="POST"
+                      action="{% url 'staff:studio_folder_rename' f.pk %}{% if request.GET.urlencode %}?{{ request.GET.urlencode }}{% endif %}"
+                      class="flex-1 flex items-center gap-2">
+                    {% csrf_token %}
+                    <input type="text" name="name" value="{{ f.name }}" required maxlength="100"
+                           class="flex-1 border border-gray-200 rounded-lg px-2 py-1 text-sm outline-none focus:border-primary-400">
+                    <button type="submit" class="text-primary-600 text-xs font-semibold hover:underline">حفظ</button>
+                    <button type="button" @click="editing = false" class="text-gray-400 text-xs hover:underline">إلغاء</button>
+                </form>
+                {% endif %}
+                <div x-show="!editing" class="flex items-center gap-3 shrink-0">
+                    {% if perms.studio.add_studioimage %}
+                    <button type="button" @click="editing = true" class="text-gray-400 hover:text-primary-600 text-xs">تعديل</button>
+                    {% endif %}
+                    {% if perms.studio.delete_studioimage %}
+                    <form method="POST"
+                          action="{% url 'staff:studio_folder_delete' f.pk %}{% if request.GET.urlencode %}?{{ request.GET.urlencode }}{% endif %}"
+                          data-confirm="حذف مجلد &quot;{{ f.name }}&quot;؟ الصور اللي جواه هترجع بلا مجلد ومش هتتحذف." data-confirm-type="warning">
+                        {% csrf_token %}
+                        <button type="submit" class="text-gray-400 hover:text-red-500 text-xs">حذف</button>
+                    </form>
+                    {% endif %}
+                </div>
+            </li>
+            {% endfor %}
+        </ul>
+        {% else %}
+        <p class="text-xs text-gray-400">مفيش مجلدات لسه.</p>
+        {% endif %}
+    </div>
+</div>
+{% endif %}
+
+{% if page_obj %}
+<!-- تحديد جماعي + حذف (المرحلة 5) — نفس باترن bulk actions في
+     staff/products/list.html: فورم واحد خارجي (id="bulk-studio-form")،
+     كل checkbox في الشبكة مربوط بيه عن طريق form="..." بدل ما نحوّط
+     الشبكة كلها في <form> (يمنع تعارض مع فورم الحذف الفردي جوه كل كارت).
+
+     usage: خريطة id -> [عدد المنتجات, عدد الأقسام] لكل صورة في الصفحة
+     الحالية بس (محسوبة سيرفر-سايد فوق في الـ view) — بتُستخدم لبناء
+     رسالة data-confirm الديناميكية لزرار "حذف المحدد" حسب اللي فعليًا
+     متحدد دلوقتي، بلا أي طلب إضافي للسيرفر وقت الضغط على الزرار.
+
+     gridSize (المرحلة 7) — تفصيلة واجهة بحتة، بلا أي تغيير في قاعدة
+     البيانات أو الـ view: 'small' (الافتراضي، الشبكة الكثيفة الحالية)
+     أو 'large' (أعمدة أقل، thumbnails أكبر). بيتحفظ في localStorage
+     (مفتاح studioGridSize) عشان يفضل ثابت بين الزيارات، بلا ما نحتاج
+     أي حقل جلسة أو موديل جديد — بالظبط زي "مش أولوية" المذكورة في
+     STUDIO_PLAN.md، المرحلة 7. -->
+<div
+    x-data="{
+        selected: [],
+        activeAction: 'delete',
+        gridSize: (localStorage.getItem('studioGridSize') === 'large') ? 'large' : 'small',
+        setGridSize(size) {
+            this.gridSize = size;
+            localStorage.setItem('studioGridSize', size);
+        },
+        usage: { {% for image in page_obj %}{{ image.pk }}: [{{ image.usage_products_count }}, {{ image.usage_categories_count }}]{% if not forloop.last %}, {% endif %}{% endfor %} },
+        confirmMessage() {
+            let products = 0, categories = 0, usedCount = 0;
+            this.selected.forEach(id => {
+                const u = this.usage[id];
+                if (!u) return;
+                products += u[0]; categories += u[1];
+                if (u[0] || u[1]) usedCount++;
+            });
+            const n = this.selected.length;
+            if (!usedCount) return n === 1 ? 'متأكد من حذف هذه الصورة؟' : `متأكد من حذف ${n} صورة؟`;
+            const suffix = n === 1 ? 'متأكد من الحذف؟' : `متأكد من حذف ${n} صورة؟`;
+            return `${usedCount} من الصور المحددة مستخدمة في ${products} منتج و${categories} قسم، وسيتم حذفها منهم أيضًا. ${suffix}`;
+        },
+    }"
+>
+    <!-- زراير تبديل حجم الشبكة (المرحلة 7) — فوق شريط التحديد الجماعي
+         عمدًا عشان يفضلوا ظاهرين حتى لو مفيش صور متحددة دلوقتي. -->
+    <div class="flex items-center justify-end gap-1 mb-3">
+        <span class="text-xs text-gray-400 ml-1">حجم العرض:</span>
+        <button type="button" @click="setGridSize('large')"
+                :class="gridSize === 'large' ? 'bg-primary-100 text-primary-700' : 'text-gray-400 hover:bg-gray-100'"
+                class="p-1.5 rounded-lg transition" aria-label="شبكة كبيرة">
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="1.8">
+                <rect x="4" y="4" width="7" height="7" rx="1"></rect>
+                <rect x="13" y="4" width="7" height="7" rx="1"></rect>
+                <rect x="4" y="13" width="7" height="7" rx="1"></rect>
+                <rect x="13" y="13" width="7" height="7" rx="1"></rect>
+            </svg>
+        </button>
+        <button type="button" @click="setGridSize('small')"
+                :class="gridSize === 'small' ? 'bg-primary-100 text-primary-700' : 'text-gray-400 hover:bg-gray-100'"
+                class="p-1.5 rounded-lg transition" aria-label="شبكة صغيرة">
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="1.8">
+                <rect x="3" y="3" width="4" height="4" rx="0.5"></rect>
+                <rect x="10" y="3" width="4" height="4" rx="0.5"></rect>
+                <rect x="17" y="3" width="4" height="4" rx="0.5"></rect>
+                <rect x="3" y="10" width="4" height="4" rx="0.5"></rect>
+                <rect x="10" y="10" width="4" height="4" rx="0.5"></rect>
+                <rect x="17" y="10" width="4" height="4" rx="0.5"></rect>
+                <rect x="3" y="17" width="4" height="4" rx="0.5"></rect>
+                <rect x="10" y="17" width="4" height="4" rx="0.5"></rect>
+                <rect x="17" y="17" width="4" height="4" rx="0.5"></rect>
+            </svg>
+        </button>
+    </div>
+
+    <div x-show="selected.length > 0" x-cloak x-transition
+         class="bg-primary-50 border border-primary-200 rounded-xl px-4 py-2.5 mb-3 flex items-center gap-3 text-sm">
+        <span class="text-primary-700 font-semibold" x-text="selected.length + ' صورة محددة'"></span>
+        {% if perms.studio.add_studioimage or perms.studio.delete_studioimage %}
+        <!-- فورم واحد بس (المرحلة 6) — زراري "نقل"/"حذف" بيستخدموا
+             formaction عشان يوجّهوا نفس الفورم لمسارين مختلفين، بدل
+             فورمين منفصلين (checkbox مينفعش يتربط بأكتر من form واحد
+             عن طريق attribute الـ form). activeAction بيتحدد في @click
+             قبل ما الفورم يتبعت فعليًا (فبيوصل صح للـ data-confirm
+             الديناميكي)، ونفس آلية confirmMessage() المستخدمة في
+             المرحلة 5 بالظبط. -->
+        <form id="bulk-studio-form" method="POST"
+              action="{% url 'staff:studio_delete' %}{% if request.GET.urlencode %}?{{ request.GET.urlencode }}{% endif %}"
+              :data-confirm="activeAction === 'delete' ? confirmMessage() : null" data-confirm-type="warning">
+            {% csrf_token %}
+            {% if perms.studio.add_studioimage %}
+            <select name="folder_id"
+                    class="border border-gray-200 rounded-lg px-2 py-1.5 text-xs outline-none focus:border-primary-400">
+                <option value="0">بلا مجلد</option>
+                {% for f in folders %}
+                <option value="{{ f.pk }}">{{ f.name }}</option>
+                {% endfor %}
+            </select>
+            <button type="submit"
+                    formaction="{% url 'staff:studio_move_to_folder' %}{% if request.GET.urlencode %}?{{ request.GET.urlencode }}{% endif %}"
+                    @click="activeAction = 'move'"
+                    class="bg-primary-100 hover:bg-primary-200 text-primary-700 text-xs font-semibold px-3 py-1.5 rounded-lg transition">
+                نقل لمجلد
+            </button>
+            {% endif %}
+            {% if perms.studio.delete_studioimage %}
+            <button type="submit"
+                    formaction="{% url 'staff:studio_delete' %}{% if request.GET.urlencode %}?{{ request.GET.urlencode }}{% endif %}"
+                    @click="activeAction = 'delete'"
+                    class="bg-red-100 hover:bg-red-200 text-red-600 text-xs font-semibold px-3 py-1.5 rounded-lg transition">
+                حذف المحدد
+            </button>
+            {% endif %}
+        </form>
+        {% endif %}
+        <button type="button" @click="selected = []" class="text-gray-400 hover:text-gray-600 text-xs mr-auto">إلغاء التحديد</button>
+    </div>
+
+    <div class="grid gap-3"
+         :class="gridSize === 'large' ? 'grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5' : 'grid-cols-2 sm:grid-cols-4 md:grid-cols-6 lg:grid-cols-8'">
+        {% for image in page_obj %}
+        <div class="bg-white rounded-lg border border-gray-200 overflow-hidden relative group">
+            {% if perms.studio.add_studioimage or perms.studio.delete_studioimage %}
+            <input type="checkbox" form="bulk-studio-form" name="image_ids" value="{{ image.pk }}"
+                   x-model.number="selected"
+                   class="absolute top-1.5 right-1.5 z-10 rounded border-gray-300 text-primary-600 focus:ring-primary-400 bg-white/90">
+            {% endif %}
+            <div class="aspect-square bg-gray-50 flex items-center justify-center">
+                {% if image.thumbnail %}
+                <img src="{{ image.thumbnail.url }}" alt="{{ image.original_filename }}"
+                     loading="lazy" class="w-full h-full object-cover">
+                {% else %}
+                <img src="{{ image.image.url }}" alt="{{ image.original_filename }}"
+                     loading="lazy" class="w-full h-full object-cover">
+                {% endif %}
+            </div>
+            <p class="px-2 py-1.5 text-xs text-gray-500 truncate" title="{{ image.original_filename }}">
+                {{ image.original_filename|default:"—" }}
+            </p>
+            {% if image.folder %}
+            <p class="px-2 -mt-1 pb-1 text-[10px] text-gray-400 truncate">📁 {{ image.folder.name }}</p>
+            {% endif %}
+            <div class="px-2 pb-2 flex items-center justify-between gap-1">
+                {% if image.is_used %}
+                {% status_badge "مستخدمة" color="green" %}
+                {% else %}
+                {% status_badge "غير مستخدمة" color="gray" %}
+                {% endif %}
+                {% if perms.studio.delete_studioimage %}
+                <form method="POST" action="{% url 'staff:studio_delete' %}{% if request.GET.urlencode %}?{{ request.GET.urlencode }}{% endif %}"
+                      data-confirm="{{ image.usage_confirm_message }}" data-confirm-type="warning">
+                    {% csrf_token %}
+                    <input type="hidden" name="image_ids" value="{{ image.pk }}">
+                    <button type="submit" class="text-gray-300 hover:text-red-500 transition" aria-label="حذف الصورة">
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="1.8">
+                            <path stroke-linecap="round" stroke-linejoin="round" d="M14.74 9l-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 01-2.244 2.077H8.084a2.25 2.25 0 01-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 00-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 013.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 00-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 00-7.5 0" />
+                        </svg>
+                    </button>
+                </form>
+                {% endif %}
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+</div>
+
+{% if page_obj.paginator.num_pages > 1 %}
+<div class="flex items-center justify-center gap-2 mt-6 text-sm">
+    {% if page_obj.has_previous %}
+    <a href="?{{ request.GET|without_page }}&page={{ page_obj.previous_page_number }}"
+       class="px-3 py-2 rounded-lg bg-white shadow-sm hover:bg-primary-50 text-gray-600">السابق</a>
+    {% endif %}
+    <span class="text-gray-500 px-2">صفحة {{ page_obj.number }} من {{ page_obj.paginator.num_pages }}</span>
+    {% if page_obj.has_next %}
+    <a href="?{{ request.GET|without_page }}&page={{ page_obj.next_page_number }}"
+       class="px-3 py-2 rounded-lg bg-white shadow-sm hover:bg-primary-50 text-gray-600">التالي</a>
+    {% endif %}
+</div>
+{% endif %}
+
+<p class="text-xs text-gray-400 mt-3">إجمالي: {{ total_images }} صورة</p>
+{% else %}
+<div class="bg-white border border-gray-200 rounded-lg p-12 text-center text-gray-500">
+    مفيش صور في الاستوديو لسه — ارفع أول صورة من فوق.
+</div>
+{% endif %}
+
+{% endblock %}

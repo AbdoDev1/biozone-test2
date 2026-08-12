@@ -1,0 +1,20 @@
+{% extends 'staff/base.html' %}
+{% load staff_ui %}
+{% block title %}الاستوديو — Biozone{% endblock %}
+{% block breadcrumbs %}
+<nav class="flex items-center text-sm text-gray-500 mb-4">
+    {% crumb "الرئيسية" "staff:dashboard" %}
+    {% crumb "الاستوديو" %}
+</nav>
+{% endblock %}
+{% block content %}
+
+<div class="flex justify-between items-center mb-6">
+    <h1 class="text-2xl font-bold text-gray-800">الاستوديو</h1>
+</div>
+
+<div class="bg-white border border-gray-200 rounded-lg p-12 text-center text-gray-500">
+    الاستوديو — قيد الإنشاء
+</div>
+
+{% endblock %}

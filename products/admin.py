@@ -12,6 +12,10 @@ class CategoryAdmin(admin.ModelAdmin):
     list_filter = ('is_active',)
     prepopulated_fields = {'slug': ('name',)}
     search_fields = ('name',)
+    # raw_id_fields بدل <select> عادي — من المرحلة 8 (STUDIO_PLAN.md)، image
+    # بقى ForeignKey على studio.StudioImage، ومعرض الاستوديو ممكن يبقى فيه
+    # آلاف الصور؛ <select> عادي هيحمّلهم كلهم كـ <option> واحدة واحدة.
+    raw_id_fields = ('image',)
 
 
 class ProductUnitInline(admin.TabularInline):
@@ -27,3 +31,5 @@ class ProductAdmin(admin.ModelAdmin):
     list_filter = ('category', 'is_active')
     search_fields = ('name_ar', 'name_en', 'manufacturer', 'code', 'barcode', 'barcode_2', 'barcode_3')
     inlines = [ProductUnitInline]
+    # نفس ملاحظة CategoryAdmin.raw_id_fields فوق بالظبط.
+    raw_id_fields = ('image',)

@@ -60,7 +60,12 @@ services:
       # تقدر تستحمله لو السيرفر عنده أنوية كتير ورام محدودة.
     volumes:
       - static_volume:/app/staticfiles
-      - media_volume:/app/media
+      # bind mount حقيقي بدل named volume — عشان الصور متتفقدش لو حد
+      # شغّل `docker compose down -v` (بيمسح الـ named volumes، لكن
+      # مبيلمسش مجلدات الـ host العادية زي ./media). لازم مجلد ./media
+      # يكون موجود على الـ host قبل أول تشغيل (docker بيعمله تلقائيًا
+      # لو مش موجود، لكن الأفضل تتأكد صلاحيات الكتابة عليه سليمة).
+      - ./media:/app/media
       - ./logs:/app/logs
       # الحاوية بقت هي اللي بتعمل pg_dump فعليًا (زرار "تشغيل الآن" +
       # run_backup عبر الكرون) وتكتب هنا مباشرة — مش read-only بقى.
@@ -88,7 +93,7 @@ services:
     volumes:
       - ./nginx/nginx.conf:/etc/nginx/conf.d/default.conf:ro
       - static_volume:/app/staticfiles:ro
-      - media_volume:/app/media:ro
+      - ./media:/app/media:ro
     depends_on:
       web:
         condition: service_healthy
@@ -97,4 +102,3 @@ volumes:
   postgres_data:
   redis_data:
   static_volume:
-  media_volume:

@@ -21,7 +21,9 @@ CATEGORY_TRACKED_FIELDS = ['name', 'is_active']
 
 @perm_required('products.view_category')
 def category_list(request):
-    categories = Category.objects.annotate(products_count=Count('products')).order_by('name')
+    # select_related('image') من المرحلة 8 — نفس سبب product_list في
+    # crud.py بالظبط: عمود الصورة في list.html بيوصل لـ category.image.
+    categories = Category.objects.select_related('image').annotate(products_count=Count('products')).order_by('name')
     search_q = request.GET.get('q', '').strip()
     if search_q:
         categories = categories.filter(name__icontains=search_q)
@@ -57,7 +59,7 @@ def category_add(request):
 
 @perm_required('products.change_category')
 def category_edit(request, pk):
-    category = get_object_or_404(Category, pk=pk)
+    category = get_object_or_404(Category.objects.select_related('image'), pk=pk)
     if request.method == 'POST':
         old_values = {f: getattr(category, f) for f in CATEGORY_TRACKED_FIELDS}
         form = CategoryForm(request.POST, request.FILES, instance=category)

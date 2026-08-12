@@ -27,6 +27,11 @@ def build_products_export_workbook(products):
     ملحوظة: الباركود مش موجود هنا خالص (لا تصدير ولا استيراد) — هو حقل
     ثانوي بيتسجّل من صفحة المنتج نفسها فقط (بالاسكانر أو يدويًا)، والكود
     (code) هو المعتمد وحده في التفرقة بين الأصناف وقت الاستيراد.
+
+    عمود studio_image_id (اختياري، مرحلة 9 في STUDIO_PLAN.md) بيتصدّر
+    بمعرّف صورة الاستوديو الحالية للصنف (product.image_id) لو موجودة،
+    وإلا فاضي — بيسمح لملف مُصدَّر يتعدّل ويترفع تاني عشان يغيّر صورة
+    صنف عن طريق تغيير الرقم في الخانة دي بس، بدل ما يفتح فورم المنتج.
     """
     account_types = list(AccountType.objects.all().order_by('name'))
 
@@ -35,7 +40,7 @@ def build_products_export_workbook(products):
     ws.title = 'المنتجات'
     headers = [
         'code', 'category_slug', 'name_ar', 'unit_name',
-        'qty_in_small', 'unit_price', 'quantity',
+        'qty_in_small', 'unit_price', 'quantity', 'studio_image_id',
     ] + [discount_col_name(at) for at in account_types]
     ws.append(headers)
 
@@ -51,16 +56,19 @@ def build_products_export_workbook(products):
             float(discount_by_pk[at.pk]) if at.pk in discount_by_pk else '' for at in account_types
         ]
         blank_discounts = ['' for _ in account_types]
+        # product.image_id بيقرا عمود الـ FK محليًا بلا أي استعلام إضافي
+        # (زي product.code بالظبط) — مفيش حاجة لـ select_related('image').
+        image_id = product.image_id or ''
 
         if small:
             ws.append([
                 product.code, product.category.slug, product.name_ar, small.name,
-                1, float(small.unit_price), 0,
+                1, float(small.unit_price), 0, image_id,
             ] + discount_cells)
         if large:
             ws.append([
                 product.code, product.category.slug, product.name_ar, large.name,
-                large.qty_in_small, float(large.unit_price), 0,
+                large.qty_in_small, float(large.unit_price), 0, image_id,
             ] + (blank_discounts if small else discount_cells))
 
     for col in ws.columns:
@@ -70,7 +78,9 @@ def build_products_export_workbook(products):
 
 def build_import_template_workbook():
     """قالب فارغ (بأمثلة توضيحية) لأعمدة الاستيراد — نفس أعمدة التصدير بالظبط.
-    الباركود مش موجود هنا (راجع ملحوظة build_products_export_workbook فوق)."""
+    الباركود مش موجود هنا (راجع ملحوظة build_products_export_workbook فوق).
+    عمود studio_image_id اختياري (مرحلة 9) — سايبينه فاضي في الأمثلة عشان
+    مفيش ضمان إن أي معرّف صورة معيّن موجود فعلًا في استوديو كل عميل."""
     account_types = list(AccountType.objects.all().order_by('name'))
     discount_headers = [discount_col_name(at) for at in account_types]
 
@@ -79,7 +89,7 @@ def build_import_template_workbook():
     ws.title = 'المنتجات'
     headers = [
         'code', 'category_slug', 'name_ar', 'unit_name',
-        'qty_in_small', 'unit_price', 'quantity',
+        'qty_in_small', 'unit_price', 'quantity', 'studio_image_id',
     ] + discount_headers
     ws.append(headers)
 
@@ -89,11 +99,11 @@ def build_import_template_workbook():
 
     # مثال 1: صنف بوحدتين — الخصم بيتكتب على صف الوحدة الصغرى بس (قطعة)،
     # وصف الكرتونة بيتسيب فاضي لأن سعرها بيتحسب تلقائيًا من نسبة القطعة.
-    ws.append(['', 'gauze', 'شاش طبي', 'قطعة', 1, 2.00, 200] + small_discounts)
-    ws.append(['', 'gauze', 'شاش طبي', 'كرتونة', 50, 100.00, 0] + blank_discounts)
+    ws.append(['', 'gauze', 'شاش طبي', 'قطعة', 1, 2.00, 200, ''] + small_discounts)
+    ws.append(['', 'gauze', 'شاش طبي', 'كرتونة', 50, 100.00, 0, ''] + blank_discounts)
 
     # مثال 2: صنف بوحدة واحدة بس (كبرى) — الخصم بيتكتب على صفها هي نفسها.
-    ws.append(['', 'gloves', 'قفازات لاتكس', 'كرتونة', 10, 250.00, 100] + large_discounts)
+    ws.append(['', 'gloves', 'قفازات لاتكس', 'كرتونة', 10, 250.00, 100, ''] + large_discounts)
 
     for col in ws.columns:
         ws.column_dimensions[col[0].column_letter].width = 20

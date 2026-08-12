@@ -18,6 +18,7 @@ import openpyxl
 from accounts.models import AccountType
 from products.matching import normalize_name, find_similar_products
 from products.models import Product
+from studio.models import StudioImage
 
 from .common import FUZZY_MATCH_THRESHOLD, REQUIRED_IMPORT_HEADERS, discount_col_name
 
@@ -57,6 +58,10 @@ def parse_unit_row(row_num, row, idx, account_types_by_col):
     # الباركود مش موجود في شيت الإكسل خالص (لا قراءة ولا كتابة)، بيتسجّل
     # من صفحة المنتج نفسها فقط. راجع Product.BARCODE_FIELDS في models.py.
     code = cell_str('code')
+    # عمود اختياري جديد (مرحلة 9 في STUDIO_PLAN.md) — معرّف StudioImage.pk
+    # كنص خام هنا بس، بيتحقق منه فعليًا (رقم صحيح + موجود فعلًا في
+    # الاستوديو) بعد التجميع في read_import_workbook تحت، مش هنا.
+    studio_image_id = cell_str('studio_image_id')
 
     raw_qty_in_small = cell('qty_in_small')
     raw_unit_price = cell('unit_price')
@@ -109,6 +114,7 @@ def parse_unit_row(row_num, row, idx, account_types_by_col):
         'unit_price': unit_price,
         'quantity': quantity,
         'discounts': discounts,
+        'studio_image_id': studio_image_id,
     }, None
 
 
@@ -146,6 +152,10 @@ def group_unit_rows(unit_rows):
         discount_source = small or large
         category_slug = next((r['category_slug'] for r in rows if r['category_slug']), '')
         code = next((r['code'] for r in rows if r['code']), '')
+        # .get() مش ['...'] عمدًا هنا (بخلاف category_slug/code فوق) —
+        # اختبارات موجودة قبل مرحلة 9 بتبني صفوف الوحدة يدويًا كـ dict
+        # بلا المفتاح ده خالص، فالوصول المباشر كان بيطلع KeyError عليها.
+        studio_image_id = next((r.get('studio_image_id') for r in rows if r.get('studio_image_id')), '')
         products_data.append({
             'row_num': rows[0]['row_num'],
             'row_nums': [r['row_num'] for r in rows],
@@ -155,6 +165,7 @@ def group_unit_rows(unit_rows):
             'small': small,
             'large': large,
             'discounts': discount_source['discounts'] if discount_source else {},
+            'studio_image_id': studio_image_id,
         })
     return products_data, errors
 
@@ -238,6 +249,47 @@ def read_import_workbook(excel_file, max_rows):
 
     products_data, group_errors = group_unit_rows(unit_rows)
     errors.extend(group_errors)
+
+    # تحقق معرّف صورة الاستوديو الاختياري (مرحلة 9 في STUDIO_PLAN.md) —
+    # بعد التجميع (مش وقت parse_unit_row) عشان نتحقق مرة واحدة بس لكل
+    # صنف (مش لكل صف وحدة)، وبنستعلم StudioImage مرة واحدة بكل الـ IDs
+    # المطلوبة دفعة واحدة بدل استعلام منفصل لكل صنف. عمود فاضي = مفيش
+    # تغيير مطلوب على صورة الصنف (مش خطأ، ومفيش تحذير) — التحذير بس لو
+    # اتكتب معرّف فعليًا ومش رقم صحيح أو مش موجود في الاستوديو خالص.
+    requested_ids = set()
+    for p in products_data:
+        raw = p.get('studio_image_id', '')
+        if raw:
+            try:
+                requested_ids.add(int(raw))
+            except (TypeError, ValueError):
+                pass
+    existing_image_ids = set(
+        StudioImage.objects.filter(pk__in=requested_ids).values_list('pk', flat=True)
+    ) if requested_ids else set()
+
+    for p in products_data:
+        raw = p.get('studio_image_id', '')
+        if not raw:
+            p['studio_image_id'] = None
+            continue
+        try:
+            image_id = int(raw)
+        except (TypeError, ValueError):
+            errors.append(
+                f'سطر {p["row_num"]}: معرّف صورة الاستوديو "{raw}" غير صالح — '
+                f'تم تجاهل الصورة لصنف "{p["name_ar"]}"'
+            )
+            p['studio_image_id'] = None
+            continue
+        if image_id not in existing_image_ids:
+            errors.append(
+                f'سطر {p["row_num"]}: لا توجد صورة استوديو بمعرّف {image_id} — '
+                f'تم تجاهل الصورة لصنف "{p["name_ar"]}"'
+            )
+            p['studio_image_id'] = None
+        else:
+            p['studio_image_id'] = image_id
 
     rows = [
         classify_row(p, existing_by_code, existing_by_name_key, all_products)

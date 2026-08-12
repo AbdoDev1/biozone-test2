@@ -57,6 +57,12 @@ def commit_product(row_data, target_pk, user, account_types_by_pk, category_cach
         # بيحترمه ومش بيولّد كود تلقائي بدلًا منه.
         if row_data.get('code'):
             product.code = row_data['code']
+        # معرّف صورة استوديو صحيح فقط بيوصل هنا (اتحقق منه فعليًا في
+        # read_import_workbook قبل الحفظ — راجع parsing.py، مرحلة 9). قيمة
+        # None (عمود فاضي أو معرّف غلط) تعني "سيب صورة الصنف زي ما هي"،
+        # مش "امسحها" — نفس فلسفة category_slug الفاضي فوق بالظبط.
+        if row_data.get('studio_image_id'):
+            product.image_id = row_data['studio_image_id']
         product.save()
         created = False
     else:
@@ -65,6 +71,7 @@ def commit_product(row_data, target_pk, user, account_types_by_pk, category_cach
         product = Product.objects.create(
             name_ar=row_data['name_ar'], category=category, is_active=True,
             code=row_data.get('code') or '',
+            image_id=row_data.get('studio_image_id') or None,
         )
         created = True
 

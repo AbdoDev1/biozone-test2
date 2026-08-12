@@ -3,20 +3,28 @@ from decimal import Decimal, ROUND_HALF_UP
 from django.contrib.postgres.indexes import GinIndex
 from django.db import models
 from django.core.exceptions import ValidationError
-from django.core.validators import FileExtensionValidator
 from django.utils import timezone
 
 from .matching import normalize_name
-from .validators import validate_image_size
 
 
 class Category(models.Model):
     name = models.CharField(max_length=255)
-    image = models.ImageField(
-        upload_to='categories/',
-        blank=True,
+    # كان ImageField مباشر لحد المرحلة 8 من خطة الاستوديو (STUDIO_PLAN.md،
+    # قرار رقم 7) — بقى ForeignKey على studio.StudioImage عشان يبقى مصدر
+    # واحد للصور، بدل تكرار منطق الرفع/التحقق هنا وفي studio.StudioImage
+    # وproducts.Product مع بعض. SET_NULL (مش PROTECT ولا CASCADE) عشان حذف
+    # صورة من الاستوديو ميفشلش ولا يمسح القسم — الربط بيختفي بس (قرار رقم 8
+    # في الخطة، نفس سلوك StudioImage.folder). مفيش data migration لازمة
+    # هنا (قرار رقم 10 — مفيش صور موجودة فعليًا وقت التنفيذ)، فالحقل بيبدأ
+    # فاضي (null) للكل.
+    image = models.ForeignKey(
+        'studio.StudioImage',
+        on_delete=models.SET_NULL,
         null=True,
-        validators=[FileExtensionValidator(['jpg', 'jpeg', 'png', 'webp']), validate_image_size]
+        blank=True,
+        related_name='categories',
+        verbose_name='صورة القسم',
     )
     slug = models.SlugField(unique=True, allow_unicode=True)
     is_active = models.BooleanField(default=True)
@@ -86,11 +94,15 @@ class Product(models.Model):
     name_en = models.CharField(max_length=255, blank=True)
     manufacturer = models.CharField(max_length=255, blank=True)
     description = models.TextField(blank=True)
-    image = models.ImageField(
-        upload_to='products/',
-        blank=True,
+    # نفس ملاحظة Category.image فوق بالظبط — ForeignKey على
+    # studio.StudioImage بدل ImageField مباشر، من المرحلة 8 في STUDIO_PLAN.md.
+    image = models.ForeignKey(
+        'studio.StudioImage',
+        on_delete=models.SET_NULL,
         null=True,
-        validators=[FileExtensionValidator(['jpg', 'jpeg', 'png', 'webp']), validate_image_size]
+        blank=True,
+        related_name='products',
+        verbose_name='صورة المنتج',
     )
     is_active = models.BooleanField(default=True)
     created_at = models.DateTimeField(auto_now_add=True)

@@ -1,0 +1,38 @@
+{% comment %}
+نتائج البحث (htmx) داخل مودال منتقي صورة الاستوديو
+(staff/templates/staff/products/partials/image_picker.html) — partial
+منفصل تمامًا عن شاشة الاستوديو الرئيسية (gallery.html)، مبسّط بس لعرض
+thumbnails قابلة للاختيار (بلا تحديد جماعي، بلا حذف، بلا فلتر استخدام/
+مجلد). كل صورة زرار (مش submit) بينده pick() المعرّفة في x-data الأب
+(image_picker.html) — بلا أي طلب سيرفر إضافي وقت الاختيار نفسه، وبلا
+فقدان أي حاجة اتكتبت في باقي فورم المنتج/القسم.
+{% endcomment %}
+<div class="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 gap-3">
+    {% for image in images %}
+    <button type="button"
+            @click="pick({{ image.pk }}, '{{ image.picker_url|escapejs }}', '{{ image.original_filename|default:''|escapejs }}')"
+            class="aspect-square rounded-lg overflow-hidden border border-gray-200 hover:border-primary-400 transition bg-gray-50"
+            title="{{ image.original_filename }}">
+        <img src="{{ image.picker_url }}" alt="{{ image.original_filename }}" loading="lazy" class="w-full h-full object-cover">
+    </button>
+    {% empty %}
+    <p class="col-span-full text-center text-xs text-gray-400 py-8">
+        {% if request.GET.q %}مفيش صور مطابقة للبحث.{% else %}مفيش صور في الاستوديو لسه — ارفعها من شاشة الاستوديو الأول.{% endif %}
+    </p>
+    {% endfor %}
+</div>
+{% if page_obj.paginator.num_pages > 1 %}
+<div class="flex items-center justify-center gap-2 mt-4 text-xs">
+    {% if page_obj.has_previous %}
+    <button type="button" class="px-2 py-1 rounded bg-gray-50 hover:bg-gray-100 text-gray-600"
+            hx-get="{% url 'staff:studio_picker' %}?page={{ page_obj.previous_page_number }}{% if request.GET.q %}&q={{ request.GET.q|urlencode }}{% endif %}"
+            hx-target="#studio-picker-results" hx-boost="false">السابق</button>
+    {% endif %}
+    <span class="text-gray-400">صفحة {{ page_obj.number }} من {{ page_obj.paginator.num_pages }}</span>
+    {% if page_obj.has_next %}
+    <button type="button" class="px-2 py-1 rounded bg-gray-50 hover:bg-gray-100 text-gray-600"
+            hx-get="{% url 'staff:studio_picker' %}?page={{ page_obj.next_page_number }}{% if request.GET.q %}&q={{ request.GET.q|urlencode }}{% endif %}"
+            hx-target="#studio-picker-results" hx-boost="false">التالي</button>
+    {% endif %}
+</div>
+{% endif %}
