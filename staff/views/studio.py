@@ -3,6 +3,7 @@ from django.core.exceptions import ValidationError
 from django.core.paginator import Paginator
 from django.core.validators import FileExtensionValidator
 from django.db import IntegrityError
+from django.http import JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.views.decorators.http import require_POST
 
@@ -311,10 +312,50 @@ def studio_picker(request):
     # وأهم من كده بيتفادى محاولة الوصول لـ .url على حقل ImageField فاضي
     # (image.thumbnail) لو اتكتب غلط بـ |default بدل {% if %} — راجع
     # الملاحظة في gallery.html.
+    # full_url (الأصل، مش الـ thumbnail) بيتحسب هنا مرة واحدة كمان — بيتستخدم
+    # في زرار المعاينة (lightbox) في picker_results.html بلا أي طلب lookup
+    # إضافي وقت الضغط عليه (الـ URL جاهز أصلًا في التمبليت).
     for img in page_obj:
         img.picker_url = img.thumbnail.url if img.thumbnail else img.image.url
+        img.full_url = img.image.url
 
     return render(request, 'staff/studio/partials/picker_results.html', {
         'page_obj': page_obj,
         'images': page_obj,
+    })
+
+
+def studio_image_lookup(request):
+    """
+    مطابقة معرّف صورة استوديو واحد → JSON، بيتستخدم من:
+    1) خانة "أدخل المعرف يدويًا" في منتقي صورة المنتج/القسم
+       (image_picker.html) — البديل التاني المطلوب عن الاختيار البصري،
+       الموظف بينسخ رقم معرّف من مكان تاني (شيت إكسل، أو استوديو مفتوح
+       في تبويب تاني) ويلزقه هنا مباشرة بلا ما يفتح مودال الاختيار خالص.
+    2) نافذة المعاينة (lightbox) في نفس المنتقي وفي معرض الاستوديو نفسه —
+       بترجع مسار الصورة الأصلية (مش الـ thumbnail) لعرضها بحجمها الكامل.
+
+    نفس مستوى الحماية بالظبط المستخدم في studio_picker فوق (تسجيل دخول
+    كموظف أدمن/مخزن بس، بلا اشتراط صلاحية studio.view_studioimage
+    المنفصلة) — لنفس السبب الموثّق في docstring studio_picker: الوصول من
+    جوه فورم منتج/قسم مرتبط بصلاحية تعديل المنتج نفسه، مش بصلاحية
+    الاستوديو الكاملة.
+    """
+    if not request.user.is_authenticated or request.user.role not in (User.Role.ADMIN, User.Role.WAREHOUSE):
+        return JsonResponse({'found': False}, status=403)
+
+    raw_id = request.GET.get('id', '').strip()
+    if not raw_id.isdigit():
+        return JsonResponse({'found': False})
+
+    image = StudioImage.objects.filter(pk=raw_id).first()
+    if not image:
+        return JsonResponse({'found': False})
+
+    return JsonResponse({
+        'found': True,
+        'id': image.pk,
+        'thumb_url': image.thumbnail.url if image.thumbnail else image.image.url,
+        'full_url': image.image.url,
+        'filename': image.original_filename,
     })

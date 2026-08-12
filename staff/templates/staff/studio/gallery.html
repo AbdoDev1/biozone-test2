@@ -177,6 +177,26 @@
             const suffix = n === 1 ? 'متأكد من الحذف؟' : `متأكد من حذف ${n} صورة؟`;
             return `${usedCount} من الصور المحددة مستخدمة في ${products} منتج و${categories} قسم، وسيتم حذفها منهم أيضًا. ${suffix}`;
         },
+        /* معاينة بالحجم الحقيقي + المعرّف تحتها (أغسطس 2026) — نفس فكرة
+           المعاينة في منتقي صورة المنتج (image_picker.html)، هنا مباشرة
+           بـ full_url الجاهز من الـview بلا أي طلب إضافي. */
+        previewOpen: false,
+        previewUrl: '',
+        previewId: null,
+        previewName: '',
+        copyFeedbackId: null,
+        showPreview(id, url, name) {
+            this.previewOpen = true;
+            this.previewId = id;
+            this.previewUrl = url;
+            this.previewName = name;
+        },
+        copyId(id) {
+            navigator.clipboard.writeText(String(id)).then(() => {
+                this.copyFeedbackId = id;
+                setTimeout(() => { if (this.copyFeedbackId === id) this.copyFeedbackId = null; }, 1500);
+            });
+        },
     }"
 >
     <!-- زراير تبديل حجم الشبكة (المرحلة 7) — فوق شريط التحديد الجماعي
@@ -262,7 +282,8 @@
                    x-model.number="selected"
                    class="absolute top-1.5 right-1.5 z-10 rounded border-gray-300 text-primary-600 focus:ring-primary-400 bg-white/90">
             {% endif %}
-            <div class="aspect-square bg-gray-50 flex items-center justify-center">
+            <button type="button" @click="showPreview({{ image.pk }}, '{{ image.image.url|escapejs }}', '{{ image.original_filename|default:''|escapejs }}')"
+                    class="aspect-square w-full bg-gray-50 flex items-center justify-center" title="اضغط للمعاينة بالحجم الكامل">
                 {% if image.thumbnail %}
                 <img src="{{ image.thumbnail.url }}" alt="{{ image.original_filename }}"
                      loading="lazy" class="w-full h-full object-cover">
@@ -270,8 +291,20 @@
                 <img src="{{ image.image.url }}" alt="{{ image.original_filename }}"
                      loading="lazy" class="w-full h-full object-cover">
                 {% endif %}
-            </div>
-            <p class="px-2 py-1.5 text-xs text-gray-500 truncate" title="{{ image.original_filename }}">
+            </button>
+            {# المعرّف الرقمي — مكنش ظاهر خالص قبل كده. زرار نسخ بجنبه عشان
+               يسهّل نسخه ولزقه يدويًا (شيت إكسل، أو خانة "أدخل المعرف
+               يدويًا" في فورم المنتج). #}
+            <p class="px-2 pt-1.5 text-[11px] text-gray-500 flex items-center gap-1">
+                <span>المعرف: <span class="font-mono font-semibold text-gray-700">#{{ image.pk }}</span></span>
+                <button type="button" @click="copyId({{ image.pk }})" class="text-gray-400 hover:text-primary-600" title="نسخ المعرف">
+                    <svg x-show="copyFeedbackId !== {{ image.pk }}" class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="1.8">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M15.75 17.25v3.375c0 .621-.504 1.125-1.125 1.125h-9.75a1.125 1.125 0 01-1.125-1.125V7.875c0-.621.504-1.125 1.125-1.125H6.75a9.06 9.06 0 011.5.124m7.5 10.376h3.375c.621 0 1.125-.504 1.125-1.125V11.25c0-4.46-3.243-8.161-7.5-8.876a9.06 9.06 0 00-1.5-.124H9.375c-.621 0-1.125.504-1.125 1.125v3.5m7.5 10.375H9.375a1.125 1.125 0 01-1.125-1.125v-9.25m12 6.625v-1.875a3.375 3.375 0 00-3.375-3.375h-1.5a1.125 1.125 0 01-1.125-1.125v-1.5a3.375 3.375 0 00-3.375-3.375H9.75" />
+                    </svg>
+                    <span x-show="copyFeedbackId === {{ image.pk }}" x-cloak class="text-emerald-600 text-[10px] font-semibold">تم النسخ</span>
+                </button>
+            </p>
+            <p class="px-2 pb-1.5 text-xs text-gray-500 truncate" title="{{ image.original_filename }}">
                 {{ image.original_filename|default:"—" }}
             </p>
             {% if image.folder %}
@@ -298,6 +331,22 @@
             </div>
         </div>
         {% endfor %}
+    </div>
+
+    <!-- نافذة المعاينة (lightbox) — نفس آلية image_picker.html بالظبط،
+         بس هنا full_url جاهز أصلًا من التمبليت (image.image.url) بلا
+         حاجة لأي fetch. -->
+    <div x-show="previewOpen" x-cloak x-transition class="fixed inset-0 z-50 bg-black/70 flex items-center justify-center p-4" @keydown.escape.window="previewOpen = false" @click.outside="previewOpen = false">
+        <div class="max-w-2xl w-full flex flex-col items-center gap-3">
+            <div class="bg-white rounded-xl p-2 max-h-[75vh] flex items-center justify-center overflow-hidden">
+                <img :src="previewUrl" class="max-h-[70vh] max-w-full object-contain">
+            </div>
+            <div class="bg-white/95 rounded-lg px-3 py-1.5 text-xs text-gray-600 flex items-center gap-2">
+                <span>المعرف: <span class="font-mono font-semibold" x-text="previewId"></span></span>
+                <span x-show="previewName" x-cloak x-text="'— ' + previewName"></span>
+            </div>
+            <button type="button" @click="previewOpen = false" class="text-white/80 hover:text-white text-sm">إغلاق</button>
+        </div>
     </div>
 </div>
 

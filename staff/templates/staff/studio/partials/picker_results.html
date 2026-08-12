@@ -6,15 +6,36 @@ thumbnails قابلة للاختيار (بلا تحديد جماعي، بلا ح
 مجلد). كل صورة زرار (مش submit) بينده pick() المعرّفة في x-data الأب
 (image_picker.html) — بلا أي طلب سيرفر إضافي وقت الاختيار نفسه، وبلا
 فقدان أي حاجة اتكتبت في باقي فورم المنتج/القسم.
+
+تحديث (أغسطس 2026): كل صورة بقى عليها (1) شارة المعرّف الرقمي في الركن —
+كان مش ظاهر خالص قبل كده، الموظف مكنش عنده طريقة يشوف/ينسخ معرّف صورة
+وهو بيتصفح غير بعد ما يختارها فعليًا — و(2) زرار معاينة صغير (أيقونة
+عدسة) بيفتح نفس نافذة المعاينة (lightbox) المعرّفة في x-data الأب
+(setPreview) بحجم الصورة الحقيقي، بلا ما يختارها، عشان يتأكد منها الأول
+قبل ما يقرر. @click.stop ضروري على زرار المعاينة عشان مايفعّلش pick()
+الأب (الزرارين متداخلين بصريًا فوق بعض).
 {% endcomment %}
 <div class="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 gap-3">
     {% for image in images %}
-    <button type="button"
-            @click="pick({{ image.pk }}, '{{ image.picker_url|escapejs }}', '{{ image.original_filename|default:''|escapejs }}')"
-            class="aspect-square rounded-lg overflow-hidden border border-gray-200 hover:border-primary-400 transition bg-gray-50"
-            title="{{ image.original_filename }}">
-        <img src="{{ image.picker_url }}" alt="{{ image.original_filename }}" loading="lazy" class="w-full h-full object-cover">
-    </button>
+    <div class="relative">
+        <button type="button"
+                @click="pick({{ image.pk }}, '{{ image.picker_url|escapejs }}', '{{ image.original_filename|default:''|escapejs }}')"
+                class="aspect-square w-full rounded-lg overflow-hidden border border-gray-200 hover:border-primary-400 transition bg-gray-50"
+                title="{{ image.original_filename }}">
+            <img src="{{ image.picker_url }}" alt="{{ image.original_filename }}" loading="lazy" class="w-full h-full object-cover">
+        </button>
+        <span class="absolute bottom-1 right-1 bg-black/60 text-white text-[10px] font-mono px-1.5 py-0.5 rounded pointer-events-none">
+            #{{ image.pk }}
+        </span>
+        <button type="button"
+                @click.stop="setPreview({{ image.pk }}, '{{ image.original_filename|default:''|escapejs }}', '{{ image.full_url|escapejs }}')"
+                class="absolute top-1 left-1 bg-white/90 hover:bg-white text-gray-600 rounded p-1 shadow-sm"
+                title="معاينة بالحجم الكامل">
+            <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M21 21l-5.197-5.197m0 0A7.5 7.5 0 105.196 5.196a7.5 7.5 0 0010.607 10.607z" />
+            </svg>
+        </button>
+    </div>
     {% empty %}
     <p class="col-span-full text-center text-xs text-gray-400 py-8">
         {% if request.GET.q %}مفيش صور مطابقة للبحث.{% else %}مفيش صور في الاستوديو لسه — ارفعها من شاشة الاستوديو الأول.{% endif %}

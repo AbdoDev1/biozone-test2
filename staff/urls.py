@@ -78,6 +78,7 @@ urlpatterns = [
     path('backup/error/', backup.backup_error_download, name='backup_error_download'),
     path('studio/', studio.studio, name='studio'),
     path('studio/picker/', studio.studio_picker, name='studio_picker'),
+    path('studio/lookup/', studio.studio_image_lookup, name='studio_image_lookup'),
     path('studio/upload/', studio.studio_upload, name='studio_upload'),
     path('studio/delete/', studio.studio_delete, name='studio_delete'),
     path('studio/move/', studio.studio_move_to_folder, name='studio_move_to_folder'),
