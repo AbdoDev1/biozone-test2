@@ -43,71 +43,6 @@
     {% url 'staff:download_template' as download_template_url %}
     {% btn "تحميل القالب" href=download_template_url extra_attrs='hx-boost="false"' %}
 </div>
-<p class="text-xs text-gray-500 -mt-3 mb-6">
-    لو هتحدّث أصناف موجودة بالفعل (خصوصًا لو محتمل تعدّل اسم الصنف)، الأفضل تصدّر
-    الأصناف الحالية الأول من
-    <a href="{% url 'staff:product_list' %}" class="text-primary-600 hover:underline">قائمة المنتجات</a>
-    (زرار "تصدير Excel" ← "تصدير أصناف محددة") بدل ما تكتب من الصفر — الملف هيجيلك
-    فيه كود كل صنف جاهز، وده بيضمن إن التحديث يحصل على نفس الصنف حتى لو غيّرت اسمه بالكامل.
-</p>
-
-<!-- الأعمدة -->
-<div class="bg-white rounded-2xl shadow-sm p-4 mb-6">
-    <h2 class="font-bold text-gray-700 mb-3 text-sm">الأعمدة في الملف</h2>
-    <p class="text-xs text-gray-500 mb-3">
-        كل <strong>صف = وحدة واحدة</strong> (قطعة أو كرتونة)، مش صنف كامل. الصنف اللي له
-        وحدتين (قطعة + كرتونة) بيتكرر في صفين بنفس <code>code</code> (أو نفس الاسم بالظبط لو
-        الصنف جديد ومفيهوش كود لسه)، والصنف اللي له وحدة واحدة بس بياخد صف واحد.
-    </p>
-    <div class="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
-        <div class="flex items-center gap-2">
-            <span class="bg-gray-100 text-gray-500 px-2 py-0.5 rounded">اختياري</span>
-            <span class="text-gray-600">code — كود الصنف (سيبه فاضي للأصناف الجديدة)</span>
-        </div>
-        <div class="flex items-center gap-2">
-            <span class="bg-red-100 text-red-600 px-2 py-0.5 rounded">مطلوب للجديد</span>
-            <span class="text-gray-600">category_slug — كود القسم (اختياري عند التحديث فقط)</span>
-        </div>
-        <div class="flex items-center gap-2">
-            <span class="bg-red-100 text-red-600 px-2 py-0.5 rounded">مطلوب</span>
-            <span class="text-gray-600">name_ar — اسم الصنف بالعربي</span>
-        </div>
-        <div class="flex items-center gap-2">
-            <span class="bg-red-100 text-red-600 px-2 py-0.5 rounded">مطلوب</span>
-            <span class="text-gray-600">unit_name — اسم الوحدة (قطعة، علبة، كرتونة...)</span>
-        </div>
-        <div class="flex items-center gap-2">
-            <span class="bg-red-100 text-red-600 px-2 py-0.5 rounded">مطلوب</span>
-            <span class="text-gray-600">qty_in_small — كام قطعة جوه الوحدة دي (1 لو هي نفسها الوحدة الصغرى)</span>
-        </div>
-        <div class="flex items-center gap-2">
-            <span class="bg-red-100 text-red-600 px-2 py-0.5 rounded">مطلوب</span>
-            <span class="text-gray-600">unit_price — سعر الجمهور لهذه الوحدة</span>
-        </div>
-        <div class="flex items-center gap-2">
-            <span class="bg-gray-100 text-gray-500 px-2 py-0.5 rounded">اختياري (افتراضي 0)</span>
-            <span class="text-gray-600">quantity — كمية "وارد" هتتضاف فوق الرصيد الحالي (رصيد افتتاحي للجديد، أو تزويد للموجود)</span>
-        </div>
-        <div class="flex items-center gap-2">
-            <span class="bg-primary-100 text-primary-600 px-2 py-0.5 rounded">اختياري</span>
-            <span class="text-gray-600">discount:&lt;اسم نوع الحساب&gt; — نسبة الخصم (0-100) لهذا النوع، عمود لكل فئة</span>
-        </div>
-    </div>
-    <p class="text-xs text-gray-500 mt-3">
-        أعمدة <code>discount:&lt;فئة&gt;</code> بتتولّد تلقائيًا في القالب/التصدير حسب أنواع الحسابات
-        الموجودة دلوقتي — تقدر تضيف أو تحذف عمود فئة كامل من الملف براحتك (لو النوع مش موجود
-        وقت الرفع، العمود هيتجاهل من غير ما يوقف الاستيراد). الخصم بيتحسب دايمًا على الوحدة
-        الصغرى (قطعة) لو الصنف عنده وحدتين — الكرتونة ساعتها بتاخد نفس نسبة القطعة تلقائيًا،
-        فسيب خانة الخصم في صف الكرتونة فاضية. لو الصنف عنده وحدة واحدة بس (كرتونة بدون قطعة)،
-        اكتب الخصم في صفها هي مباشرة. عمود فئة فاضي في صف الوحدة الأساسية = مفيش خصم لهذا
-        النوع (بيمسح أي خصم قديم مسجّل).
-    </p>
-    <p class="text-xs text-gray-500 mt-2">
-        المطابقة بتعتمد على: الكود (لو موجود) ← الاسم بعد تجاهل فروق المسافات/الأرقام/الحروف
-        الشكلية ← وإلا لو الاسم قريب جدًا من صنف موجود هيوقّفلك الصف في شاشة مراجعة قبل الحفظ
-        بدل ما يضيفه كصنف مكرر تلقائيًا.
-    </p>
-</div>
 
 <!-- فورم الرفع -->
 <div class="bg-white rounded-2xl shadow-sm p-6"
@@ -142,11 +77,6 @@
         <div class="h-1.5 w-full bg-primary-100 rounded-full overflow-hidden">
             <div class="h-full w-1/3 bg-primary-500 rounded-full animate-import-progress"></div>
         </div>
-        <p class="text-xs text-gray-500 mt-2 text-center">
-            جاري قراءة الملف ومطابقة الأصناف، ده ممكن ياخد شوية ثواني حسب حجم الملف. تنبيه: قفل الصفحة أو الضغط على رجوع
-            <strong>مش بيوقف العملية فعليًا</strong> — هتكمل في الخلفية وممكن تتحفظ رغم كده، فمتحاولش ترفع نفس الملف تاني
-            لحد ما تتأكد من قائمة المنتجات الأول.
-        </p>
     </div>
 </div>
 

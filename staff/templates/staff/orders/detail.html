@@ -38,7 +38,7 @@
             <svg class="w-3.5 h-3.5 shrink-0 opacity-80" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M13.5 6H18a1 1 0 011 1v4.5M18 6l-8 8M9 6H6a1 1 0 00-1 1v10a1 1 0 001 1h10a1 1 0 001-1v-3"/></svg>
         </a>
         {% endif %}
-        {% if hasattr_invoice and order.status in 'CONFIRMED,DELIVERED' and perms.staff.create_returns %}
+        {% if hasattr_invoice and order.status == 'DELIVERED' and perms.staff.create_returns %}
         <a href="{% url 'staff:order_return_create' order.pk %}"
            class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm font-medium bg-rose-50 text-rose-700 border border-rose-200 hover:bg-rose-100 transition-colors">
             <svg class="w-4 h-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="1.8"><path stroke-linecap="round" stroke-linejoin="round" d="M9 15L3 9m0 0l6-6M3 9h12a6 6 0 010 12h-3"/></svg>

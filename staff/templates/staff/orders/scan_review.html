@@ -16,7 +16,6 @@
         <h1 class="text-xl font-bold text-gray-800">مراجعة فاتورة طلب #{{ order.pk }}</h1>
         <p class="text-gray-500 text-sm mt-1">
             العميل: <span class="font-medium text-gray-700">{{ order.client.username }}</span>
-            — واجهة مساعدة للمخزن، ما بتأثرش على تأكيد أو رفض الطلب.
         </p>
     </div>
     <a href="{% url 'staff:order_detail' order.pk %}" class="text-sm text-gray-500 hover:text-gray-700 flex items-center gap-1">

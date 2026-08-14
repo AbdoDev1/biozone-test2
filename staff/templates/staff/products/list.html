@@ -32,7 +32,17 @@
             </button>
             <div x-show="exportOpen" x-cloak x-transition
                  class="absolute z-20 mt-1 w-56 bg-white rounded-xl shadow-lg border border-gray-100 overflow-hidden left-0 sm:left-auto sm:right-0">
-                <a href="{% url 'staff:export_products_select' %}"
+                <!-- hx-boost="false" ضروري هنا (زي رابط "تصدير كل الأصناف" تحت):
+                     صفحة export_select.html فيها <script> بيعرّف exportSelector()
+                     المستخدمة في x-data للعنصر الرئيسي مباشرة. لو الوصول للصفحة
+                     حصل بتنقل boosted (AJAX)، السكريبت ده بيتنفذ تاني ضمن استبدال
+                     الـ body، وAlpine ممكن يحاول ينادي exportSelector() قبل ما
+                     السكريبت يخلص تنفيذ فعليًا — فيفشل بصمت ومفيش أي تفاعل يشتغل
+                     (لا خانة البحث/الباركود بتحدّث التحديد، ولا زرار "تصدير X صنف
+                     محدد" بيتفعّل) لحد ما تعمل هارد ريفريش. تنقل عادي (مش boosted)
+                     زي الهارد ريفريش بالظبط: المتصفح بيحلل وينفذ كل الصفحة من
+                     الأول فمفيش أي سباق توقيت. -->
+                <a href="{% url 'staff:export_products_select' %}" hx-boost="false"
                    class="block px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-50">
                     تصدير أصناف محددة
                 </a>

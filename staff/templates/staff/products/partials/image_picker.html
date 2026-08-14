@@ -123,9 +123,9 @@
                 اختر من الاستوديو
             </button>
 
-            {# المعرّف الظاهر — نص بسيط + زرار نسخ، بدل ما يكون مخفي جوه
+            {% comment %} المعرّف الظاهر — نص بسيط + زرار نسخ، بدل ما يكون مخفي جوه
                hidden input بس. ده أصلًا بيحل مشكلة "معرف الصورة مش ظاهر
-               في كارت الصنف" (الملاحظة الأولى). #}
+               في كارت الصنف" (الملاحظة الأولى). {% endcomment %}
             <p x-show="selectedId" x-cloak class="text-xs text-gray-500 flex items-center gap-1.5">
                 <span>المعرف: <span class="font-mono font-semibold text-gray-700" x-text="selectedId"></span></span>
                 <button type="button" @click="copyId()" class="text-gray-400 hover:text-primary-600" title="نسخ المعرف">
@@ -140,8 +140,8 @@
                 إزالة الصورة
             </button>
 
-            {# البديل اليدوي — كتابة/لصق معرّف صورة معروف مباشرة بدل فتح
-               مودال الاختيار البصري (الملاحظة الثانية/الثالثة). #}
+            {% comment %} البديل اليدوي — كتابة/لصق معرّف صورة معروف مباشرة بدل فتح
+               مودال الاختيار البصري (الملاحظة الثانية/الثالثة). {% endcomment %}
             <div class="flex items-center gap-1.5 mt-1">
                 <input type="text" inputmode="numeric" x-model="manualId" @keydown.enter.prevent="lookupManual()"
                        placeholder="أو أدخل المعرف يدويًا"

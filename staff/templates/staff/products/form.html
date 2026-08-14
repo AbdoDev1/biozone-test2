@@ -82,10 +82,6 @@
                 {{ form.code }}
                 {% if form.code.errors %}
                     <p class="text-red-500 text-xs mt-1">{{ form.code.errors.0 }}</p>
-                {% else %}
-                    <p class="text-[11px] text-gray-400 mt-1">
-                        {% if is_edit %}هو الحقل المعتمد للتفرقة بين الأصناف واستيراد/تصدير Excel.{% else %}اتركه فارغًا ليتولّد تلقائيًا (مثال: BZ-00001) عند الحفظ.{% endif %}
-                    </p>
                 {% endif %}
             </div>
 
@@ -121,9 +117,6 @@
 
             <div class="md:col-span-2">
                 <label class="text-sm font-medium text-gray-700 mb-1 block">الباركود</label>
-                <p class="text-[11px] text-gray-400 mb-2">
-                    اختياري بالكامل — مش شرط لحفظ المنتج، ومش موجود في ملف Excel. حد أقصى ٣ باركودات لنفس المنتج (مفيدة لو نفس الصنف عليه أكتر من باركود فعلي)، وأي باركود متكرر مع منتج تاني هيترفض برسالة خطأ.
-                </p>
                 <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
                     <div>
                         {{ form.barcode }}
@@ -250,7 +243,6 @@
                             {{ unit_form.unit_price.label }} <span class="text-red-500">*</span>
                         </label>
                         {{ unit_form.unit_price }}
-                        <p class="text-[11px] text-gray-400 mt-1">إذا كانت هذه وحدة القطعة وتُركت فارغة، سيُحسب سعرها تلقائيًا من سعر الكرتونة مقسومًا على الكمية.</p>
                         {% if unit_form.unit_price.errors %}
                             <p class="text-red-500 text-xs mt-1">{{ unit_form.unit_price.errors.0 }}</p>
                         {% endif %}
@@ -330,10 +322,6 @@
         <h2 class="font-bold text-gray-700">خصومات أنواع الحسابات</h2>
         <a href="{% url 'staff:account_types' %}" class="text-xs text-gray-400 hover:text-primary-600">إدارة أنواع الحسابات ←</a>
     </div>
-    <p class="text-xs text-gray-500 mb-4 mt-2">
-        نسبة الخصم (لو موجودة) لكل نوع حساب، تُطرح من سعر الجمهور. الخصم يتحدد يدويًا على الوحدة الصغرى (قطعة) بس،
-        أو الكبرى لو المنتج مالوش وحدة صغرى — سعر أي وحدة كبرى معاها صغرى بيتحسب تلقائيًا من سعر القطعة بعد الخصم.
-    </p>
     <form method="post" action="{% url 'staff:product_discounts_save' product.pk %}">
         {% csrf_token %}
         <div class="overflow-x-auto">

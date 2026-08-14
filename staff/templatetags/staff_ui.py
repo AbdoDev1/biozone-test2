@@ -60,6 +60,65 @@ COLOR_CLASSES = {
 }
 
 
+# تصنيف بصري بس لعناصر NAV_ITEMS (staff/navigation.py) — مستخدم في تجميع
+# بطاقات الرئيسية (staff/dashboard.html) وعناوين الأقسام في السايدبار
+# (staff/base.html) تحت "التشغيل / الإدارة / التقارير والمتابعة / الأدوات
+# والإعدادات"، بدون أي تعديل على NAV_ITEMS نفسها أو أي route/صلاحية.
+NAV_SECTIONS = {
+    'orders': 'operations',
+    'products': 'operations',
+    'clients': 'operations',
+    'inventory': 'operations',
+    'accounting': 'operations',
+    'employees': 'management',
+    'categories': 'management',
+    'account_types': 'management',
+    'tags': 'management',
+    'reports': 'insights',
+    'activity': 'insights',
+    'followups': 'insights',
+    'backup': 'tools',
+    'studio': 'tools',
+}
+
+# وصف قصير يظهر تحت اسم كل بطاقة في شبكة الرئيسية الجديدة — نص عرض بس،
+# مش مرتبط بأي منطق أو بيانات فعلية.
+NAV_DESCRIPTIONS = {
+    'orders': 'إدارة ومتابعة الطلبات',
+    'products': 'إدارة المنتجات والأسعار',
+    'clients': 'حسابات وبيانات العملاء',
+    'inventory': 'المخزون والحركات',
+    'accounting': 'المعاملات والحسابات',
+    'employees': 'الأدوار وصلاحيات الموظفين',
+    'categories': 'أقسام المنتجات',
+    'account_types': 'أنواع الحسابات والخصومات',
+    'tags': 'الوسوم والتصنيفات',
+    'reports': 'تقارير وإحصائيات النظام',
+    'activity': 'سجل العمليات والتعديلات',
+    'followups': 'المهام والمتابعات المجدولة',
+    'backup': 'نسخ واستعادة قاعدة البيانات',
+    'studio': 'إدارة صور ومرفقات المنتجات',
+}
+
+
+@register.filter
+def nav_section(key):
+    """بترجع تصنيف العنصر ('operations'/'management'/'insights'/'tools') من مفتاحه — راجع NAV_SECTIONS فوق."""
+    return NAV_SECTIONS.get(key, 'other')
+
+
+@register.filter
+def nav_items_in_section(items, section_key):
+    """بترجع بس عناصر staff_nav_items اللي قسمها (NAV_SECTIONS) يساوي section_key — بتسهّل تجميع الأقسام (وإخفاء أي قسم فاضي بالكامل بسبب الصلاحيات) في السايدبار والرئيسية من غير تكرار نفس شرط التصفية في كل تمبليت."""
+    return [item for item in items if NAV_SECTIONS.get(item['key']) == section_key]
+
+
+@register.filter
+def nav_description(key):
+    """بترجع وصف قصير للعنصر من مفتاحه — راجع NAV_DESCRIPTIONS فوق."""
+    return NAV_DESCRIPTIONS.get(key, '')
+
+
 @register.filter
 def icon_paths(value):
     """

@@ -14,6 +14,17 @@
     active_url_names: قائمة url_names اللي المفروض تعتبر العنصر ده "نشط" (highlighted) عندها
 """
 
+# ترتيب وتسمية الأقسام الوظيفية المعروضة في السايدبار والرئيسية —
+# التصنيف الفعلي لكل عنصر (item.key -> قسم) موجود في
+# staff/templatetags/staff_ui.py (NAV_SECTIONS)، والقائمة هنا بس بتحدد
+# الترتيب والعنوان الظاهر لكل قسم.
+NAV_SECTION_LABELS = [
+    ('operations', 'التشغيل'),
+    ('management', 'الإدارة'),
+    ('insights', 'التقارير والمتابعة'),
+    ('tools', 'الأدوات والإعدادات'),
+]
+
 NAV_ITEMS = [
     {
         'key': 'dashboard',
@@ -143,7 +154,7 @@ NAV_ITEMS = [
     },
     {
         'key': 'studio',
-        'label': '🖼️ الاستوديو',
+        'label': 'الاستوديو',
         'url_name': 'studio',
         # أيقونة صورة/معرض (photograph icon، من نفس مكتبة Heroicons
         # المستخدمة في باقي أيقونات NAV_ITEMS).

@@ -76,6 +76,33 @@ class OrderLifecycleTestCase(TestCase):
         self.assertFalse(self.order.invoice.is_draft)
         self.assertEqual(self.order.invoice.invoice_number, invoice_number)  # لم يتغير
 
+    def test_return_note_without_rejection_blocks_delivery(self):
+        """
+        لو صدر إشعار مرتجع (InvoiceReversal) على فاتورة طلب لسه CONFIRMED
+        من غير ما الطلب يترفض (عن طريق staff:order_return_create مثلًا)،
+        لازم mark_delivered() ترفض تكمل — التسليم يفضل موقوف لحد ما
+        الموظف يراجع الموقف، مش يكمل عادي وكأن حاجة ماحصلتش.
+        """
+        from django.core.exceptions import ValidationError
+
+        self.order.confirm(actor=self.client_user)
+        invoice_item = self.order.invoice.items.first()
+
+        InvoiceReversal.create_post_delivery_return(
+            invoice=self.order.invoice,
+            items=[(invoice_item, 2)],
+            actor=self.client_user,
+            note='صنف زيادة عن الحاجة',
+        )
+
+        with self.assertRaises(ValidationError):
+            self.order.mark_delivered(actor=self.client_user)
+
+        self.order.refresh_from_db()
+        self.assertEqual(self.order.status, Order.Status.CONFIRMED)  # لم يتغير
+        self.order.invoice.refresh_from_db()
+        self.assertTrue(self.order.invoice.is_draft)  # لم تتحول لنهائية
+
     def test_confirm_twice_does_not_double_deduct_stock(self):
         """double-submit/سباق: نداء confirm() تاني على طلب اتأكد بالفعل
         لازم يترفض ومايخصمش من المخزون مرة تانية."""

@@ -292,9 +292,9 @@
                      loading="lazy" class="w-full h-full object-cover">
                 {% endif %}
             </button>
-            {# المعرّف الرقمي — مكنش ظاهر خالص قبل كده. زرار نسخ بجنبه عشان
+            {% comment %} المعرّف الرقمي — مكنش ظاهر خالص قبل كده. زرار نسخ بجنبه عشان
                يسهّل نسخه ولزقه يدويًا (شيت إكسل، أو خانة "أدخل المعرف
-               يدويًا" في فورم المنتج). #}
+               يدويًا" في فورم المنتج). {% endcomment %}
             <p class="px-2 pt-1.5 text-[11px] text-gray-500 flex items-center gap-1">
                 <span>المعرف: <span class="font-mono font-semibold text-gray-700">#{{ image.pk }}</span></span>
                 <button type="button" @click="copyId({{ image.pk }})" class="text-gray-400 hover:text-primary-600" title="نسخ المعرف">

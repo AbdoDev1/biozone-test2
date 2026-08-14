@@ -13,7 +13,6 @@
 
     <div class="mb-4">
         <h1 class="text-2xl font-bold text-gray-800">الحسابات</h1>
-        <p class="text-gray-500 text-sm mt-1">نظرة عامة على مديونيات كل العملاء وحركات الحسابات على مستوى النظام.</p>
     </div>
 
     <!-- ملخص -->
@@ -141,8 +140,17 @@
                                 {% status_badge tx.display_kind_label group="tx_kind" key=tx.display_kind %}
                             </td>
                             <td class="px-3 py-2 text-gray-500">
-                                {% if tx.is_return %}↳ {% endif %}{{ tx.display_reference }}
-                                {{ tx.note }}
+                                {% if tx.is_return %}
+                                    <a href="{% url 'invoices:reversal_print' tx.invoice_reversal_id %}" target="_blank" class="text-rose-600 hover:underline">
+                                        ↳ {{ tx.display_reference }}
+                                    </a>
+                                {% elif tx.invoice_id %}
+                                    <a href="{% url 'invoices:print' tx.invoice_id %}" target="_blank" class="text-primary-600 hover:underline">
+                                        {{ tx.display_reference }}
+                                    </a>
+                                {% else %}
+                                    {{ tx.note }}
+                                {% endif %}
                                 {% if tx.method %}({{ tx.get_method_display }}){% endif %}
                             </td>
                             <td class="px-3 py-2 font-medium {% if tx.amount > 0 %}text-red-600{% else %}text-green-600{% endif %}">

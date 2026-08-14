@@ -17,10 +17,11 @@ def order_return_create(request, pk):
     ReturnsAccess وstaff/permissions.py).
 
     متاحة بس للطلبات اللي عندها فاتورة فعلًا (يعني مرّت بـ confirm()
-    وخُصم مخزونها فعليًا) وحالتها CONFIRMED أو DELIVERED — قبل كده (PENDING/
-    NEEDS_APPROVAL) مفيش حاجة اتخصمت أصلًا يترجع، وبعد الرفض (REJECTED)
-    الطلب اتلغى بالكامل من قبل عن طريق مسار مختلف (راجع
-    Order._reverse_confirmed_order_effects، stage=PRE_DELIVERY).
+    وخُصم مخزونها فعليًا) وحالتها DELIVERED. طلبات CONFIRMED مش متاحة هنا
+    عشان رفض الطلب في مرحلة CONFIRMED بيعمل إشعار مرتجع تلقائيًا بنفسه
+    (Order._reverse_confirmed_order_effects، stage=PRE_DELIVERY)، فلو
+    سمحنا بإنشاء مرتجع يدوي كمان هيتعمل إشعارين مرتجع لنفس الطلب. أما
+    قبل التأكيد (PENDING/NEEDS_APPROVAL) فمفيش حاجة اتخصمت أصلًا يترجع.
     """
     order = get_object_or_404(
         Order.objects.select_related('client', 'invoice').prefetch_related('invoice__items__reversal_items'),
@@ -31,8 +32,8 @@ def order_return_create(request, pk):
         messages.error(request, 'لا يوجد فاتورة لهذا الطلب، لا يمكن عمل مرتجع.')
         return redirect('staff:order_detail', pk=order.pk)
 
-    if order.status not in (Order.Status.CONFIRMED, Order.Status.DELIVERED):
-        messages.error(request, 'المرتجع متاح فقط للطلبات المؤكدة أو المُسلَّمة.')
+    if order.status != Order.Status.DELIVERED:
+        messages.error(request, 'المرتجع متاح فقط للطلبات المُسلَّمة.')
         return redirect('staff:order_detail', pk=order.pk)
 
     invoice = order.invoice

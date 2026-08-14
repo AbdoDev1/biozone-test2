@@ -8,10 +8,6 @@
 <div class="max-w-6xl print-area">
     <div class="mb-4">
         <h1 class="text-2xl font-bold text-gray-800">تقرير الأرباح</h1>
-        <p class="text-gray-500 text-sm mt-1">
-            الإيرادات والربح الإجمالي حسب الفترة المختارة.
-            <span class="text-gray-400">(الربح هنا = الفرق بين سعر الجمهور وسعر البيع الفعلي بعد خصم نوع حساب العميل، وليس إيراد − تكلفة شراء. النظام لا يتتبع سعر تكلفة يدوي، ولا مصروفات تشغيل عامة.)</span>
-        </p>
     </div>
 
     {% include 'staff/reports/_filters.html' %}
@@ -33,7 +29,6 @@
 
     <div class="bg-white rounded-2xl shadow-sm p-5 mb-6">
         <h2 class="font-bold text-gray-700 mb-1">الأرباح الشهرية (آخر 12 شهر)</h2>
-        <p class="text-xs text-gray-400 mb-3">هذا الرسم يعرض الاتجاه العام دائمًا لآخر 12 شهر، بغض النظر عن فلاتر الفترة أعلاه.</p>
         <canvas id="profitChart" height="90"></canvas>
     </div>
 

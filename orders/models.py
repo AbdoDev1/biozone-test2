@@ -413,12 +413,30 @@ class Order(models.Model):
         مالهاش حماية built-in زي Invoice.save())، ومستقل تمامًا عن قفل
         confirm() (ده بتاعه هو المخزون، ده بتاعه هو حالة التسليم — نفس
         النمط بس مش نفس القفل الفعلي، وده مقصود).
+
+        وقف السير لو فيه إشعار مرتجع سابق من غير رفض: staff:order_return_create
+        بقى مقصور على الطلبات DELIVERED بس (راجع staff/views/returns.py)،
+        فالسيناريو ده مبقاش بيحصل من المسار العادي، لكن سايبين الحارس ده
+        كدفاع إضافي (defense-in-depth) — لو حصل أي إشعار مرتجع على فاتورة
+        الطلب ده وهو لسه مش DELIVERED (مهما كان المصدر)، فمعنى كده إن جزء
+        من الطلب اترجع فعليًا قبل ما يتسلّم، والموظف لازم يقرر صراحة (يرفض
+        الطلب المتبقي، أو أي إجراء تاني) بدل ما "التسليم" العادي يكمل
+        وكأن حاجة ماحصلتش. فبنمنع mark_delivered() تمامًا لو invoice.reversals
+        فيها أي إشعار — الاستثناء الوحيد المسموح بيه هو REJECTED (اللي أصلًا
+        بيوقف الطلب تمامًا عن طريق reject()، ومينفعش يوصل لـ mark_delivered
+        خالص بعدها لأن الحالة REJECTED مش CONFIRMED).
         """
         from django.core.exceptions import ValidationError
 
         locked_self = Order.objects.select_for_update().get(pk=self.pk)
         if locked_self.status == self.Status.DELIVERED:
             raise ValidationError('الطلب ده اتسلّم بالفعل، لا يمكن تكرار التسليم.')
+
+        if hasattr(self, 'invoice') and self.invoice.reversals.exists():
+            raise ValidationError(
+                'تم إصدار إشعار مرتجع على هذا الطلب قبل التسليم — لا يمكن إتمام '
+                'التسليم قبل مراجعة الموقف (راجع إشعارات المرتجع المسجّلة على الفاتورة).'
+            )
 
         if hasattr(self, 'invoice') and self.invoice.is_draft:
             invoice = self.invoice

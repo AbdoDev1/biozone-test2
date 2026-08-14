@@ -114,10 +114,6 @@
         <!-- تبويب: أصناف محتاجة قرارك -->
         {% if review_rows %}
         <div x-show="tab === 'review'" class="p-5">
-            <p class="text-xs text-gray-500 mb-4">
-                الاسم في الملف قريب جدًا من صنف موجود بالفعل. اختار: ده نفس الصنف الموجود (هيتحدّث)،
-                ولا هو فعلاً صنف مختلف (هيتضاف كصنف جديد).
-            </p>
             <div class="space-y-5">
                 {% for row in review_rows %}
                 <div class="border border-yellow-200 bg-yellow-50 rounded-lg p-4">
@@ -230,10 +226,6 @@
         <div class="h-1.5 w-full bg-primary-100 rounded-full overflow-hidden">
             <div class="h-full w-1/3 bg-primary-500 rounded-full animate-import-progress"></div>
         </div>
-        <p class="text-xs text-gray-500 mt-2 text-center">
-            جاري حفظ الأصناف في قاعدة البيانات — الصفحة هتنتقل تلقائيًا لما يخلص، من فضلك
-            <strong>متقفلش الصفحة ولا تضغط رجوع</strong> (الحفظ مش بيتوقف حتى لو خرجت، وده كان سبب اللبس قبل كده).
-        </p>
     </div>
 </form>
 

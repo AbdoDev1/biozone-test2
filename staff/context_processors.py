@@ -1,6 +1,6 @@
 from django.urls import reverse
 
-from .navigation import NAV_ITEMS
+from .navigation import NAV_ITEMS, NAV_SECTION_LABELS
 
 
 def staff_nav(request):
@@ -33,4 +33,4 @@ def staff_nav(request):
             'url': reverse(f"staff:{item['url_name']}"),
             'is_active': url_name in item['active_url_names'],
         })
-    return {'staff_nav_items': items}
+    return {'staff_nav_items': items, 'nav_sections_ordered': NAV_SECTION_LABELS}

@@ -103,13 +103,11 @@
 {% with url_name=request.resolver_match.url_name %}
 <!-- Topbar -->
 <header class="fixed top-0 right-0 left-0 h-14 bg-primary-600 shadow z-30 flex items-center px-4 gap-4">
-    {% if url_name != 'dashboard' %}
     <button @click="sidebarOpen = !sidebarOpen" class="text-primary-100 hover:text-white">
         <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"/>
         </svg>
     </button>
-    {% endif %}
     <a href="{% url 'staff:dashboard' %}" class="font-bold text-white text-lg hover:text-primary-100">Biozone</a>
     <div class="mr-auto flex items-center gap-4">
         {% include 'notifications/partials/bell.html' %}
@@ -121,20 +119,20 @@
     </div>
 </header>
 
-{% if url_name != 'dashboard' %}
 <!-- Backdrop (موبايل بس — بيقفل السايدبار لما تدوس برّاه) -->
 <div x-show="sidebarOpen"
      @click="sidebarOpen = false"
      x-cloak
      class="fixed inset-0 bg-black/30 z-10 md:hidden"></div>
 
-<!-- Sidebar — بيظهر في أي صفحة غير الرئيسية بس (التنقل من الرئيسية بقى
-     عن طريق شبكة أيقونات التطبيقات، زي Odoo — راجع staff/dashboard.html
-     وstaff/navigation.py لمصدر عناصر التنقل المشترك بين الاتنين). -->
+<!-- Sidebar — ثابت وظاهر في كل صفحات لوحة الموظف بما فيها الرئيسية،
+     مقسّم لأقسام وظيفية (نفس عناصر staff/navigation.py وصلاحياتها
+     بالظبط، مجمّعة بصريًا بس عن طريق فلتر nav_section). -->
 <aside class="fixed top-14 bottom-0 right-0 bg-white shadow-md z-20 transition-all duration-300 overflow-y-auto overflow-x-hidden"
        :class="sidebarOpen ? 'w-64 md:w-56' : 'w-0'">
-    <nav class="p-4 space-y-1 text-sm w-64 md:w-56">
+    <nav class="p-4 space-y-5 text-sm w-64 md:w-56">
         {% for item in staff_nav_items %}
+        {% if item.key == 'dashboard' %}
         <a href="{{ item.url }}"
            class="flex items-center gap-3 px-3 py-2 rounded-lg border-l-4
            {% if item.is_active %}bg-primary-50 text-primary-600 font-semibold border-primary-600{% else %}border-transparent hover:bg-primary-50 text-gray-700 hover:text-primary-600{% endif %}">
@@ -143,7 +141,31 @@
             </svg>
             {{ item.label }}
         </a>
+        {% endif %}
         {% endfor %}
+
+        {% for section_key, section_label in nav_sections_ordered %}
+        {% with section_items=staff_nav_items|nav_items_in_section:section_key %}
+        {% if section_items %}
+        <div>
+            <h3 class="px-3 mb-1 text-[11px] font-bold text-gray-400 tracking-wide">{{ section_label }}</h3>
+            <div class="space-y-1">
+                {% for item in section_items %}
+                <a href="{{ item.url }}"
+                   class="flex items-center gap-3 px-3 py-2 rounded-lg border-l-4
+                   {% if item.is_active %}bg-primary-50 text-primary-600 font-semibold border-primary-600{% else %}border-transparent hover:bg-primary-50 text-gray-700 hover:text-primary-600{% endif %}">
+                    <svg class="w-5 h-5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="1.8">
+                        {% for d in item.icon_path|icon_paths %}<path stroke-linecap="round" stroke-linejoin="round" d="{{ d }}"/>{% endfor %}
+                    </svg>
+                    {{ item.label }}
+                </a>
+                {% endfor %}
+            </div>
+        </div>
+        {% endif %}
+        {% endwith %}
+        {% endfor %}
+
         <hr class="my-2">
         <a href="/admin/" hx-boost="false" title="لوحة إدارة Django — لغير المطورين، افضل تستخدم صفحات النظام العادية بدل كده"
            class="flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-primary-50 text-gray-500 hover:text-primary-600 text-xs">
@@ -152,10 +174,9 @@
         </a>
     </nav>
 </aside>
-{% endif %}
 <!-- Main Content -->
 <main class="pt-14 transition-all duration-300"
-      {% if url_name != 'dashboard' %}:class="sidebarOpen ? 'md:mr-56' : 'mr-0'"{% endif %}>
+      :class="sidebarOpen ? 'md:mr-56' : 'mr-0'">
     {% if messages %}
     <div class="fixed top-16 left-1/2 -translate-x-1/2 z-50 space-y-2">
         {% for message in messages %}
