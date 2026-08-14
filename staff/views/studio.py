@@ -10,7 +10,7 @@ from django.views.decorators.http import require_POST
 from accounts.models import User
 from staff.permissions import perm_required
 from staff.utils import redirect_with_qs
-from studio.models import StudioFolder, StudioImage
+from studio.models import LandingPageSettings, StudioFolder, StudioImage
 from studio.validators import ALLOWED_IMAGE_EXTENSIONS, validate_image_size
 
 # نفس فكرة STAFF_LIST_PAGE_SIZE في staff/views/products/crud.py، بس بحجم
@@ -111,7 +111,44 @@ def studio(request):
         'usage_filter': usage_filter,
         'folder_filter': folder_filter,
         'folders': StudioFolder.objects.all(),
+        'landing_settings': LandingPageSettings.objects.select_related('hero_image', 'banner_1', 'banner_2').first(),
     })
+
+
+@perm_required('studio.change_studioimage')
+@require_POST
+def landing_settings_save(request):
+    """حفظ صور الـ Landing Page وروابط البانرات من داخل الاستوديو."""
+    def image_from_post(name):
+        value = request.POST.get(name, '').strip()
+        if not value:
+            return None
+        if not value.isdigit():
+            return None
+        return StudioImage.objects.filter(pk=int(value)).first()
+
+    hero_image = image_from_post('hero_image')
+    banner_1 = image_from_post('banner_1')
+    banner_2 = image_from_post('banner_2')
+    # لو المستخدم أرسل معرفًا غير موجود، نرفض الحفظ بدل ما نخفي خطأ اختيار الصورة.
+    for field_name, raw_value, image in (
+        ('hero_image', request.POST.get('hero_image', '').strip(), hero_image),
+        ('banner_1', request.POST.get('banner_1', '').strip(), banner_1),
+        ('banner_2', request.POST.get('banner_2', '').strip(), banner_2),
+    ):
+        if raw_value and (not raw_value.isdigit() or image is None):
+            messages.error(request, f'معرّف الصورة في {field_name} غير صالح.')
+            return redirect('staff:studio')
+
+    settings_obj, _ = LandingPageSettings.objects.get_or_create(pk=1)
+    settings_obj.hero_image = hero_image
+    settings_obj.banner_1 = banner_1
+    settings_obj.banner_1_link = request.POST.get('banner_1_link', '').strip()[:500]
+    settings_obj.banner_2 = banner_2
+    settings_obj.banner_2_link = request.POST.get('banner_2_link', '').strip()[:500]
+    settings_obj.save()
+    messages.success(request, 'تم تحديث صور وبنرات الصفحة الرئيسية.')
+    return redirect('staff:studio')
 
 
 @perm_required('studio.add_studioimage')

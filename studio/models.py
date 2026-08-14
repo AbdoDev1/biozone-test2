@@ -171,3 +171,31 @@ class StudioImage(models.Model):
             self.thumbnail.save(f'{base_name}_thumb{ext}', ContentFile(buffer.getvalue()), save=False)
         except Exception:
             pass
+
+
+class LandingPageSettings(models.Model):
+    """إعدادات الصور الاختيارية للـ Landing Page. سجل واحد فقط (id=1)."""
+    id = models.PositiveSmallIntegerField(primary_key=True, default=1, editable=False)
+    hero_image = models.ForeignKey(
+        StudioImage, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='landing_hero_settings', verbose_name='صورة الـ Hero',
+    )
+    banner_1 = models.ForeignKey(
+        StudioImage, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='landing_banner_1_settings', verbose_name='البانر الأول',
+    )
+    banner_1_link = models.CharField(max_length=500, blank=True, verbose_name='رابط البانر الأول')
+    banner_2 = models.ForeignKey(
+        StudioImage, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='landing_banner_2_settings', verbose_name='البانر الثاني',
+    )
+    banner_2_link = models.CharField(max_length=500, blank=True, verbose_name='رابط البانر الثاني')
+    updated_at = models.DateTimeField(auto_now=True, verbose_name='آخر تحديث')
+
+    class Meta:
+        verbose_name = 'إعدادات الصفحة الرئيسية'
+        verbose_name_plural = 'إعدادات الصفحة الرئيسية'
+
+    def save(self, *args, **kwargs):
+        self.pk = 1
+        super().save(*args, **kwargs)

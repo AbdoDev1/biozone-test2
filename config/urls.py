@@ -6,6 +6,7 @@ from django.shortcuts import redirect, render
 from django.http import HttpResponse
 from django.views.generic.base import RedirectView
 from store.views import store_home
+from config.home import home
 
 def healthz(request):
     """
@@ -15,16 +16,6 @@ def healthz(request):
     (الانتظار على الداتابيز أصلًا متكفّل بيه entrypoint.sh قبل ما gunicorn يشتغل).
     """
     return HttpResponse('ok')
-
-def home(request):
-    # الصفحة الرئيسية (/) هي "Biozone" نفسها — بتعرض محتوى المتجر مباشرة
-    # (استدعاء الفيو نفسه، مش إعادة توجيه) عشان تبقى صفحة حقيقية قابلة
-    # للفهرسة من جوجل مستقبلًا (تهيئة لـ SEO). لو عايز تفتح /store/ بنفسك
-    # لسه شغالة برضو (نفس الفيو)، بس الدومين الرئيسي دلوقتي بيعرض المحتوى
-    # فورًا من غير أي redirect.
-    if request.user.is_authenticated and request.user.role in ['ADMIN', 'WAREHOUSE']:
-        return redirect('staff:dashboard')
-    return store_home(request)
 
 class LegacyCatalogRedirect(RedirectView):
     """تحويل دائم (301) لأي رابط قديم كان بادئ بـ /catalog/ إلى /store/

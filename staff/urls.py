@@ -77,6 +77,7 @@ urlpatterns = [
     path('backup/run/', backup.backup_run_now, name='backup_run_now'),
     path('backup/error/', backup.backup_error_download, name='backup_error_download'),
     path('studio/', studio.studio, name='studio'),
+    path('studio/landing/save/', studio.landing_settings_save, name='landing_settings_save'),
     path('studio/picker/', studio.studio_picker, name='studio_picker'),
     path('studio/lookup/', studio.studio_image_lookup, name='studio_image_lookup'),
     path('studio/upload/', studio.studio_upload, name='studio_upload'),
