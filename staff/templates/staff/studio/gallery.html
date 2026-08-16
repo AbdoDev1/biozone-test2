@@ -1,6 +1,6 @@
 {% extends 'staff/base.html' %}
 {% load staff_ui %}
-{% block title %}الاستوديو — Biozone{% endblock %}
+{% block title %}الاستوديو — MG Pharmacy{% endblock %}
 {% block breadcrumbs %}
 <nav class="flex items-center text-sm text-gray-500 mb-4">
     {% crumb "الرئيسية" "staff:dashboard" %}
@@ -13,151 +13,71 @@
     <h1 class="text-2xl font-bold text-gray-800">الاستوديو</h1>
 </div>
 
-<div
-    x-data="{
-        pickerOpen: false,
-        activeSlot: '',
-        previewOpen: false,
-        previewUrl: '',
-        previewName: '',
-        values: {
-            hero_image: {% if landing_settings.hero_image %}{{ landing_settings.hero_image.pk }}{% else %}null{% endif %},
-            banner_1: {% if landing_settings.banner_1 %}{{ landing_settings.banner_1.pk }}{% else %}null{% endif %},
-            banner_2: {% if landing_settings.banner_2 %}{{ landing_settings.banner_2.pk }}{% else %}null{% endif %}
-        },
-        thumbs: {
-            hero_image: '{% if landing_settings.hero_image %}{{ landing_settings.hero_image.image.url|escapejs }}{% endif %}',
-            banner_1: '{% if landing_settings.banner_1 %}{{ landing_settings.banner_1.image.url|escapejs }}{% endif %}',
-            banner_2: '{% if landing_settings.banner_2 %}{{ landing_settings.banner_2.image.url|escapejs }}{% endif %}'
-        },
-        names: {
-            hero_image: '{% if landing_settings.hero_image %}{{ landing_settings.hero_image.original_filename|escapejs }}{% endif %}',
-            banner_1: '{% if landing_settings.banner_1 %}{{ landing_settings.banner_1.original_filename|escapejs }}{% endif %}',
-            banner_2: '{% if landing_settings.banner_2 %}{{ landing_settings.banner_2.original_filename|escapejs }}{% endif %}'
-        },
-        openPicker(slot) { this.activeSlot = slot; this.pickerOpen = true; },
-        pick(id, thumb, name) {
-            if (!this.activeSlot) return;
-            this.values[this.activeSlot] = id;
-            this.thumbs[this.activeSlot] = thumb;
-            this.names[this.activeSlot] = name;
-            this.pickerOpen = false;
-        },
-        clear(slot) {
-            this.values[slot] = null;
-            this.thumbs[slot] = '';
-            this.names[slot] = '';
-        },
-        setPreview(id, name, url) {
-            this.previewOpen = true;
-            this.previewName = name || ('صورة #' + id);
-            this.previewUrl = url || '';
-            if (!url) {
-                fetch('{% url "staff:studio_image_lookup" %}?id=' + id)
-                    .then(r => r.json())
-                    .then(data => { if (data.found) this.previewUrl = data.full_url; });
-            }
-        }
-    }"
-    class="bg-white rounded-2xl shadow-sm p-5 mb-6"
->
-    <div class="flex flex-wrap items-start justify-between gap-3 mb-5">
-        <div>
-            <h2 class="text-lg font-bold text-gray-800">صور وبنرات الصفحة الرئيسية</h2>
-            <p class="text-xs text-gray-500 mt-1">اختر الصور من الاستوديو نفسه. أي مكان بدون صورة يختفي من الصفحة، بينما الـ Hero يستخدم التصميم الافتراضي.</p>
-        </div>
-        <span class="text-[11px] bg-primary-50 text-primary-700 rounded-full px-3 py-1">Landing Page</span>
-    </div>
-
-    <form method="POST" action="{% url 'staff:landing_settings_save' %}" hx-boost="false">
-        {% csrf_token %}
-        <input type="hidden" name="hero_image" :value="values.hero_image || ''">
-        <input type="hidden" name="banner_1" :value="values.banner_1 || ''">
-        <input type="hidden" name="banner_2" :value="values.banner_2 || ''">
-
-        <div class="grid grid-cols-1 lg:grid-cols-3 gap-4">
-            <div class="border border-gray-200 rounded-xl p-4">
-                <div class="flex items-center justify-between mb-3"><h3 class="font-semibold text-sm text-gray-800">1. صورة Hero</h3><span class="text-[10px] text-gray-400">اختياري</span></div>
-                <button type="button" @click="openPicker('hero_image')" class="w-full aspect-[16/10] rounded-lg border border-gray-200 bg-gray-50 overflow-hidden block">
-                    <template x-if="thumbs.hero_image"><img :src="thumbs.hero_image" :alt="names.hero_image" class="w-full h-full object-cover"></template>
-                    <template x-if="!thumbs.hero_image"><span class="h-full flex items-center justify-center text-xs text-gray-400">الصورة الافتراضية ستظهر هنا عند عدم الاختيار</span></template>
-                </button>
-                <div class="mt-3 flex items-center justify-between"><span class="text-[11px] text-gray-500" x-text="values.hero_image ? 'الصورة #' + values.hero_image : 'لا توجد صورة مختارة'"></span><button type="button" x-show="values.hero_image" @click="clear('hero_image')" class="text-[11px] text-gray-400 hover:text-red-500">إزالة</button></div>
-                <button type="button" @click="openPicker('hero_image')" class="mt-2 text-primary-600 text-xs font-semibold hover:underline">اختيار من الاستوديو</button>
-            </div>
-
-            <div class="border border-gray-200 rounded-xl p-4">
-                <div class="flex items-center justify-between mb-3"><h3 class="font-semibold text-sm text-gray-800">2. Banner بعد التصنيفات</h3><span class="text-[10px] text-gray-400">اختياري</span></div>
-                <button type="button" @click="openPicker('banner_1')" class="w-full aspect-[16/7] rounded-lg border border-gray-200 bg-gray-50 overflow-hidden block">
-                    <template x-if="thumbs.banner_1"><img :src="thumbs.banner_1" :alt="names.banner_1" class="w-full h-full object-cover"></template>
-                    <template x-if="!thumbs.banner_1"><span class="h-full flex items-center justify-center text-xs text-gray-400">لن يظهر Banner إذا لم يتم اختيار صورة</span></template>
-                </button>
-                <div class="mt-3 flex items-center justify-between"><span class="text-[11px] text-gray-500" x-text="values.banner_1 ? 'الصورة #' + values.banner_1 : 'لا توجد صورة مختارة'"></span><button type="button" x-show="values.banner_1" @click="clear('banner_1')" class="text-[11px] text-gray-400 hover:text-red-500">إزالة</button></div>
-                <input name="banner_1_link" value="{{ landing_settings.banner_1_link|default:'' }}" maxlength="500" placeholder="رابط اختياري مثل /store/" class="mt-3 w-full border border-gray-200 rounded-lg px-3 py-2 text-xs outline-none focus:border-primary-400">
-            </div>
-
-            <div class="border border-gray-200 rounded-xl p-4">
-                <div class="flex items-center justify-between mb-3"><h3 class="font-semibold text-sm text-gray-800">3. Banner قبل CTA</h3><span class="text-[10px] text-gray-400">اختياري</span></div>
-                <button type="button" @click="openPicker('banner_2')" class="w-full aspect-[16/7] rounded-lg border border-gray-200 bg-gray-50 overflow-hidden block">
-                    <template x-if="thumbs.banner_2"><img :src="thumbs.banner_2" :alt="names.banner_2" class="w-full h-full object-cover"></template>
-                    <template x-if="!thumbs.banner_2"><span class="h-full flex items-center justify-center text-xs text-gray-400">لن يظهر Banner إذا لم يتم اختيار صورة</span></template>
-                </button>
-                <div class="mt-3 flex items-center justify-between"><span class="text-[11px] text-gray-500" x-text="values.banner_2 ? 'الصورة #' + values.banner_2 : 'لا توجد صورة مختارة'"></span><button type="button" x-show="values.banner_2" @click="clear('banner_2')" class="text-[11px] text-gray-400 hover:text-red-500">إزالة</button></div>
-                <input name="banner_2_link" value="{{ landing_settings.banner_2_link|default:'' }}" maxlength="500" placeholder="رابط اختياري مثل /store/" class="mt-3 w-full border border-gray-200 rounded-lg px-3 py-2 text-xs outline-none focus:border-primary-400">
-            </div>
-        </div>
-
-        <div class="mt-5 flex justify-end"><button type="submit" class="bg-primary-600 hover:bg-primary-700 text-white text-sm font-semibold px-5 py-2.5 rounded-lg transition">حفظ إعدادات الصفحة الرئيسية</button></div>
-    </form>
-
-    <div x-show="pickerOpen" x-cloak x-transition class="fixed inset-0 z-[70] bg-black/40 flex items-center justify-center p-4" @keydown.escape.window="pickerOpen = false">
-        <div @click.outside="pickerOpen = false" class="bg-white rounded-2xl shadow-xl w-full max-w-3xl max-h-[85vh] flex flex-col overflow-hidden">
-            <div class="p-4 border-b border-gray-100 flex items-center justify-between"><h3 class="font-bold text-gray-800">اختر صورة من الاستوديو</h3><button type="button" @click="pickerOpen = false" class="text-gray-400 text-xl">&times;</button></div>
-            <div class="p-4 border-b border-gray-100"><input type="text" placeholder="بحث بالاسم..." autocomplete="off" class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm outline-none focus:border-primary-400" hx-get="{% url 'staff:studio_picker' %}" hx-trigger="keyup changed delay:300ms" hx-target="#landing-picker-results" hx-include="this" hx-boost="false" name="q"></div>
-            <div id="landing-picker-results" class="p-4 overflow-y-auto flex-1" hx-get="{% url 'staff:studio_picker' %}" hx-trigger="load" hx-swap="innerHTML" hx-boost="false"><p class="text-xs text-gray-400 text-center py-8">جارِ التحميل...</p></div>
-        </div>
-    </div>
-    <div x-show="previewOpen" x-cloak class="fixed inset-0 z-[80] bg-black/70 flex items-center justify-center p-4" @click.self="previewOpen=false" @keydown.escape.window="previewOpen=false">
-        <div class="max-w-3xl w-full flex flex-col items-center gap-3"><div class="bg-white rounded-xl p-2 max-h-[78vh] overflow-hidden"><img :src="previewUrl" :alt="previewName" class="max-h-[74vh] max-w-full object-contain"></div><div class="bg-white rounded-lg px-4 py-2 text-xs text-gray-600" x-text="previewName"></div><button type="button" @click="previewOpen=false" class="text-white text-sm">إغلاق</button></div>
-    </div>
-</div>
-
 {% if perms.studio.add_studioimage %}
 <!-- منطقة رفع بالسحب أو الاختيار — كل ملف بياخد صف StudioImage منفصل
      (بلا فحص تكرار اسم/محتوى، راجع قرار رقم 5 و6 في STUDIO_PLAN.md).
-     hx-boost="false" ضروري هنا زي أي فورم رفع ملف حقيقي في الصفحة —
-     htmx مش مصمم يبعت multipart/form-data بنفس الطريقة العادية. -->
+     الرفع بيتم عن طريق XMLHttpRequest يدوي (مش form.submit() عادي) عشان
+     نقدر نعرض progress bar حقيقي وقت الرفع — الفورم العادي كان بيقفل
+     الصفحة كاملة بلا أي مؤشر تقدّم لحد ما الريكوست يخلص ويعمل redirect،
+     فرفع دفعة صور كبيرة (خصوصًا من الموبايل بسرعة إنترنت أبطأ) كان
+     حاسس إنه "معلّق"/بطيء بلا أي تغذية راجعة، حتى لو الرفع نفسه ماشي
+     عادي في الخلفية. الـ endpoint (staff:studio_upload) نفسه ماتغيرش. -->
 <div
-    x-data="{ dragging: false }"
+    x-data="{
+        dragging: false,
+        uploading: false,
+        progress: 0,
+        fileCount: 0,
+        uploadFiles(fileList) {
+            if (!fileList || !fileList.length) return;
+            this.fileCount = fileList.length;
+            this.uploading = true;
+            this.progress = 0;
+            const formData = new FormData();
+            formData.append('csrfmiddlewaretoken', '{{ csrf_token }}');
+            for (const f of fileList) formData.append('images', f);
+            const xhr = new XMLHttpRequest();
+            xhr.open('POST', '{% url 'staff:studio_upload' %}');
+            xhr.upload.addEventListener('progress', (e) => {
+                if (e.lengthComputable) this.progress = Math.round((e.loaded / e.total) * 100);
+            });
+            const finish = () => { window.location.reload(); };
+            xhr.onload = finish;
+            xhr.onerror = finish;
+            xhr.send(formData);
+        }
+    }"
     @dragover.prevent="dragging = true"
     @dragleave.prevent="dragging = false"
-    @drop.prevent="dragging = false; $refs.studioFileInput.files = $event.dataTransfer.files; $refs.studioUploadForm.requestSubmit()"
+    @drop.prevent="dragging = false; if (!uploading) uploadFiles($event.dataTransfer.files)"
     :class="dragging ? 'border-primary-500 bg-primary-50' : 'border-gray-300 bg-white'"
-    class="border-2 border-dashed rounded-2xl p-10 text-center transition mb-6"
+    class="relative border-2 border-dashed rounded-2xl p-10 text-center transition mb-6"
 >
-    <form x-ref="studioUploadForm" method="POST" action="{% url 'staff:studio_upload' %}"
-          enctype="multipart/form-data" hx-boost="false">
-        {% csrf_token %}
-        <input x-ref="studioFileInput" type="file" name="images" multiple
-               accept="image/jpeg,image/png,image/webp" class="hidden"
-               @change="$refs.studioUploadForm.requestSubmit()">
-        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
-             class="w-10 h-10 mx-auto mb-3 text-gray-400">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5"
-                  d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5m-13.5-9L12 3m0 0l4.5 4.5M12 3v13.5" />
-        </svg>
-        <button type="button" @click="$refs.studioFileInput.click()"
-                class="text-primary-600 font-semibold hover:underline">اختر صورًا</button>
-        <span class="text-gray-400"> أو اسحبها وأفلتها هنا</span>
-        <p class="text-xs text-gray-400 mt-2">jpg, jpeg, png, webp — حتى 5 ميجا لكل صورة</p>
-    </form>
+    <div x-show="uploading" x-cloak class="absolute inset-0 z-10 bg-white/95 rounded-2xl flex flex-col items-center justify-center gap-3 px-6">
+        <div class="w-full max-w-xs bg-gray-100 rounded-full h-2 overflow-hidden">
+            <div class="bg-primary-600 h-2 transition-all duration-150" :style="`width: ${progress}%`"></div>
+        </div>
+        <p class="text-xs text-gray-500" x-text="`جارِ رفع ${fileCount} صورة... ${progress}%`"></p>
+    </div>
+    <input x-ref="studioFileInput" type="file" name="images" multiple
+           accept="image/jpeg,image/png,image/webp" class="hidden"
+           @change="uploadFiles($refs.studioFileInput.files)">
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+         class="w-10 h-10 mx-auto mb-3 text-gray-400">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5"
+              d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5m-13.5-9L12 3m0 0l4.5 4.5M12 3v13.5" />
+    </svg>
+    <button type="button" @click="$refs.studioFileInput.click()" :disabled="uploading"
+            class="text-primary-600 font-semibold hover:underline disabled:opacity-50">اختر صورًا</button>
+    <span class="text-gray-400"> أو اسحبها وأفلتها هنا</span>
+    <p class="text-xs text-gray-400 mt-2">jpg, jpeg, png, webp — حتى 5 ميجا لكل صورة</p>
 </div>
 {% endif %}
 
 
-<!-- فلتر الاستخدام (المرحلة 4) — بيعتمد على usage_is_used المحسوبة سلفًا
-     في الـ view (StudioImage.get_usage()، بتاخد في الاعتبار المنتجات
-     وكمان استخدام الصورة في صور/بانرات الصفحة الرئيسية).
+<!-- فلتر الاستخدام (المرحلة 4) — لسه الكل هيظهر "غير مستخدمة" مؤقتًا لحد
+     ما المرحلة 8 تربط الصور فعليًا بالمنتجات/الأقسام؛ راجع تعليق
+     StudioImage.get_usage() و staff/views/studio.py.
      فلتر المجلد (المرحلة 6) بجنبه — عمود FK حقيقي، فبيترشّح على مستوى
      الـ queryset في الـ view (مش زي فلتر الاستخدام). -->
 <form method="GET" hx-boost="false" class="bg-white rounded-2xl shadow-sm p-4 mb-6 flex flex-wrap items-end gap-3">
@@ -252,13 +172,10 @@
      كل checkbox في الشبكة مربوط بيه عن طريق form="..." بدل ما نحوّط
      الشبكة كلها في <form> (يمنع تعارض مع فورم الحذف الفردي جوه كل كارت).
 
-     usage: خريطة id -> [عدد المنتجات, عدد الأقسام, تسميات استخدام الـ
-     Landing] لكل صورة في الصفحة الحالية بس (محسوبة سيرفر-سايد فوق في
-     الـ view) — بتُستخدم لبناء رسالة data-confirm الديناميكية لزرار
-     "حذف المحدد" حسب اللي فعليًا متحدد دلوقتي، بلا أي طلب إضافي للسيرفر
-     وقت الضغط على الزرار. تحذير استخدام الـ Landing بيتبني كجملة منفصلة
-     عن جملة المنتجات/الأقسام، نفس منطق _usage_confirm_message() للحذف
-     الفردي.
+     usage: خريطة id -> [عدد المنتجات, عدد الأقسام] لكل صورة في الصفحة
+     الحالية بس (محسوبة سيرفر-سايد فوق في الـ view) — بتُستخدم لبناء
+     رسالة data-confirm الديناميكية لزرار "حذف المحدد" حسب اللي فعليًا
+     متحدد دلوقتي، بلا أي طلب إضافي للسيرفر وقت الضغط على الزرار.
 
      gridSize (المرحلة 7) — تفصيلة واجهة بحتة، بلا أي تغيير في قاعدة
      البيانات أو الـ view: 'small' (الافتراضي، الشبكة الكثيفة الحالية)
@@ -275,34 +192,19 @@
             this.gridSize = size;
             localStorage.setItem('studioGridSize', size);
         },
-        {% comment %}
-        ملحوظة (أغسطس 2026): كان فيه عنصر تالت هنا (عدد الأقسام المرتبطة)
-        — اتشال مع شيل Category.image بالكامل (القسم مالوش عرض بصري في
-        المتجر فعليًا)، فمصفوفة usage بقت عنصرين بس: [منتجات، تسميات
-        الـ Landing]، بدل تلاتة.
-        {% endcomment %}
-        usage: { {% for image in page_obj %}{{ image.pk }}: [{{ image.usage_products_count }}, {{ image.usage_landing_labels_json }}]{% if not forloop.last %}, {% endif %}{% endfor %} },
+        usage: { {% for image in page_obj %}{{ image.pk }}: [{{ image.usage_products_count }}, {{ image.usage_categories_count }}]{% if not forloop.last %}, {% endif %}{% endfor %} },
         confirmMessage() {
-            let products = 0, usedCount = 0, landingLabels = [];
+            let products = 0, categories = 0, usedCount = 0;
             this.selected.forEach(id => {
                 const u = this.usage[id];
                 if (!u) return;
-                products += u[0];
-                if (u[0] || u[1].length) usedCount++;
-                landingLabels = landingLabels.concat(u[1]);
+                products += u[0]; categories += u[1];
+                if (u[0] || u[1]) usedCount++;
             });
             const n = this.selected.length;
             if (!usedCount) return n === 1 ? 'متأكد من حذف هذه الصورة؟' : `متأكد من حذف ${n} صورة؟`;
             const suffix = n === 1 ? 'متأكد من الحذف؟' : `متأكد من حذف ${n} صورة؟`;
-            let sentences = [];
-            if (products) {
-                sentences.push(`${usedCount} من الصور المحددة مستخدمة في ${products} منتج، وسيتم حذفها منهم أيضًا.`);
-            }
-            if (landingLabels.length) {
-                const uniqueLabels = [...new Set(landingLabels)];
-                sentences.push(`من ضمن الصور المحددة صور مستخدمة كـ ${uniqueLabels.join(' و')} بالصفحة الرئيسية، وسيختفي هذا القسم عند الحذف.`);
-            }
-            return sentences.join(' ') + ' ' + suffix;
+            return `${usedCount} من الصور المحددة مستخدمة في ${products} منتج و${categories} قسم، وسيتم حذفها منهم أيضًا. ${suffix}`;
         },
         /* معاينة بالحجم الحقيقي + المعرّف تحتها (أغسطس 2026) — نفس فكرة
            المعاينة في منتقي صورة المنتج (image_picker.html)، هنا مباشرة
@@ -438,7 +340,7 @@
             <p class="px-2 -mt-1 pb-1 text-[10px] text-gray-400 truncate">📁 {{ image.folder.name }}</p>
             {% endif %}
             <div class="px-2 pb-2 flex items-center justify-between gap-1">
-                {% if image.usage_is_used %}
+                {% if image.is_used %}
                 {% status_badge "مستخدمة" color="green" %}
                 {% else %}
                 {% status_badge "غير مستخدمة" color="gray" %}
