@@ -81,6 +81,10 @@ PERMISSION_SECTIONS = [
             ('products', 'category', 'add', 'إضافة قسم'),
             ('products', 'category', 'change', 'تعديل قسم'),
             ('products', 'category', 'delete', 'حذف / تعطيل قسم'),
+            ('products', 'company', 'view', 'عرض الشركات المصنّعة'),
+            ('products', 'company', 'add', 'إضافة شركة مصنّعة'),
+            ('products', 'company', 'change', 'تعديل شركة مصنّعة'),
+            ('products', 'company', 'delete', 'حذف / تعطيل شركة مصنّعة'),
         ],
     },
     {

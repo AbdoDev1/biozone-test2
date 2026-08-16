@@ -3,7 +3,7 @@ from django.core.paginator import Paginator
 from django.http import HttpResponse
 from django.shortcuts import render, get_object_or_404
 from django.template.loader import render_to_string
-from products.models import Category, Product, ProductUnit
+from products.models import Category, Company, Product, ProductUnit
 from products.matching import normalize_name
 from products.new_arrivals import new_arrival_filter, NEW_ARRIVALS_WINDOW_DAYS
 from inventory.models import Inventory
@@ -58,6 +58,11 @@ def _apply_filters(products, request):
     """
     بحث + فلترة (قسم/شركة مصنعة) مشتركة بين المتجر العادي وصفحة الوارد،
     عشان صفحة الوارد تدعم نفس البحث والفلاتر بالظبط (كانت ناقصة قبل كده).
+
+    selected_manufacturer: بقى slug (زي selected_category بالظبط) بدل
+    النص الخام القديم — من أغسطس 2026، Product.manufacturer بقى
+    ForeignKey على Company (راجع Company docstring في products/models.py)،
+    فالفلتر بيترشّح على manufacturer__slug مش على نص حر.
     """
     selected_category = request.GET.get('category', '')
     selected_manufacturer = request.GET.get('manufacturer', '')
@@ -66,7 +71,7 @@ def _apply_filters(products, request):
     if selected_category:
         products = products.filter(category__slug=selected_category)
     if selected_manufacturer:
-        products = products.filter(manufacturer=selected_manufacturer)
+        products = products.filter(manufacturer__slug=selected_manufacturer)
     if search_q:
         normalized_q = normalize_name(search_q)
         products = products.filter(
@@ -79,11 +84,14 @@ def _apply_filters(products, request):
 
 
 def _manufacturers_list():
+    # كانت .values_list('manufacturer', flat=True).distinct() على نص خام
+    # — بيرجّع أي اختلاف كتابة بسيط كشركة منفصلة (عدد غير منطقي في
+    # الفلتر). دلوقتي Company موديل مستقل، فمفيش داعي لـ distinct() أصلاً؛
+    # كل شركة نشطة ليها منتج نشط واحد على الأقل بترجع مرة واحدة بالظبط.
     return (
-        Product.objects.filter(is_active=True)
-        .exclude(manufacturer='')
-        .values_list('manufacturer', flat=True)
+        Company.objects.filter(is_active=True, products__is_active=True)
         .distinct()
+        .order_by('name')
     )
 
 
@@ -162,7 +170,7 @@ def new_arrivals(request):
 def product_detail(request, pk):
     product = get_object_or_404(
         Product.objects.filter(is_active=True)
-        .select_related('category', 'image')
+        .select_related('category', 'image', 'manufacturer')
         .prefetch_related(
             'units__discounts',
             'similar_products__units__discounts', 'similar_products__category', 'similar_products__inventory', 'similar_products__image',

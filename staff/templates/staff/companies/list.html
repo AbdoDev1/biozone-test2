@@ -1,28 +1,28 @@
 {% extends 'staff/base.html' %}
 {% load staff_ui %}
-{% block title %}الأقسام — Biozone{% endblock %}
+{% block title %}الشركات المصنّعة — Biozone{% endblock %}
 {% block breadcrumbs %}
 <nav class="flex items-center text-sm text-gray-500 mb-4">
     {% crumb "الرئيسية" "staff:dashboard" %}
-    {% crumb "الأقسام" %}
+    {% crumb "الشركات المصنّعة" %}
 </nav>
 {% endblock %}
 {% block content %}
 
 <div class="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3 mb-6">
-    <h1 class="text-2xl font-bold text-gray-800">الأقسام</h1>
-    {% if perms.products.add_category %}
-    {% url 'staff:category_add' as category_add_url %}
-    {% btn "+ إضافة قسم" href=category_add_url variant="success" %}
+    <h1 class="text-2xl font-bold text-gray-800">الشركات المصنّعة</h1>
+    {% if perms.products.add_company %}
+    {% url 'staff:company_add' as company_add_url %}
+    {% btn "+ إضافة شركة" href=company_add_url variant="success" %}
     {% endif %}
 </div>
 
 <!-- بحث -->
 <form method="GET" hx-boost="false" class="bg-white rounded-2xl shadow-sm p-4 mb-6 flex gap-3 items-end">
     <div class="flex-1">
-        <label for="cat_search" class="text-xs text-gray-500 mb-1 block">بحث</label>
-        <input type="text" name="q" id="cat_search" value="{{ search_q }}"
-               placeholder="اسم القسم..."
+        <label for="company_search" class="text-xs text-gray-500 mb-1 block">بحث</label>
+        <input type="text" name="q" id="company_search" value="{{ search_q }}"
+               placeholder="اسم الشركة..."
                class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm outline-none focus:border-primary-400">
     </div>
     <button type="submit"
@@ -31,27 +31,27 @@
     </button>
 </form>
 
-<!-- جدول الأقسام -->
+<!-- جدول الشركات -->
 <div class="bg-white rounded-2xl shadow-sm overflow-x-auto">
     <table class="w-full text-sm min-w-[480px]">
         <thead class="bg-gray-50 text-gray-600 border-b border-gray-200">
             <tr>
-                <th class="px-4 py-3 text-right">القسم</th>
+                <th class="px-4 py-3 text-right">الشركة</th>
                 <th class="px-4 py-3 text-right">عدد الأصناف</th>
                 <th class="px-4 py-3 text-right">الحالة</th>
                 <th class="px-4 py-3 text-right">إجراءات</th>
             </tr>
         </thead>
         <tbody class="divide-y divide-gray-100">
-            {% for category in categories %}
+            {% for company in companies %}
             <tr class="hover:bg-gray-50 transition">
                 <td class="px-4 py-3">
-                    <p class="font-medium text-gray-800">{{ category.name }}</p>
-                    <p class="text-xs text-gray-400 num">{{ category.slug }}</p>
+                    <p class="font-medium text-gray-800">{{ company.name }}</p>
+                    <p class="text-xs text-gray-400 num">{{ company.slug }}</p>
                 </td>
-                <td class="px-4 py-3 text-gray-600">{{ category.products_count }}</td>
+                <td class="px-4 py-3 text-gray-600">{{ company.products_count }}</td>
                 <td class="px-4 py-3">
-                    {% if category.is_active %}
+                    {% if company.is_active %}
                         <span class="bg-green-100 text-green-700 text-xs px-2 py-1 rounded-full">نشط</span>
                     {% else %}
                         <span class="bg-red-100 text-red-600 text-xs px-2 py-1 rounded-full">معطل</span>
@@ -59,14 +59,14 @@
                 </td>
                 <td class="px-4 py-3">
                     <div class="flex gap-2">
-                        {% if perms.products.change_category %}
-                        <a href="{% url 'staff:category_edit' category.pk %}"
+                        {% if perms.products.change_company %}
+                        <a href="{% url 'staff:company_edit' company.pk %}"
                            class="bg-primary-50 hover:bg-primary-100 text-primary-600 text-xs px-3 py-1 rounded-lg transition">
                             تعديل
                         </a>
                         {% endif %}
-                        {% if perms.products.delete_category %}
-                        <a href="{% url 'staff:category_delete' category.pk %}"
+                        {% if perms.products.delete_company %}
+                        <a href="{% url 'staff:company_delete' company.pk %}"
                            class="bg-red-50 hover:bg-red-100 text-red-600 text-xs px-3 py-1 rounded-lg transition">
                             حذف
                         </a>
@@ -76,7 +76,7 @@
             </tr>
             {% empty %}
             <tr>
-                <td colspan="4" class="text-center py-10 text-gray-400">لا توجد أقسام</td>
+                <td colspan="4" class="text-center py-10 text-gray-400">لا توجد شركات</td>
             </tr>
             {% endfor %}
         </tbody>
@@ -97,6 +97,6 @@
 </div>
 {% endif %}
 
-<p class="text-xs text-gray-400 mt-3">إجمالي: {{ total_categories }} قسم</p>
+<p class="text-xs text-gray-400 mt-3">إجمالي: {{ total_companies }} شركة</p>
 
 {% endblock %}

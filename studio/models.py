@@ -102,27 +102,57 @@ class StudioImage(models.Model):
     def __str__(self):
         return self.original_filename or f'صورة استوديو #{self.pk}'
 
-    def get_usage(self):
+    def get_usage(self, landing_settings=None):
         """
-        بترجع (منتجات، أقسام) الصورة دي مربوطة بيها حاليًا.
+        بترجع (منتجات، تسميات Landing) الصورة دي مربوطة بيها حاليًا.
 
-        المرحلة 8 (STUDIO_PLAN.md) نفّذت الربط الفعلي: Product.image
-        وCategory.image بقوا ForeignKey على StudioImage، فالعلاقة العكسية
-        بقت متاحة فعليًا. related_name='products'/'categories' اتحددوا
-        صراحة على الحقلين (بدل الاعتماد على product_set/category_set
-        الافتراضي المذكور كمثال في نص الخطة الأصلي) عشان يتماشوا مع باقي
-        أسماء العلاقات في المشروع (زي category.products، folder.images).
+        المرحلة 8 (STUDIO_PLAN.md) نفّذت الربط الفعلي: Product.image بقى
+        ForeignKey على StudioImage، فالعلاقة العكسية بقت متاحة فعليًا.
+        related_name='products' اتحدد صراحة على الحقل (بدل الاعتماد على
+        product_set الافتراضي المذكور كمثال في نص الخطة الأصلي) عشان
+        يتماشى مع باقي أسماء العلاقات في المشروع (زي category.products،
+        folder.images).
+
+        ملحوظة (أغسطس 2026): كان فيه عنصر ثاني هنا (categories) لأن
+        Category.image كانت موجودة — اتشالت بالكامل (القسم مالوش عرض
+        بصري فعلي في المتجر أصلاً)، فـ get_usage() رجعت لعنصرين بس زي ما
+        كانت قبل المرحلة 8.
+
+        العنصر التاني (landing_labels) اتضاف بعد إضافة LandingPageSettings:
+        قائمة نصوص عربية بسيطة (مش أرقام) بتوصف أي مكان من صور/بانرات
+        الصفحة الرئيسية الصورة دي متحطة فيه حاليًا — مقارنة مباشرة بين
+        hero_image_id/banner_1_id/banner_2_id في LandingPageSettings و
+        self.pk، مش علاقة عكسية (LandingPageSettings سجل واحد بس، مفيش
+        داعي لـ related manager كامل).
+
+        landing_settings باراميتر اختياري: بيتقبل من برّا (view الاستوديو)
+        عشان يتجاب مرة واحدة فوق ويتبعت لكل صورة في حلقة الجاليري، بدل ما
+        كل صورة تعمل استعلام LandingPageSettings منفصل بنفسها (لحد 40
+        استعلام زيادة لكل صفحة). لو ماتحطش (استخدام فردي، is_used، أو
+        الاختبارات)، بيتجاب هنا بنفسه.
 
         فلتر مستخدمة/غير مستخدمة (المرحلة 4) وشاشة الحذف (المرحلة 5)
-        بيستخدموا الميثود دي زي ما هي، بلا أي تعديل إضافي مطلوب منهم —
-        الآلية كانت جاهزة بالكامل من وقتها زي ما كان متوقع.
+        بيستخدموا الميثود دي (عن طريق is_used تحت، أو مباشرة من الـ view)
+        وبقوا بياخدوا الـ landing labels في الاعتبار كمان.
         """
-        return list(self.products.all()), list(self.categories.all())
+        if landing_settings is None:
+            landing_settings = LandingPageSettings.objects.first()
+
+        landing_labels = []
+        if landing_settings is not None:
+            if landing_settings.hero_image_id == self.pk:
+                landing_labels.append('صورة الـ Hero بالصفحة الرئيسية')
+            if landing_settings.banner_1_id == self.pk:
+                landing_labels.append('البانر الأول بالصفحة الرئيسية')
+            if landing_settings.banner_2_id == self.pk:
+                landing_labels.append('البانر الثاني بالصفحة الرئيسية')
+
+        return list(self.products.all()), landing_labels
 
     @property
     def is_used(self):
-        products, categories = self.get_usage()
-        return bool(products) or bool(categories)
+        products, landing_labels = self.get_usage()
+        return bool(products) or bool(landing_labels)
 
     def save(self, *args, **kwargs):
         # تسجيل اسم الملف الأصلي تلقائيًا لو مش متحدد صراحة — يفيد وقت

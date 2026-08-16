@@ -50,7 +50,15 @@ class RegisterForm(UserCreationForm):
     account_type = forms.ModelChoiceField(
         queryset=AccountType.objects.filter(is_active=True),
         label='نوع الحساب',
-        empty_label=None,
+        # كان empty_label=None (بلا خيار فاضي) بهدف إجبار العميل يختار
+        # نوع حساب فعلي — لكن ده كان بيرجع بنتيجة عكسية تمامًا: بلا خيار
+        # فاضي في الأول، والـ template (accounts/register.html) عنده خطأ
+        # منفصل بيمنع أي option من أخد selected أصلًا (راجع تعليق الـ
+        # template)، فالمتصفح كان بيعرض أول نوع أبجديًا كـ"مختار" افتراضيًا
+        # بلا ما العميل يلمسه خالص — أي عميل مش منتبه بيتسجل بنوع حساب
+        # غلط تمامًا بدون أي تحذير. رجّعنا خيار فاضي واضح بدل None، عشان
+        # الفورم يرفض الإرسال فعليًا لو العميل ماضغطش يختار نوع حقيقي.
+        empty_label='اختر نوع الحساب...',
     )
     address = forms.CharField(widget=forms.Textarea(attrs={'rows': 3}), label='العنوان')
     phone = forms.CharField(max_length=20, label='رقم الهاتف')

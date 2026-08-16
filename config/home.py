@@ -23,7 +23,7 @@ def home(request):
 
     User = get_user_model()
     client_count = User.objects.filter(role='CLIENT', is_active=True).count()
-    manufacturer_count = active_products.exclude(manufacturer='').values('manufacturer').distinct().count()
+    manufacturer_count = active_products.exclude(manufacturer__isnull=True).values('manufacturer').distinct().count()
 
     context = {
         'landing_settings': settings_obj,

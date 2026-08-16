@@ -18,7 +18,7 @@ from products.models import Category, Product
 from products.services import import_export as svc
 from products.services.import_export import REQUIRED_IMPORT_HEADERS
 
-from .models import StudioFolder, StudioImage
+from .models import LandingPageSettings, StudioFolder, StudioImage
 
 _MEDIA_ROOT = tempfile.mkdtemp(prefix='studio_tests_media_')
 
@@ -74,9 +74,9 @@ class StudioImageModelTestCase(TestCase):
     def test_new_image_is_unused_by_default(self):
         image = StudioImage.objects.create(image=make_image_file())
         self.assertFalse(image.is_used)
-        products, categories = image.get_usage()
+        products, landing_labels = image.get_usage()
         self.assertEqual(products, [])
-        self.assertEqual(categories, [])
+        self.assertEqual(landing_labels, [])
 
     def test_second_save_does_not_regenerate_thumbnail(self):
         """save() لاحق (زي تعديل uploaded_by) ميعملش thumbnail تاني —
@@ -110,16 +110,9 @@ class StudioImageUsageAndDeletionTestCase(TestCase):
 
     def test_image_linked_to_product_marked_as_used(self):
         product = self._make_product()
-        products, categories = self.image.get_usage()
+        products, landing_labels = self.image.get_usage()
         self.assertEqual(products, [product])
-        self.assertEqual(categories, [])
-        self.assertTrue(self.image.is_used)
-
-    def test_image_linked_to_category_marked_as_used(self):
-        self.category.image = self.image
-        self.category.save(update_fields=['image'])
-        products, categories = self.image.get_usage()
-        self.assertEqual(categories, [self.category])
+        self.assertEqual(landing_labels, [])
         self.assertTrue(self.image.is_used)
 
     def test_same_image_linked_to_multiple_products(self):
@@ -129,6 +122,38 @@ class StudioImageUsageAndDeletionTestCase(TestCase):
         products, _ = self.image.get_usage()
         self.assertCountEqual(products, [first, second])
 
+    def test_image_used_as_landing_hero_marked_as_used(self):
+        """صورة مربوطة بـ hero_image بس (بلا أي منتج) لازم تتحسب
+        "مستخدمة" برضه — is_used بقت بتاخد الـ landing labels في الاعتبار."""
+        LandingPageSettings.objects.create(pk=1, hero_image=self.image)
+        products, landing_labels = self.image.get_usage()
+        self.assertEqual(products, [])
+        self.assertEqual(landing_labels, ['صورة الـ Hero بالصفحة الرئيسية'])
+        self.assertTrue(self.image.is_used)
+
+    def test_image_used_as_landing_banner_marked_as_used(self):
+        LandingPageSettings.objects.create(pk=1, banner_1=self.image)
+        products, landing_labels = self.image.get_usage()
+        self.assertEqual(landing_labels, ['البانر الأول بالصفحة الرئيسية'])
+        self.assertTrue(self.image.is_used)
+
+    def test_image_not_linked_to_landing_stays_unused(self):
+        """صورة تانية غير مرتبطة بالـ Landing تفضل "غير مستخدمة"، حتى لو
+        فيه سجل LandingPageSettings موجود ومربوط بصورة تانية."""
+        other_image = StudioImage.objects.create(image=make_image_file(name='other.jpg'))
+        LandingPageSettings.objects.create(pk=1, hero_image=other_image)
+        products, landing_labels = self.image.get_usage()
+        self.assertEqual(landing_labels, [])
+        self.assertFalse(self.image.is_used)
+
+    def test_deleting_image_used_as_landing_hero_sets_field_to_null(self):
+        """حذف صورة مربوطة بـ Hero مش ممنوع — الحقل بيتصفّر بس (SET_NULL)
+        بلا ما يفشل الحذف."""
+        settings_obj = LandingPageSettings.objects.create(pk=1, hero_image=self.image)
+        self.image.delete()
+        settings_obj.refresh_from_db()
+        self.assertIsNone(settings_obj.hero_image_id)
+
     def test_deleting_image_sets_product_image_to_null(self):
         """حذف صورة مربوطة بمنتج مش ممنوع — الربط بيختفي بس (SET_NULL،
         قرار رقم 8) بلا ما يفشل الحذف أو يمسح المنتج."""
@@ -137,13 +162,6 @@ class StudioImageUsageAndDeletionTestCase(TestCase):
         product.refresh_from_db()
         self.assertIsNone(product.image_id)
         self.assertTrue(Product.objects.filter(pk=product.pk).exists())
-
-    def test_deleting_image_sets_category_image_to_null(self):
-        self.category.image = self.image
-        self.category.save(update_fields=['image'])
-        self.image.delete()
-        self.category.refresh_from_db()
-        self.assertIsNone(self.category.image_id)
 
     def test_deleting_folder_does_not_delete_images_inside(self):
         folder = StudioFolder.objects.create(name='منتجات جديدة')
@@ -200,6 +218,24 @@ class StudioGalleryViewTestCase(TestCase):
         unused_ids = {img.pk for img in unused_response.context['images']}
         self.assertIn(unused_image.pk, unused_ids)
         self.assertNotIn(used_image.pk, unused_ids)
+
+    def test_landing_hero_image_appears_under_used_filter(self):
+        """صورة الـ Hero بلا أي منتج/قسم لازم تظهر في فلتر "مستخدمة"، مش
+        "غير مستخدمة" — وتحمل رسالة تأكيد حذف فيها تحذير عن الصفحة الرئيسية."""
+        hero_image = StudioImage.objects.create(image=make_image_file(name='hero.jpg'))
+        LandingPageSettings.objects.create(pk=1, hero_image=hero_image)
+        self.client.force_login(self.admin)
+
+        used_response = self.client.get(reverse('staff:studio'), {'usage': 'used'})
+        used_ids = {img.pk for img in used_response.context['images']}
+        self.assertIn(hero_image.pk, used_ids)
+
+        unused_response = self.client.get(reverse('staff:studio'), {'usage': 'unused'})
+        unused_ids = {img.pk for img in unused_response.context['images']}
+        self.assertNotIn(hero_image.pk, unused_ids)
+
+        found = next(img for img in used_response.context['images'] if img.pk == hero_image.pk)
+        self.assertIn('الصفحة الرئيسية', found.usage_confirm_message)
 
 
 @override_settings(MEDIA_ROOT=_MEDIA_ROOT)

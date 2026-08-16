@@ -104,8 +104,8 @@ hx-on:cartUpdated="htmx.ajax('GET','{% url 'orders:cart_badge' %}',{target:'#car
                     <input
                         type="radio"
                         name="manufacturer"
-                        value="{{ m }}"
-                        {% if selected_manufacturer == m %}checked{% endif %}
+                        value="{{ m.slug }}"
+                        {% if selected_manufacturer == m.slug %}checked{% endif %}
                         class="accent-primary-600"
                         hx-get="{% url 'store:new_arrivals' %}"
                         hx-trigger="change"
@@ -116,7 +116,7 @@ hx-on:cartUpdated="htmx.ajax('GET','{% url 'orders:cart_badge' %}',{target:'#car
                         hx-swap="innerHTML">
 
                     <span class="text-sm text-gray-600 has-[:checked]:text-primary-700 has-[:checked]:font-semibold">
-                        {{ m }}
+                        {{ m.name }}
                     </span>
                 </label>
 

@@ -41,7 +41,7 @@ class ProductDeleteCleansUpFollowUpsTestCase(TestCase):
         self.category = Category.objects.create(name='أدوية', slug='meds')
         self.product = Product.objects.create(
             category=self.category, name_ar='دواء تجريبي', name_en='Test Med',
-            manufacturer='شركة تجريبية', barcode='987654321', is_active=True,
+            barcode='987654321', is_active=True,
         )
 
     def test_deleting_product_without_stock_removes_its_followups(self):

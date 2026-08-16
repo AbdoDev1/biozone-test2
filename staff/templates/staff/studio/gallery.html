@@ -155,9 +155,9 @@
 {% endif %}
 
 
-<!-- فلتر الاستخدام (المرحلة 4) — لسه الكل هيظهر "غير مستخدمة" مؤقتًا لحد
-     ما المرحلة 8 تربط الصور فعليًا بالمنتجات/الأقسام؛ راجع تعليق
-     StudioImage.get_usage() و staff/views/studio.py.
+<!-- فلتر الاستخدام (المرحلة 4) — بيعتمد على usage_is_used المحسوبة سلفًا
+     في الـ view (StudioImage.get_usage()، بتاخد في الاعتبار المنتجات
+     وكمان استخدام الصورة في صور/بانرات الصفحة الرئيسية).
      فلتر المجلد (المرحلة 6) بجنبه — عمود FK حقيقي، فبيترشّح على مستوى
      الـ queryset في الـ view (مش زي فلتر الاستخدام). -->
 <form method="GET" hx-boost="false" class="bg-white rounded-2xl shadow-sm p-4 mb-6 flex flex-wrap items-end gap-3">
@@ -252,10 +252,13 @@
      كل checkbox في الشبكة مربوط بيه عن طريق form="..." بدل ما نحوّط
      الشبكة كلها في <form> (يمنع تعارض مع فورم الحذف الفردي جوه كل كارت).
 
-     usage: خريطة id -> [عدد المنتجات, عدد الأقسام] لكل صورة في الصفحة
-     الحالية بس (محسوبة سيرفر-سايد فوق في الـ view) — بتُستخدم لبناء
-     رسالة data-confirm الديناميكية لزرار "حذف المحدد" حسب اللي فعليًا
-     متحدد دلوقتي، بلا أي طلب إضافي للسيرفر وقت الضغط على الزرار.
+     usage: خريطة id -> [عدد المنتجات, عدد الأقسام, تسميات استخدام الـ
+     Landing] لكل صورة في الصفحة الحالية بس (محسوبة سيرفر-سايد فوق في
+     الـ view) — بتُستخدم لبناء رسالة data-confirm الديناميكية لزرار
+     "حذف المحدد" حسب اللي فعليًا متحدد دلوقتي، بلا أي طلب إضافي للسيرفر
+     وقت الضغط على الزرار. تحذير استخدام الـ Landing بيتبني كجملة منفصلة
+     عن جملة المنتجات/الأقسام، نفس منطق _usage_confirm_message() للحذف
+     الفردي.
 
      gridSize (المرحلة 7) — تفصيلة واجهة بحتة، بلا أي تغيير في قاعدة
      البيانات أو الـ view: 'small' (الافتراضي، الشبكة الكثيفة الحالية)
@@ -272,19 +275,34 @@
             this.gridSize = size;
             localStorage.setItem('studioGridSize', size);
         },
-        usage: { {% for image in page_obj %}{{ image.pk }}: [{{ image.usage_products_count }}, {{ image.usage_categories_count }}]{% if not forloop.last %}, {% endif %}{% endfor %} },
+        {% comment %}
+        ملحوظة (أغسطس 2026): كان فيه عنصر تالت هنا (عدد الأقسام المرتبطة)
+        — اتشال مع شيل Category.image بالكامل (القسم مالوش عرض بصري في
+        المتجر فعليًا)، فمصفوفة usage بقت عنصرين بس: [منتجات، تسميات
+        الـ Landing]، بدل تلاتة.
+        {% endcomment %}
+        usage: { {% for image in page_obj %}{{ image.pk }}: [{{ image.usage_products_count }}, {{ image.usage_landing_labels_json }}]{% if not forloop.last %}, {% endif %}{% endfor %} },
         confirmMessage() {
-            let products = 0, categories = 0, usedCount = 0;
+            let products = 0, usedCount = 0, landingLabels = [];
             this.selected.forEach(id => {
                 const u = this.usage[id];
                 if (!u) return;
-                products += u[0]; categories += u[1];
-                if (u[0] || u[1]) usedCount++;
+                products += u[0];
+                if (u[0] || u[1].length) usedCount++;
+                landingLabels = landingLabels.concat(u[1]);
             });
             const n = this.selected.length;
             if (!usedCount) return n === 1 ? 'متأكد من حذف هذه الصورة؟' : `متأكد من حذف ${n} صورة؟`;
             const suffix = n === 1 ? 'متأكد من الحذف؟' : `متأكد من حذف ${n} صورة؟`;
-            return `${usedCount} من الصور المحددة مستخدمة في ${products} منتج و${categories} قسم، وسيتم حذفها منهم أيضًا. ${suffix}`;
+            let sentences = [];
+            if (products) {
+                sentences.push(`${usedCount} من الصور المحددة مستخدمة في ${products} منتج، وسيتم حذفها منهم أيضًا.`);
+            }
+            if (landingLabels.length) {
+                const uniqueLabels = [...new Set(landingLabels)];
+                sentences.push(`من ضمن الصور المحددة صور مستخدمة كـ ${uniqueLabels.join(' و')} بالصفحة الرئيسية، وسيختفي هذا القسم عند الحذف.`);
+            }
+            return sentences.join(' ') + ' ' + suffix;
         },
         /* معاينة بالحجم الحقيقي + المعرّف تحتها (أغسطس 2026) — نفس فكرة
            المعاينة في منتقي صورة المنتج (image_picker.html)، هنا مباشرة
@@ -420,7 +438,7 @@
             <p class="px-2 -mt-1 pb-1 text-[10px] text-gray-400 truncate">📁 {{ image.folder.name }}</p>
             {% endif %}
             <div class="px-2 pb-2 flex items-center justify-between gap-1">
-                {% if image.is_used %}
+                {% if image.usage_is_used %}
                 {% status_badge "مستخدمة" color="green" %}
                 {% else %}
                 {% status_badge "غير مستخدمة" color="gray" %}

@@ -1,4 +1,5 @@
 from django.core.paginator import Paginator
+from django.db import models
 from django.shortcuts import render, get_object_or_404, redirect
 from django.views.decorators.http import require_POST
 from django.contrib import messages
@@ -176,7 +177,15 @@ def client_add_adjustment(request, pk):
 @perm_required('accounts.change_clientprofile')
 def client_approve(request, pk):
     profile = get_object_or_404(ClientProfile, pk=pk)
-    account_types = AccountType.objects.filter(is_active=True)
+    # لازم نضمن نوع الحساب الحالي بتاع العميل (اللي هو اختاره وقت التسجيل)
+    # موجود في القائمة حتى لو بقى is_active=False دلوقتي (اتقفل بعد التسجيل).
+    # من غير كده، الـ <select> في approve.html كان بيستبعده تمامًا، فالمتصفح
+    # كان بيختار أول عنصر في القائمة تلقائيًا بدل نوع الحساب الحقيقي اللي
+    # العميل اختاره — يبان للموظف (أدمن/مخزن) إن العميل اختار نوع مختلف عن
+    # اللي هو فعلاً اختاره، وده اللي كان بيسبب اللغبطة عند التفعيل.
+    account_types = AccountType.objects.filter(
+        models.Q(is_active=True) | models.Q(pk=profile.account_type_id)
+    )
     # نوع الحساب بيتحكم في الأسعار والخصومات المطبّقة على العميل، فتغييره
     # قرار مالي حساس. أي موظف عنده صلاحية "تعديل بيانات العميل" العامة
     # يقدر يوافق/يرفض، لكن تغيير نوع الحساب نفسه محصور على الأدمن فقط.

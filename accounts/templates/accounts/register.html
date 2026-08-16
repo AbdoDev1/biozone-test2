@@ -18,7 +18,16 @@
                 <select name="{{ field.html_name }}" id="{{ field.id_for_label }}"
                         class="w-full border border-gray-300 rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-primary-500">
                     {% for val, label in field.field.choices %}
-                    <option value="{{ val }}" {% if field.value == val %}selected{% endif %}>{{ label }}</option>
+                    {# field.value() نص (POST) أو None (GET) دايمًا، بينما val
+                       جسم ModelChoiceIteratorValue بيلف رقم الـ pk — مقارنة
+                       field.value == val كانت بتفشل دايمًا مهما كانت القيمة
+                       (نوعين مختلفين تمامًا)، فولا اختيار كان ياخد selected
+                       فعليًا، والمتصفح كان يعرض أول عنصر في القايمة كأنه
+                       المختار بلا أي علاقة باختيار المستخدم الحقيقي. تحويل
+                       الطرفين لنص قبل المقارنة بيحل المشكلة، ويحافظ كمان على
+                       اختيار العميل الأصلي لو الفورم اتبعت وفيه خطأ في حقل
+                       تاني (زي كلمة السر) واتعرض تاني. #}
+                    <option value="{{ val }}" {% if field.value|stringformat:"s" == val|stringformat:"s" %}selected{% endif %}>{{ label }}</option>
                     {% endfor %}
                 </select>
                 {% elif field.field.widget.input_type == 'textarea' %}

@@ -2,13 +2,14 @@ from django import forms
 from django.forms import inlineformset_factory
 from django.forms.models import BaseInlineFormSet
 from django.utils.text import slugify
-from .models import Product, ProductUnit, Category
+from .matching import normalize_name
+from .models import Product, ProductUnit, Category, Company
 
 
 class CategoryForm(forms.ModelForm):
     class Meta:
         model = Category
-        fields = ['name', 'image', 'is_active']
+        fields = ['name', 'is_active']
         widgets = {
             'name': forms.TextInput(attrs={
                 'class': 'w-full border border-gray-200 rounded-lg px-3 py-2 text-sm outline-none focus:border-blue-400',
@@ -17,19 +18,9 @@ class CategoryForm(forms.ModelForm):
             'is_active': forms.CheckboxInput(attrs={
                 'class': 'accent-blue-600'
             }),
-            # المرحلة 8 (STUDIO_PLAN.md): image بقى ForeignKey على
-            # studio.StudioImage، مش ملف يترفع من هنا. الـ widget الافتراضي
-            # لأي ForeignKey هو Select (قائمة منسدلة بكل صور الاستوديو —
-            # مش عملي مع آلاف الصور، ومفيش معاينة بصرية). الفورم مش بيعرض
-            # الحقل ده أصلًا (image_picker.html partial بيبني hidden input
-            # بتاعه بنفسه، راجع products/partials/image_picker.html) —
-            # HiddenInput هنا مجرد أمان لو حد رندر {{ form.image }} غلط في
-            # مكان تاني بالخطأ، مش الطريقة المستخدمة فعليًا.
-            'image': forms.HiddenInput(),
         }
         labels = {
             'name': 'اسم القسم',
-            'image': 'صورة القسم',
             'is_active': 'نشط',
         }
 
@@ -51,7 +42,72 @@ class CategoryForm(forms.ModelForm):
         return category
 
 
+class CompanyForm(forms.ModelForm):
+    class Meta:
+        model = Company
+        fields = ['name', 'is_active']
+        widgets = {
+            'name': forms.TextInput(attrs={
+                'class': 'w-full border border-gray-200 rounded-lg px-3 py-2 text-sm outline-none focus:border-blue-400',
+                'placeholder': 'اسم الشركة المصنّعة'
+            }),
+            'is_active': forms.CheckboxInput(attrs={
+                'class': 'accent-blue-600'
+            }),
+        }
+        labels = {
+            'name': 'اسم الشركة',
+            'is_active': 'نشط',
+        }
+
+    def clean_name(self):
+        # name_key بيتحسب فعليًا في Company.save()، لكن unique=True على
+        # عمود قاعدة البيانات هيرمي IntegrityError خام لو سابناه لوحده —
+        # فحص هنا بيدّي رسالة عربية واضحة قبل حتى ما نوصل للحفظ، بنفس
+        # منطق normalize_name المستخدم في الموديل (اختلاف مسافات/حالة
+        # حروف/همزات بس بيتحسب "نفس الشركة").
+        name = self.cleaned_data['name'].strip()
+        key = normalize_name(name)
+        existing = Company.objects.filter(name_key=key)
+        if self.instance.pk:
+            existing = existing.exclude(pk=self.instance.pk)
+        if existing.exists():
+            raise forms.ValidationError(
+                f'فيه شركة مسجّلة بنفس الاسم بالفعل ("{existing.first().name}") — اختر اسمًا مختلفًا.'
+            )
+        return name
+
+    def save(self, commit=True):
+        # نفس فكرة CategoryForm.save() فوق بالظبط — slug تلقائي من الاسم،
+        # وبيفضل ثابت بعد أول توليد حتى لو الاسم اتعدّل بعدين.
+        company = super().save(commit=False)
+        if not company.slug:
+            base_slug = slugify(company.name, allow_unicode=True) or 'company'
+            slug = base_slug
+            i = 1
+            while Company.objects.filter(slug=slug).exclude(pk=company.pk).exists():
+                i += 1
+                slug = f'{base_slug}-{i}'
+            company.slug = slug
+        if commit:
+            company.save()
+        return company
+
+
 class ProductForm(forms.ModelForm):
+    # مُعرّف صراحة (بدل ما نسيبه يتولّد تلقائيًا من الموديل) عشان نتحكم في
+    # queryset (الشركات النشطة بس) وempty_label — ModelForm.Meta العادي مش
+    # بيسمح بتخصيص empty_label لحقل ForeignKey.
+    manufacturer = forms.ModelChoiceField(
+        queryset=Company.objects.filter(is_active=True),
+        required=False,
+        empty_label='بدون شركة محددة',
+        label='الشركة المصنعة',
+        widget=forms.Select(attrs={
+            'class': 'w-full border border-gray-200 rounded-lg px-3 py-2 text-sm outline-none focus:border-blue-400'
+        }),
+    )
+
     class Meta:
         model = Product
         fields = [
@@ -90,10 +146,6 @@ class ProductForm(forms.ModelForm):
                 'class': 'w-full border border-gray-200 rounded-lg px-3 py-2 text-sm outline-none focus:border-blue-400',
                 'placeholder': 'Product name in English'
             }),
-            'manufacturer': forms.TextInput(attrs={
-                'class': 'w-full border border-gray-200 rounded-lg px-3 py-2 text-sm outline-none focus:border-blue-400',
-                'placeholder': 'الشركة المصنعة'
-            }),
             'description': forms.Textarea(attrs={
                 'class': 'w-full border border-gray-200 rounded-lg px-3 py-2 text-sm outline-none focus:border-blue-400',
                 'rows': 3,
@@ -114,7 +166,6 @@ class ProductForm(forms.ModelForm):
             'barcode': 'الباركود',
             'barcode_2': 'باركود إضافي (٢)',
             'barcode_3': 'باركود إضافي (٣)',
-            'manufacturer': 'الشركة المصنعة',
             'description': 'الوصف',
             'image': 'صورة المنتج',
             'is_active': 'نشط',

@@ -9,7 +9,7 @@ from django.urls import reverse
 
 from accounts.models import User
 from activity.models import ActivityLog
-from products.models import Category, Product, ProductUnit
+from products.models import Category, Company, Product, ProductUnit
 
 
 def make_admin():
@@ -24,9 +24,10 @@ class ProductDuplicateTestCase(TestCase):
         self.http = HttpClient()
         self.http.force_login(make_admin())
         self.category = Category.objects.create(name='أدوية', slug='meds')
+        self.company = Company.objects.create(name='شركة تجريبية', slug='test-co')
         self.source = Product.objects.create(
             category=self.category, name_ar='دواء تجريبي', name_en='Test Med',
-            manufacturer='شركة تجريبية', barcode='123456789', is_active=True,
+            manufacturer=self.company, barcode='123456789', is_active=True,
         )
         self.small_unit = ProductUnit.objects.create(
             product=self.source, size='S', name='قطعة', qty_in_small=1,

@@ -5,7 +5,7 @@ from django.urls import reverse
 
 from accounts.models import User
 from inventory.models import Inventory
-from products.models import Category, Product, ProductUnit
+from products.models import Category, Company, Product, ProductUnit
 
 
 class StoreHomeNewArrivalsFilterTestCase(TestCase):
@@ -95,16 +95,18 @@ class StoreHomeFilteringTestCase(TestCase):
         self.http = HttpClient()
         self.category_a = Category.objects.create(name='أدوية', slug='meds')
         self.category_b = Category.objects.create(name='مستلزمات', slug='supplies')
+        self.company_a = Company.objects.create(name='جلاكسو', slug='glaxo')
+        self.company_b = Company.objects.create(name='مصر', slug='masr')
 
         self.product_a = Product.objects.create(
-            category=self.category_a, name_ar='بنادول', manufacturer='جلاكسو',
+            category=self.category_a, name_ar='بنادول', manufacturer=self.company_a,
         )
         Inventory.objects.create(product=self.product_a, quantity=100, min_quantity=5)
         self.product_a.new_arrival_at = None
         self.product_a.save(update_fields=['new_arrival_at'])
 
         self.product_b = Product.objects.create(
-            category=self.category_b, name_ar='شاش طبي', manufacturer='مصر',
+            category=self.category_b, name_ar='شاش طبي', manufacturer=self.company_b,
         )
         Inventory.objects.create(product=self.product_b, quantity=100, min_quantity=5)
         self.product_b.new_arrival_at = None
@@ -116,7 +118,7 @@ class StoreHomeFilteringTestCase(TestCase):
         self.assertEqual(products, [self.product_a])
 
     def test_filter_by_manufacturer(self):
-        response = self.http.get(reverse('store:home'), {'manufacturer': 'مصر'})
+        response = self.http.get(reverse('store:home'), {'manufacturer': self.company_b.slug})
         products = list(response.context['products'])
         self.assertEqual(products, [self.product_b])
 

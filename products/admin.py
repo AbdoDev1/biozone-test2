@@ -2,7 +2,7 @@ from django.contrib import admin
 
 # Register your models here.
 from django.contrib import admin
-from .models import Category, Product, ProductUnit
+from .models import Category, Company, Product, ProductUnit
 from .forms import BaseProductUnitFormSet
 
 
@@ -12,10 +12,14 @@ class CategoryAdmin(admin.ModelAdmin):
     list_filter = ('is_active',)
     prepopulated_fields = {'slug': ('name',)}
     search_fields = ('name',)
-    # raw_id_fields بدل <select> عادي — من المرحلة 8 (STUDIO_PLAN.md)، image
-    # بقى ForeignKey على studio.StudioImage، ومعرض الاستوديو ممكن يبقى فيه
-    # آلاف الصور؛ <select> عادي هيحمّلهم كلهم كـ <option> واحدة واحدة.
-    raw_id_fields = ('image',)
+
+
+@admin.register(Company)
+class CompanyAdmin(admin.ModelAdmin):
+    list_display = ('name', 'is_active', 'created_at')
+    list_filter = ('is_active',)
+    prepopulated_fields = {'slug': ('name',)}
+    search_fields = ('name',)
 
 
 class ProductUnitInline(admin.TabularInline):
@@ -28,8 +32,10 @@ class ProductUnitInline(admin.TabularInline):
 @admin.register(Product)
 class ProductAdmin(admin.ModelAdmin):
     list_display = ('display_name', 'code', 'barcode', 'category', 'manufacturer', 'is_active', 'created_at')
-    list_filter = ('category', 'is_active')
-    search_fields = ('name_ar', 'name_en', 'manufacturer', 'code', 'barcode', 'barcode_2', 'barcode_3')
+    list_filter = ('category', 'manufacturer', 'is_active')
+    search_fields = ('name_ar', 'name_en', 'manufacturer__name', 'code', 'barcode', 'barcode_2', 'barcode_3')
     inlines = [ProductUnitInline]
-    # نفس ملاحظة CategoryAdmin.raw_id_fields فوق بالظبط.
+    # نفس ملاحظة CategoryAdmin فوق — raw_id_fields اتشالت من هنا (image
+    # مش موجودة تاني في Category)، لكن product.image لسه FK على
+    # studio.StudioImage فمحتاجة raw_id_fields زي ما كانت.
     raw_id_fields = ('image',)

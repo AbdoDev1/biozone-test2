@@ -99,6 +99,15 @@ NAV_ITEMS = [
         'active_url_names': ['category_list', 'category_add', 'category_edit', 'category_delete'],
     },
     {
+        'key': 'companies',
+        'label': 'الشركات المصنّعة',
+        'url_name': 'company_list',
+        'icon_path': 'M3.375 19.5h17.25m-17.25 0a1.125 1.125 0 01-1.125-1.125M3.375 19.5h7.5c.621 0 1.125-.504 1.125-1.125m-9.75 0V5.625m0 12.75v-1.5c0-.621.504-1.125 1.125-1.125m18.375 2.625V5.625m0 13.875a1.125 1.125 0 001.125-1.125h-1.125M3.375 5.625A1.125 1.125 0 014.5 4.5h15c.621 0 1.125.504 1.125 1.125m-17.25 0v10.5m17.25-10.5v10.5m0 0h-17.25',
+        'perm': 'products.view_company',
+        'admin_only': False,
+        'active_url_names': ['company_list', 'company_add', 'company_edit', 'company_delete'],
+    },
+    {
         'key': 'reports',
         'label': 'التقارير',
         'url_name': 'reports_dashboard',

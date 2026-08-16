@@ -33,7 +33,7 @@
                     class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm outline-none focus:border-primary-400">
                 {% for type in account_types %}
                 <option value="{{ type.pk }}" {% if profile.account_type_id == type.pk %}selected{% endif %}>
-                    {{ type.name }}
+                    {{ type.name }}{% if not type.is_active %} (غير نشط — النوع اللي اختاره العميل){% endif %}
                 </option>
                 {% endfor %}
             </select>

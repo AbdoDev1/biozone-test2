@@ -1,3 +1,5 @@
+import json
+
 from django.contrib import messages
 from django.core.exceptions import ValidationError
 from django.core.paginator import Paginator
@@ -25,26 +27,37 @@ STUDIO_PICKER_PAGE_SIZE = 20
 _extension_validator = FileExtensionValidator(ALLOWED_IMAGE_EXTENSIONS)
 
 
-def _usage_confirm_message(products_count, categories_count):
+def _usage_confirm_message(products_count, landing_labels=None):
     """
-    رسالة تأكيد الحذف (المرحلة 5) — بتتبني من عدد المنتجات/الأقسام
-    المرتبطة (StudioImage.get_usage()). لو صفر في الاتنين بترجع رسالة
-    عامة بلا تفاصيل عدد. مبنية كدالة منفصلة عشان تُستخدم لكل صورة على
+    رسالة تأكيد الحذف (المرحلة 5) — بتتبني من عدد المنتجات المرتبطة
+    (StudioImage.get_usage()) بالإضافة لتسميات استخدام الصورة في صفحة
+    الـ Landing لو موجودة (hero/بانر 1/بانر 2). لو صفر في كل حاجة بترجع
+    رسالة عامة بلا تفاصيل. مبنية كدالة منفصلة عشان تُستخدم لكل صورة على
     حدة (الحذف الفردي) ولمجموع صور محددة (الحذف الجماعي) بنفس المنطق.
+
+    ملحوظة (أغسطس 2026): كان فيه باراميتر categories_count هنا — اتشال مع
+    شيل Category.image بالكامل (راجع ملحوظة get_usage() في
+    studio/models.py).
+
+    استخدام Landing بيتبني كجملة تحذير منفصلة عن جملة المنتجات — لأن أثر
+    الحذف مختلف (قسم كامل في الصفحة الرئيسية بيختفي، مش مجرد صورة منتج
+    بتفضغ فاضية).
 
     مفيش تفريق نحوي دقيق (مفرد/مثنى/جمع) هنا عمدًا — نفس مستوى البساطة
     المستخدم في باقي رسائل العدّ بالمشروع (زي "X صنف محدد").
     """
-    parts = []
-    if products_count:
-        parts.append(f'{products_count} منتج')
-    if categories_count:
-        parts.append(f'{categories_count} قسم')
+    landing_labels = landing_labels or []
 
-    if not parts:
+    sentences = []
+    if products_count:
+        sentences.append(f'هذه الصورة مستخدمة في {products_count} منتج، وسيتم حذفها منهم أيضًا.')
+    if landing_labels:
+        sentences.append('هذه الصورة مستخدمة كـ ' + ' و'.join(landing_labels) + '، وسيختفي هذا القسم عند الحذف.')
+
+    if not sentences:
         return 'متأكد من حذف هذه الصورة؟'
 
-    return 'هذه الصورة مستخدمة في ' + ' و'.join(parts) + '، وسيتم حذفها منهم أيضًا. متأكد من الحذف؟'
+    return ' '.join(sentences) + ' متأكد من الحذف؟'
 
 
 @perm_required('studio.view_studioimage')
@@ -54,25 +67,26 @@ def studio(request):
     حقيقي (نفس نمط staff/products/list.html). راجع STUDIO_PLAN.md، المرحلة 3.
 
     فلتر مستخدمة/غير مستخدمة (المرحلة 4) — بعد تنفيذ المرحلة 8 (ربط
-    Product.image/Category.image فعليًا بـ ForeignKey)، StudioImage.get_usage()
-    بقت بترجع الاستخدام الحقيقي. الفلترة هنا لسه بتترشّح في بايثون (مش
-    queryset annotation)، لأن `.prefetch_related('products', 'categories')`
-    تحت كافي لتفادي N+1 (باقي كل حاجة محسوبة مسبقًا في الذاكرة بلا أي
-    استعلام إضافي لكل صورة)، ومفيش داعي عملي لـ annotate بعدد المرتبطين
-    على مستوى قاعدة البيانات فوق كده حاليًا.
+    Product.image فعليًا بـ ForeignKey)، StudioImage.get_usage() بقت
+    بترجع الاستخدام الحقيقي. الفلترة هنا لسه بتترشّح في بايثون (مش
+    queryset annotation)، لأن `.prefetch_related('products')` تحت كافي
+    لتفادي N+1 (باقي كل حاجة محسوبة مسبقًا في الذاكرة بلا أي استعلام
+    إضافي لكل صورة)، ومفيش داعي عملي لـ annotate بعدد المرتبطين على
+    مستوى قاعدة البيانات فوق كده حاليًا.
 
     فلتر المجلد (المرحلة 6) مختلف: `folder` عمود FK حقيقي من دلوقتي،
     فبيترشّح على مستوى الـ queryset (`.filter(folder_id=...)`) قبل حتى
     ما نجيب الصور، مش في بايثون زي فلتر الاستخدام فوق.
     """
     folder_filter = request.GET.get('folder', '')
-    # prefetch_related('products', 'categories') — بلا ده، كل استدعاء
-    # لـ img.get_usage() تحت (لكل صورة في الصفحة، لحد 40) كان هيعمل
-    # استعلامين إضافيين (منتجات + أقسام)، يعني لحد 80 استعلام زيادة لكل
-    # تحميل صفحة معرض واحدة. من المرحلة 8 (بعد ما get_usage() بقت بترجع
-    # علاقات حقيقية بدل قوائم فاضية دايمًا)، الـ prefetch ده بقى ضروري —
-    # مش تحسين اختياري.
-    qs = StudioImage.objects.select_related('uploaded_by', 'folder').prefetch_related('products', 'categories').all()
+    # prefetch_related('products') — بلا ده، كل استدعاء لـ img.get_usage()
+    # تحت (لكل صورة في الصفحة، لحد 40) كان هيعمل استعلام إضافي، يعني لحد
+    # 40 استعلام زيادة لكل تحميل صفحة معرض واحدة. من المرحلة 8 (بعد ما
+    # get_usage() بقت بترجع علاقات حقيقية بدل قوائم فاضية دايمًا)، الـ
+    # prefetch ده بقى ضروري — مش تحسين اختياري.
+    # ملحوظة (أغسطس 2026): كان فيه 'categories' هنا كمان — اتشالت مع شيل
+    # Category.image بالكامل.
+    qs = StudioImage.objects.select_related('uploaded_by', 'folder').prefetch_related('products').all()
     if folder_filter == 'none':
         qs = qs.filter(folder__isnull=True)
     elif folder_filter.isdigit():
@@ -80,24 +94,36 @@ def studio(request):
 
     all_images = list(qs)
 
-    # بنحسب عدد المنتجات/الأقسام المرتبطة لكل صورة مرة واحدة هنا (بدل ما
-    # نستدعي get_usage() تاني في التمبليت لرسالة تأكيد الحذف، بعد ما
-    # is_used أصلًا استدعتها فوق) — وبنحطها كخاصية عادية على الكائن
-    # (مش حقل موديل) عشان الحذف الفردي (المرحلة 5) يقدر يبني رسالة
-    # التأكيد بلا استعلام إضافي وقت الضغط على الزرار.
+    # بنجيب LandingPageSettings مرة واحدة هنا فوق (بدل ما كل img.get_usage()
+    # يجيبها بنفسه) ونمررها لكل صورة — بيتفادى استعلام LandingPageSettings
+    # إضافي لكل صورة في حلقة الجاليري (لحد 40 استعلام زيادة لكل صفحة).
+    landing_settings = LandingPageSettings.objects.select_related('hero_image', 'banner_1', 'banner_2').first()
+
+    # بنحسب عدد المنتجات/الأقسام المرتبطة وتسميات استخدام الـ Landing لكل
+    # صورة مرة واحدة هنا (بدل ما نستدعي get_usage() تاني في التمبليت لرسالة
+    # تأكيد الحذف) — وبنحطهم كخصائص عادية على الكائن (مش حقول موديل) عشان
+    # الحذف الفردي (المرحلة 5) يقدر يبني رسالة التأكيد بلا استعلام إضافي
+    # وقت الضغط على الزرار. usage_is_used بقت بتاخد الـ landing labels في
+    # الاعتبار كمان (صورة مستخدمة كـ Hero بس، بلا أي منتج/قسم، لازم تتحسب
+    # "مستخدمة").
     for img in all_images:
-        products, categories = img.get_usage()
+        products, landing_labels_for_img = img.get_usage(landing_settings)
         img.usage_products_count = len(products)
-        img.usage_categories_count = len(categories)
+        img.usage_landing_labels = landing_labels_for_img
+        # نسخة JSON جاهزة (مش تمثيل str() الافتراضي لقائمة بايثون) عشان
+        # تتضمن مباشرة جوه خريطة usage في JS بتاعة confirmMessage() الجماعية
+        # بلا أي مشاكل quoting مع النص العربي.
+        img.usage_landing_labels_json = json.dumps(landing_labels_for_img, ensure_ascii=False)
+        img.usage_is_used = bool(products) or bool(landing_labels_for_img)
         img.usage_confirm_message = _usage_confirm_message(
-            img.usage_products_count, img.usage_categories_count,
+            img.usage_products_count, landing_labels_for_img,
         )
 
     usage_filter = request.GET.get('usage', '')
     if usage_filter == 'used':
-        images = [img for img in all_images if img.usage_products_count or img.usage_categories_count]
+        images = [img for img in all_images if img.usage_is_used]
     elif usage_filter == 'unused':
-        images = [img for img in all_images if not (img.usage_products_count or img.usage_categories_count)]
+        images = [img for img in all_images if not img.usage_is_used]
     else:
         images = all_images
 
@@ -111,7 +137,7 @@ def studio(request):
         'usage_filter': usage_filter,
         'folder_filter': folder_filter,
         'folders': StudioFolder.objects.all(),
-        'landing_settings': LandingPageSettings.objects.select_related('hero_image', 'banner_1', 'banner_2').first(),
+        'landing_settings': landing_settings,
     })
 
 

@@ -10,22 +10,11 @@ from .matching import normalize_name
 
 class Category(models.Model):
     name = models.CharField(max_length=255)
-    # كان ImageField مباشر لحد المرحلة 8 من خطة الاستوديو (STUDIO_PLAN.md،
-    # قرار رقم 7) — بقى ForeignKey على studio.StudioImage عشان يبقى مصدر
-    # واحد للصور، بدل تكرار منطق الرفع/التحقق هنا وفي studio.StudioImage
-    # وproducts.Product مع بعض. SET_NULL (مش PROTECT ولا CASCADE) عشان حذف
-    # صورة من الاستوديو ميفشلش ولا يمسح القسم — الربط بيختفي بس (قرار رقم 8
-    # في الخطة، نفس سلوك StudioImage.folder). مفيش data migration لازمة
-    # هنا (قرار رقم 10 — مفيش صور موجودة فعليًا وقت التنفيذ)، فالحقل بيبدأ
-    # فاضي (null) للكل.
-    image = models.ForeignKey(
-        'studio.StudioImage',
-        on_delete=models.SET_NULL,
-        null=True,
-        blank=True,
-        related_name='categories',
-        verbose_name='صورة القسم',
-    )
+    # ملحوظة (أغسطس 2026): كان فيه حقل image هنا (ForeignKey على
+    # studio.StudioImage، من المرحلة 8 في STUDIO_PLAN.md)، بس اتشال بالكامل
+    # — القسم مالوش أي عرض بصري فعلي في المتجر (كان بيظهر كنص بس في فلتر
+    # الأقسام)، فالحقل كان بيتحفظ من غير ما يتستخدم في أي مكان. راجع
+    # migration الحذف لتفاصيل أكتر.
     slug = models.SlugField(unique=True, allow_unicode=True)
     is_active = models.BooleanField(default=True)
     created_at = models.DateTimeField(auto_now_add=True)
@@ -37,6 +26,41 @@ class Category(models.Model):
 
     def __str__(self):
         return self.name
+
+
+class Company(models.Model):
+    """
+    الشركة المصنّعة — كانت قبل كده مجرد نص حر (Product.manufacturer
+    CharField) بيتكتب يدويًا في كل منتج على حدة، عكس القسم اللي جدول
+    مستقل من الأول. المشكلة: أي اختلاف بسيط شكلي بين منتجين (مسافة زيادة،
+    اختلاف حالة الحروف، همزة مكتوبة بشكل مختلف) كان بيتحسب كشركة منفصلة
+    تمامًا في فلتر المتجر (_manufacturers_list في store/views.py بيعمل
+    .distinct() على النص الخام)، فالعدد الظاهر للمستخدم مش منطقي. التحويل
+    لموديل مستقل (أغسطس 2026) بيخلي الشركة تُختار من قايمة بدل ما تُكتب،
+    زي القسم بالظبط — فمفيش تكرار ممكن أصلاً.
+
+    name_key: نسخة مُطبَّعة (نفس normalize_name المستخدمة في Product) بيتم
+    عليها فحص التفرد (unique) — مش على name الخام — عشان "Cerave" و"cerave"
+    و"Cerave " (مسافة زيادة) يتحسبوا نفس الشركة ويرفض النظام إنشاء تكرار
+    شكلي جديد، حتى لو الاسم المعروض (name) اتكتب بشكل مختلف شوية كل مرة.
+    """
+    name = models.CharField(max_length=255, unique=True, verbose_name='اسم الشركة')
+    name_key = models.CharField(max_length=255, editable=False, blank=True, db_index=True, unique=True)
+    slug = models.SlugField(unique=True, allow_unicode=True)
+    is_active = models.BooleanField(default=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = 'شركة مصنّعة'
+        verbose_name_plural = 'الشركات المصنّعة'
+        ordering = ['name']
+
+    def __str__(self):
+        return self.name
+
+    def save(self, *args, **kwargs):
+        self.name_key = normalize_name(self.name)
+        super().save(*args, **kwargs)
 
 
 class Product(models.Model):
@@ -92,7 +116,20 @@ class Product(models.Model):
     # راجع products/matching.py و staff/views/products.py.
     name_key = models.CharField(max_length=255, editable=False, blank=True, db_index=True)
     name_en = models.CharField(max_length=255, blank=True)
-    manufacturer = models.CharField(max_length=255, blank=True)
+    # كان CharField نص حر لحد أغسطس 2026 — بقى ForeignKey على Company
+    # (زي category بالظبط) عشان يتحل تكرار "الشركة المصنعة" الشكلي
+    # (اختلافات كتابة بسيطة كانت بتتحسب كل واحدة شركة منفصلة في فلتر
+    # المتجر). SET_NULL مش PROTECT (عكس category) لأن الشركة حقل اختياري
+    # من الأصل (blank=True) — حذف شركة من لوحة الإدارةميفشلش حذف المنتجات
+    # المرتبطة بيها، بس الربط بيتصفّر.
+    manufacturer = models.ForeignKey(
+        'Company',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='products',
+        verbose_name='الشركة المصنعة',
+    )
     description = models.TextField(blank=True)
     # نفس ملاحظة Category.image فوق بالظبط — ForeignKey على
     # studio.StudioImage بدل ImageField مباشر، من المرحلة 8 في STUDIO_PLAN.md.
