@@ -1,0 +1,105 @@
+{% comment %}
+مجموعة فلتر واحدة — نفس المكوّن مُستخدم جوّه السايد بار (ديسكتوب) ودرج
+الفلاتر (موبايل) عشان مفيش تكرار منطق بين الاتنين. المجموعة معروضة
+دايمًا مفتوحة (مفيش أكورديون قابل للطي) — بفلترين بس (قسم + شركة
+مصنعة) الطي كان تعقيد زيادة عن الحاجة الفعلية؛ لو اتزودت مجموعات فلاتر
+تانية مستقبلًا (3+) يستاهل وقتها نرجّع فكرة الطي.
+
+عدد الخيارات جوه المجموعة ملوش أي تأثير على ارتفاع الصفحة — القايمة
+نفسها بتسكرول جوه ارتفاع محدود (max-h-72) بدل ما تدفع باقي الصفحة لتحت.
+
+پارامترات لازم توصل من الـ include:
+group_title  : عنوان المجموعة ("الأقسام" / "الشركة المصنعة")
+query_var    : متغيّر البحث الداخلي جوه المجموعة (فلترة القايمة نفسها،
+               مش بحث المنتجات الرئيسي)
+selected_var : القيمة المختارة حاليًا لهذه المجموعة
+options_var  : getter بيرجّع القايمة بعد تطبيق البحث الداخلي (كل عنصر
+               فيها {value, label, count})
+choose_fn    : دالة الاختيار (بتطبّق فلتر المنتجات فورًا عبر htmx)
+all_label    : نص "كل الأقسام" / "كل الشركات" (خيار مسح هذه المجموعة)
+search_placeholder / empty_label : نصوص خانة البحث الداخلية
+show_search  : بولياني (محسوب في store/views.py، مش Alpine) — يظهر
+               خانة البحث الداخلي بس لو عدد الخيارات الكلي 8 أو أكتر؛
+               تحت كده الخانة زودة على قايمة قصيرة أصلاً سهل تتصفح
+               بعين المستخدم من غير بحث.
+input_id / group_id : لازم تكون فريدة في كل استدعاء — نفس الـ include
+                       بيتكرر مرتين (سايد بار + درج)، فلازم قيم مختلفة
+                       عشان الـ id متتكررش في نفس الصفحة
+compact      : بولياني اختياري — لما المجموعتين (أقسام/شركات) بيبانوا
+               جنب بعض في عمودين (درج الموبايل) بدل تحت بعض، بنقلل
+               الـ padding والـ max-height عشان يبقوا مناسبين لعرض
+               نص الشاشة. لو مش متبعت بتتصرف زي false (الوضع الافتراضي
+               القديم، تحت بعض).
+{% endcomment %}
+<div class="{% if compact %}px-3 py-3{% else %}border-b border-gray-100 last:border-b-0 px-4 py-3.5{% endif %}">
+    <div class="mb-3 flex items-center gap-2 min-w-0">
+        <span class="text-sm font-semibold text-gray-800">{{ group_title }}</span>
+        <template x-if="{{ selected_var }}">
+            <span class="h-1.5 w-1.5 shrink-0 rounded-full bg-primary-500"></span>
+        </template>
+    </div>
+
+    <div id="{{ group_id }}">
+        {% if show_search %}
+        <label class="sr-only" for="{{ input_id }}">{{ search_placeholder }}</label>
+        <div class="relative mb-2">
+            <input
+                type="text"
+                id="{{ input_id }}"
+                x-model="{{ query_var }}"
+                placeholder="{{ search_placeholder }}"
+                autocomplete="off"
+                class="w-full rounded-lg border border-gray-200 py-2 ps-3 pe-8 text-sm text-gray-700 outline-none transition focus:border-primary-500 focus:ring-2 focus:ring-primary-100">
+            <svg class="pointer-events-none absolute end-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-300"
+                 fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M21 21l-4.35-4.35M18 10.5a7.5 7.5 0 11-15 0 7.5 7.5 0 0115 0z"/>
+            </svg>
+        </div>
+        {% endif %}
+
+        <!-- الحاوية دي بس اللي بتسكرول (max-height محدود) — مش الصفحة كلها.
+             overscroll-contain بيمنع الـ scroll إنه "يسرّب" لحاوية الدرج
+             اللي برّا (اللي بتسكرول هي كمان) لما توصل لأول/آخر القايمة —
+             ده كان سبب إحساس إن السكرول "مش شغال كويس" على الموبايل، لأن
+             السحب كان بيتلخبط بين القايمة الداخلية والدرج نفسه.
+             [-webkit-overflow-scrolling:touch] بيدّي مومنتم سكرول طبيعي
+             على iOS Safari جوه حاوية متداخلة زي دي. -->
+        <div class="{% if compact %}max-h-60{% else %}max-h-72{% endif %} space-y-0.5 overflow-y-auto overscroll-contain [-webkit-overflow-scrolling:touch]" role="listbox" aria-label="{{ group_title }}">
+
+            <button
+                type="button"
+                role="option"
+                @click="{{ choose_fn }}('', '')"
+                :aria-selected="({{ selected_var }} === '').toString()"
+                class="flex w-full items-center justify-between gap-2 rounded-lg px-3 py-2 text-start text-sm transition hover:bg-gray-50"
+                :class="{{ selected_var }} === '' ? 'bg-primary-50 font-semibold text-primary-700' : 'text-gray-600'">
+                <span>{{ all_label }}</span>
+                <svg x-show="{{ selected_var }} === ''" x-cloak class="h-4 w-4 shrink-0 text-primary-600"
+                     fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2.5">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M4.5 12.75l6 6 9-13.5"/>
+                </svg>
+            </button>
+
+            <template x-for="opt in {{ options_var }}" :key="opt.value">
+                <button
+                    type="button"
+                    role="option"
+                    @click="{{ choose_fn }}(opt.value, opt.label)"
+                    :aria-selected="({{ selected_var }} === opt.value).toString()"
+                    class="flex w-full items-center justify-between gap-2 rounded-lg px-3 py-2 text-start text-sm transition hover:bg-gray-50"
+                    :class="{{ selected_var }} === opt.value ? 'bg-primary-50 font-semibold text-primary-700' : 'text-gray-600'">
+                    <span class="truncate" x-text="opt.count !== undefined ? opt.label + ' (' + opt.count + ')' : opt.label"></span>
+                    <svg x-show="{{ selected_var }} === opt.value" x-cloak class="h-4 w-4 shrink-0 text-primary-600"
+                         fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2.5">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M4.5 12.75l6 6 9-13.5"/>
+                    </svg>
+                </button>
+            </template>
+
+            <p x-show="{{ options_var }}.length === 0" class="px-3 py-6 text-center text-sm text-gray-400">
+                {{ empty_label }}
+            </p>
+
+        </div>
+    </div>
+</div>

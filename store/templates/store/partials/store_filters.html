@@ -1,0 +1,155 @@
+{% comment %}
+مكوّن فلترة المتجر — معمارية "faceted filtering" (سايد بار ثابت جنب
+شبكة المنتجات على الديسكتوب، ودرج فلاتر منفصل على الموبايل)، بدل
+الدروب داون الأفقي القديم. القرار ده مقصود ومختلف عن التصميم اللي
+قبله: الدروب داون الأفقي كان بيبان منفصل/عائم عن باقي الصفحة، ومكانش
+هيتوسّع كويس مع زيادة أنواع الفلاتر مستقبلًا (سعر، توفر، إلخ).
+
+محتاج يوصله من الـ context: category_options, manufacturer_options,
+selected_category, selected_manufacturer, selected_category_label,
+selected_manufacturer_label, grid_url — بالإضافة لكل الـ context بتاع
+product_grid.html (بيتضمّن هنا مباشرة كجزء من نفس التخطيط ذو العمودين،
+عشان يفضل نفس id="product-grid" اللي الـ view بيرجّعه في ردود htmx).
+
+بيستخدم Alpine.js لحالة الفلاتر كلها (فتح/قفل درج الموبايل، البحث
+الداخلي جوه كل مجموعة، القيم المختارة) — نفس x-data واحد
+بيغطي السايد بار والدرج والفورم وشريط الفلاتر النشطة مع بعض، عشان
+الاختيار من أي مكان (سايد بار أو درج) يعكس نفس الحالة فورًا. وhtmx
+(نفس البنية التحتية القديمة: hx-get / hx-target="#product-grid" /
+hx-include / hx-sync / hx-swap / hx-indicator) للتحديث الفعلي للشبكة،
+بيتفعّل عن طريق حدث مخصّص "filterChanged".
+
+ملاحظة multi-select: الباك إند لسه بيدعم قيمة واحدة بس لكل من القسم
+والشركة المصنعة (category/manufacturer slug مفرد في query params)،
+فالاختيار هنا لسه single-select (زي القديم بالظبط) — مفيش checkboxes
+حقيقية لأن مفيش داعم فعلي لاختيار متعدد جوه _apply_filters() في
+store/views.py؛ الشكل ده جاهز يتحول لـ checkboxes متعددة بسهولة لو
+الباك إند اتغيّر مستقبلًا (راجع STORE_FILTERS_REDESIGN).
+{% endcomment %}
+
+<div
+    x-data="{
+        mobileDrawerOpen: false,
+        categoryQuery: '',
+        manufacturerQuery: '',
+        selectedCategory: '{{ selected_category|escapejs }}',
+        selectedManufacturer: '{{ selected_manufacturer|escapejs }}',
+        selectedCategoryLabel: '{{ selected_category_label|escapejs }}',
+        selectedManufacturerLabel: '{{ selected_manufacturer_label|escapejs }}',
+        categoryOptions: JSON.parse(document.getElementById('category-options-data').textContent),
+        manufacturerOptions: JSON.parse(document.getElementById('manufacturer-options-data').textContent),
+        get filteredCategories() {
+            const q = this.categoryQuery.trim().toLowerCase();
+            if (!q) return this.categoryOptions;
+            return this.categoryOptions.filter(o => o.label.toLowerCase().includes(q));
+        },
+        get filteredManufacturers() {
+            const q = this.manufacturerQuery.trim().toLowerCase();
+            if (!q) return this.manufacturerOptions;
+            return this.manufacturerOptions.filter(o => o.label.toLowerCase().includes(q));
+        },
+        get hasActiveFilters() {
+            return !!(this.selectedCategory || this.selectedManufacturer);
+        },
+        get activeFilterCount() {
+            return (this.selectedCategory ? 1 : 0) + (this.selectedManufacturer ? 1 : 0);
+        },
+        applyFilters() {
+            this.$nextTick(() => htmx.trigger(this.$refs.filterForm, 'filterChanged'));
+        },
+        chooseCategory(value, label) {
+            this.selectedCategory = value;
+            this.selectedCategoryLabel = label;
+            this.categoryQuery = '';
+            this.applyFilters();
+        },
+        chooseManufacturer(value, label) {
+            this.selectedManufacturer = value;
+            this.selectedManufacturerLabel = label;
+            this.manufacturerQuery = '';
+            this.applyFilters();
+        },
+        clearCategory() { this.chooseCategory('', ''); },
+        clearManufacturer() { this.chooseManufacturer('', ''); },
+        clearAllFilters() {
+            this.selectedCategory = '';
+            this.selectedCategoryLabel = '';
+            this.selectedManufacturer = '';
+            this.selectedManufacturerLabel = '';
+            this.applyFilters();
+        }
+    }"
+    @keydown.escape.window="mobileDrawerOpen = false"
+>
+    {{ category_options|json_script:"category-options-data" }}
+    {{ manufacturer_options|json_script:"manufacturer-options-data" }}
+
+    <!-- الفورم الفعلي اللي بيبعت طلب htmx — مفيهوش أي عناصر مرئية،
+         بس فيه القيم المختارة (category/manufacturer) عشان hx-include
+         الخاص بخانة البحث وأزرار الـ pagination يقدر يقراها. -->
+    <form
+        id="filter-form"
+        x-ref="filterForm"
+        hx-get="{% url grid_url|default:'store:home' %}"
+        hx-trigger="filterChanged"
+        hx-target="#product-grid"
+        hx-include="#search-q"
+        hx-indicator="#search-spinner, #filter-spinner"
+        hx-sync="#product-grid:replace"
+        hx-swap="innerHTML"
+        class="hidden"
+    >
+        <input type="hidden" name="category" x-model="selectedCategory">
+        <input type="hidden" name="manufacturer" x-model="selectedManufacturer">
+    </form>
+
+    <!-- زرار "فلاتر" — موبايل/تابلت بس، الديسكتوب عنده السايد بار الثابت أصلًا -->
+    <div class="mb-4 lg:hidden">
+        <button
+            type="button"
+            @click="mobileDrawerOpen = true"
+            class="inline-flex items-center gap-1.5 rounded-lg border px-3.5 py-2 text-sm font-medium transition focus:outline-none focus:ring-2 focus:ring-primary-200"
+            :class="hasActiveFilters ? 'border-primary-300 bg-primary-50 text-primary-700' : 'border-gray-200 bg-white text-gray-700 hover:bg-gray-50'"
+        >
+            <svg class="h-4 w-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M3 4.5h18M6 9h12M10 13.5h4"/>
+            </svg>
+            <span>فلاتر</span>
+            <!-- عدّاد الفلاتر النشطة — بيوضح للمستخدم عدد الفلاتر الشغالة
+                 (0/1/2) من غير ما يحتاج يفتح الدرج عشان يعرف. -->
+            <template x-if="activeFilterCount > 0">
+                <span x-text="activeFilterCount"
+                      class="inline-flex h-4 w-4 items-center justify-center rounded-full bg-primary-600 text-[10px] font-bold text-white"></span>
+            </template>
+        </button>
+    </div>
+
+    <!-- شرائح الفلاتر النشطة — فوق الشبكة مباشرة، ديسكتوب وموبايل مع بعض -->
+    {% include 'store/partials/active_filters.html' %}
+
+    <!-- مؤشر تحميل قريب من الفلاتر والشبكة (نسخة من #search-spinner
+         الموجود فوق في الـ hero) — لما المستخدم يختار فلتر من السايد بار
+         أو الدرج، غالبًا يكون سكرول لتحت أو فاتح الدرج ومش هيلاحظ إن
+         #search-spinner البعيد شغال، فده بيبان في مكان نظره مباشرة. -->
+    <div id="filter-spinner" class="mb-3 hidden items-center gap-2 text-sm text-gray-500 [&.htmx-request]:flex">
+        <svg class="h-4 w-4 animate-spin text-primary-600" fill="none" viewBox="0 0 24 24">
+            <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+            <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path>
+        </svg>
+        <span>جاري تحديث النتائج...</span>
+    </div>
+
+    <!-- التخطيط ذو العمودين: سايد بار (ديسكتوب) + شبكة المنتجات. مفيش
+         تموضع مطلق ثابت بافتراض LTR — ده flex عادي، فبيتأقلم تلقائيًا
+         مع dir="rtl" (السايد بار بيبان على اليمين، ناحية البداية
+         المنطقية في الصفحة العربية). -->
+    <div class="lg:flex lg:items-start lg:gap-6">
+        {% include 'store/partials/store_filter_sidebar.html' %}
+
+        <div id="product-grid" class="min-w-0 flex-1">
+            {% include 'store/partials/product_grid.html' %}
+        </div>
+    </div>
+
+    {% include 'store/partials/mobile_filter_drawer.html' %}
+</div>

@@ -1,0 +1,73 @@
+{% comment %}
+درج الفلاتر — موبايل/تابلت أصغر من lg، بديل السايد بار الثابت على
+الشاشات الضيقة. بيتفتح بزرار "فلاتر" (راجع store_filters.html)، وبيقفل
+بـ Escape أو الضغط على الخلفية المعتمة أو زرار الإغلاق.
+
+الفلترة نفسها بتتطبّق فورًا لحظة الاختيار (htmx real-time، زي
+الديسكتوب بالظبط — راجع البند 15 من المواصفة). زرار "عرض النتائج" تحت
+مجرد إغلاق للدرج، مش خطوة "Apply" منفصلة، لأن مفيش داعي لخطوتين لفلتر
+واحد بس (قسم أو شركة) — لو عدد مجموعات الفلاتر زاد مستقبلًا ممكن نعيد
+تقييم القرار ده.
+
+الأقسام والشركات معروضين جنب بعض في عمودين (مش تحت بعض زي القديم)،
+عشان المستخدم يشوف المجموعتين مرة واحدة من غير ما يسكرول لتحت عشان
+يوصل للشركات. النتيجة برضه بتفضل مركّبة بين الاتنين (AND) زي ما هي —
+ده جاي من _apply_filters() في store/views.py مش من التصميم هنا، فمفيش
+حاجة اتغيّرت في منطق الفلترة نفسه، بس شكل العرض. compact=True بيتبعت
+لـ filter_group.html عشان الـ padding والـ max-height يتظبطوا على
+عرض نص الشاشة بدل عمود كامل.
+{% endcomment %}
+<div
+    x-show="mobileDrawerOpen"
+    x-cloak
+    x-transition.opacity
+    @click="mobileDrawerOpen = false"
+    class="fixed inset-0 z-40 bg-black/40 lg:hidden"
+></div>
+
+<div
+    x-show="mobileDrawerOpen"
+    x-cloak
+    x-transition:enter="transition ease-out duration-300"
+    x-transition:enter-start="translate-y-full"
+    x-transition:enter-end="translate-y-0"
+    x-transition:leave="transition ease-in duration-200"
+    x-transition:leave-start="translate-y-0"
+    x-transition:leave-end="translate-y-full"
+    role="dialog"
+    aria-modal="true"
+    aria-label="الفلاتر"
+    class="fixed inset-x-0 bottom-0 z-50 flex max-h-[85vh] flex-col rounded-t-2xl bg-white shadow-2xl lg:hidden"
+>
+    <div class="flex shrink-0 items-center justify-between border-b border-gray-100 px-4 py-3.5">
+        <span class="font-bold text-gray-800">الفلاتر</span>
+        <button type="button" @click="mobileDrawerOpen = false" aria-label="إغلاق" class="p-1 text-gray-400 hover:text-gray-700">
+            <svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/>
+            </svg>
+        </button>
+    </div>
+
+    <!-- الدرج نفسه بيسكرول لو المحتوى طويل، وكل مجموعة جواه ليها سكرول
+         داخلي منفصل كمان (راجع filter_group.html). overscroll-contain +
+         touch-scrolling هنا كمان (مش بس جوه كل مجموعة) عشان أي سحب لسه
+         بيوصل لحدود الدرج نفسه ميسربش لخلفية الصفحة اللي وراه. -->
+    <div class="flex-1 overflow-y-auto overscroll-contain [-webkit-overflow-scrolling:touch]">
+        {% if manufacturer_options %}
+        <div class="grid grid-cols-2 divide-x divide-x-reverse divide-gray-100 border-b border-gray-100">
+            {% include 'store/partials/filter_group.html' with group_title='الأقسام' query_var='categoryQuery' selected_var='selectedCategory' options_var='filteredCategories' choose_fn='chooseCategory' all_label='كل الأقسام' search_placeholder='بحث في الأقسام...' empty_label='لا توجد أقسام مطابقة' input_id='category-search-mobile' group_id='category-group-mobile' show_search=category_search_enabled compact=True %}
+            {% include 'store/partials/filter_group.html' with group_title='الشركة المصنعة' query_var='manufacturerQuery' selected_var='selectedManufacturer' options_var='filteredManufacturers' choose_fn='chooseManufacturer' all_label='كل الشركات' search_placeholder='بحث في الشركات...' empty_label='لا توجد شركات مطابقة' input_id='manufacturer-search-mobile' group_id='manufacturer-group-mobile' show_search=manufacturer_search_enabled compact=True %}
+        </div>
+        {% else %}
+        {# مفيش شركات مصنعة أصلاً — يفضل عمود واحد بعرض الدرج بدل ما نفضي عمود فاضي جنبه #}
+        {% include 'store/partials/filter_group.html' with group_title='الأقسام' query_var='categoryQuery' selected_var='selectedCategory' options_var='filteredCategories' choose_fn='chooseCategory' all_label='كل الأقسام' search_placeholder='بحث في الأقسام...' empty_label='لا توجد أقسام مطابقة' input_id='category-search-mobile' group_id='category-group-mobile' show_search=category_search_enabled %}
+        {% endif %}
+    </div>
+
+    <div class="shrink-0 border-t border-gray-100 px-4 py-3">
+        <button type="button" @click="mobileDrawerOpen = false"
+                class="w-full rounded-xl bg-primary-600 py-3 text-sm font-semibold text-white transition hover:bg-primary-700">
+            عرض النتائج
+        </button>
+    </div>
+</div>

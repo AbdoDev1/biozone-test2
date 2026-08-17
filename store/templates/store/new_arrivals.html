@@ -21,8 +21,8 @@ hx-on:cartUpdated="htmx.ajax('GET','{% url 'orders:cart_badge' %}',{target:'#car
         {% endif %}
     </p>
 
-    <div class="max-w-xl mx-auto flex flex-col sm:flex-row gap-2">
-        <div class="relative flex-1">
+    <div class="max-w-xl mx-auto">
+        <div class="relative">
             <input
                 id="search-q"
                 type="text"
@@ -33,7 +33,7 @@ hx-on:cartUpdated="htmx.ajax('GET','{% url 'orders:cart_badge' %}',{target:'#car
                 hx-get="{% url 'store:new_arrivals' %}"
                 hx-trigger="keyup changed delay:400ms"
                 hx-target="#product-grid"
-                hx-include="#filter-form, #category-select"
+                hx-include="#filter-form"
                 hx-indicator="#search-spinner"
                 hx-sync="#product-grid:replace"
                 hx-swap="innerHTML"
@@ -44,99 +44,15 @@ hx-on:cartUpdated="htmx.ajax('GET','{% url 'orders:cart_badge' %}',{target:'#car
                 <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path>
             </svg>
         </div>
-
-        <label for="category-select" class="sr-only">اختر القسم</label>
-        <select
-            id="category-select"
-            name="category"
-            class="px-4 py-3 rounded-xl text-gray-800 text-base outline-none shadow-sm sm:w-48 shrink-0"
-            hx-get="{% url 'store:new_arrivals' %}"
-            hx-trigger="change"
-            hx-target="#product-grid"
-            hx-include="#filter-form, #search-q"
-            hx-indicator="#search-spinner"
-            hx-sync="#product-grid:replace"
-            hx-swap="innerHTML">
-            <option value="" {% if not selected_category %}selected{% endif %}>كل الأقسام</option>
-            {% for cat in categories %}
-            <option value="{{ cat.slug }}" {% if selected_category == cat.slug %}selected{% endif %}>{{ cat.name }}</option>
-            {% endfor %}
-        </select>
     </div>
 </div>
 
-<div class="max-w-7xl mx-auto px-4 py-8 flex flex-col md:flex-row gap-6">
-
-    {% if manufacturers %}
-    <form id="filter-form" class="w-full md:w-64 md:shrink-0">
-      <div class="bg-white rounded-2xl shadow-sm p-5 space-y-6 md:sticky md:top-20">
-
-        <div>
-            <h3 class="font-bold text-gray-700 mb-3 text-sm uppercase tracking-wide">
-                الشركة المصنعة
-            </h3>
-
-            <div class="space-y-1">
-
-                <label class="flex items-center gap-2 cursor-pointer rounded-lg px-3 py-2 transition hover:bg-gray-50 has-[:checked]:bg-primary-50">
-                    <input
-                        type="radio"
-                        name="manufacturer"
-                        value=""
-                        {% if not selected_manufacturer %}checked{% endif %}
-                        class="accent-primary-600"
-                        hx-get="{% url 'store:new_arrivals' %}"
-                        hx-trigger="change"
-                        hx-target="#product-grid"
-                        hx-include="#filter-form, #search-q, #category-select"
-                        hx-indicator="#search-spinner"
-                        hx-sync="#product-grid:replace"
-                        hx-swap="innerHTML">
-
-                    <span class="text-sm text-gray-600 has-[:checked]:text-primary-700 has-[:checked]:font-semibold">
-                        الكل
-                    </span>
-                </label>
-
-                {% for m in manufacturers %}
-
-                <label class="flex items-center gap-2 cursor-pointer rounded-lg px-3 py-2 transition hover:bg-gray-50 has-[:checked]:bg-primary-50">
-                    <input
-                        type="radio"
-                        name="manufacturer"
-                        value="{{ m.slug }}"
-                        {% if selected_manufacturer == m.slug %}checked{% endif %}
-                        class="accent-primary-600"
-                        hx-get="{% url 'store:new_arrivals' %}"
-                        hx-trigger="change"
-                        hx-target="#product-grid"
-                        hx-include="#filter-form, #search-q, #category-select"
-                        hx-indicator="#search-spinner"
-                        hx-sync="#product-grid:replace"
-                        hx-swap="innerHTML">
-
-                    <span class="text-sm text-gray-600 has-[:checked]:text-primary-700 has-[:checked]:font-semibold">
-                        {{ m.name }}
-                    </span>
-                </label>
-
-                {% endfor %}
-
-            </div>
-
-        </div>
-
-      </div>
-    </form>
-    {% endif %}
-
-    <!-- Product Grid -->
-    <div class="flex-1">
-        <div id="product-grid">
-            {% include 'store/partials/product_grid.html' %}
-        </div>
-    </div>
-
+<!-- نفس مكوّن فلترة المتجر الموحّد المستخدم في المتجر العادي
+     (سايد بار ديسكتوب + درج موبايل + شبكة المنتجات) — كان قبل كده
+     مكرر هنا بشكل مختلف تمامًا (select للأقسام + sidebar منفصل
+     للشركات)، ودلوقتي مكوّن واحد موحّد. -->
+<div class="max-w-7xl mx-auto px-4 py-6">
+    {% include 'store/partials/store_filters.html' %}
 </div>
 
 {% endblock %}

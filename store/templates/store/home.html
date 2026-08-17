@@ -23,9 +23,6 @@ hx-on:cartUpdated="htmx.ajax('GET','{% url 'orders:cart_badge' %}',{target:'#car
         أكثر من {{ total_products }} منتج متاح للطلب
     </p>
 
-    <!-- البحث بس هنا؛ فلترة الأقسام/الشركة المصنعة بقت جوه شريط "القائمة"
-         الجانبي (نفس الشريط اللي فيه حسابي/طلباتي) بدل زرار منفصل هنا،
-         عشان الصفحة تفضل بسيطة زي مواقع التسوق الكبيرة. -->
     <div class="max-w-xl mx-auto">
         <div class="relative">
             <input
@@ -56,11 +53,12 @@ hx-on:cartUpdated="htmx.ajax('GET','{% url 'orders:cart_badge' %}',{target:'#car
      يفضل صحيح لقارئ الشاشة (h1 -> h2 -> h3 بدون قفز). -->
 <h2 class="sr-only">تصفح المنتجات</h2>
 
-<!-- Product Grid: بياخد عرض الصفحة كله، مفيش سايدبار ثابت جنبه -->
-<div class="max-w-7xl mx-auto px-4 py-8">
-    <div id="product-grid">
-        {% include 'store/partials/product_grid.html' %}
-    </div>
+<!-- فلترة المتجر (سايد بار ديسكتوب + درج موبايل) وشبكة المنتجات مع
+     بعض: مكوّن واحد قابل لإعادة الاستخدام (store_filters.html) يغطي
+     التخطيط ذو العمودين بالكامل، بدل القوائم الطويلة اللي كانت جوه
+     شريط "القائمة" الجانبي قبل كده. -->
+<div class="max-w-7xl mx-auto px-4 py-6">
+    {% include 'store/partials/store_filters.html' %}
 </div>
 
 {% endblock %}

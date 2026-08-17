@@ -1,0 +1,20 @@
+{% comment %}
+سايد بار الفلاتر — ديسكتوب فقط (lg وأكبر)، مختفي على الموبايل/التابلت
+الأصغر (فيه درج منفصل بدلًا منه، راجع mobile_filter_drawer.html).
+ثابت (sticky) بجانب شبكة المنتجات، ومقاسه محدود (w-64) بغض النظر عن
+عدد الخيارات جوه أي مجموعة — كل مجموعة فيها سكرول داخلي خاص بيها
+(راجع filter_group.html).
+{% endcomment %}
+<aside class="hidden shrink-0 lg:block lg:w-64">
+    <div class="sticky top-20 overflow-hidden rounded-2xl border border-gray-100 bg-white shadow-sm">
+        <div class="border-b border-gray-100 px-4 py-3">
+            <h2 class="text-sm font-bold text-gray-800">الفلاتر</h2>
+        </div>
+        <div>
+            {% include 'store/partials/filter_group.html' with group_title='الأقسام' query_var='categoryQuery' selected_var='selectedCategory' options_var='filteredCategories' choose_fn='chooseCategory' all_label='كل الأقسام' search_placeholder='بحث في الأقسام...' empty_label='لا توجد أقسام مطابقة' input_id='category-search-desktop' group_id='category-group-desktop' show_search=category_search_enabled %}
+            {% if manufacturer_options %}
+            {% include 'store/partials/filter_group.html' with group_title='الشركة المصنعة' query_var='manufacturerQuery' selected_var='selectedManufacturer' options_var='filteredManufacturers' choose_fn='chooseManufacturer' all_label='كل الشركات' search_placeholder='بحث في الشركات...' empty_label='لا توجد شركات مطابقة' input_id='manufacturer-search-desktop' group_id='manufacturer-group-desktop' show_search=manufacturer_search_enabled %}
+            {% endif %}
+        </div>
+    </div>
+</aside>

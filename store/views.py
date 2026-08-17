@@ -8,7 +8,7 @@ from products.matching import normalize_name
 from products.new_arrivals import new_arrival_filter, NEW_ARRIVALS_WINDOW_DAYS
 from inventory.models import Inventory
 from orders.cart import Cart
-from django.db.models import Q, Case, When, Value, BooleanField
+from django.db.models import Q, Case, When, Value, BooleanField, Count
 
 
 def _cart_quantities(request):
@@ -83,24 +83,105 @@ def _apply_filters(products, request):
     return products, selected_category, selected_manufacturer, search_q
 
 
+def _categories_list():
+    """
+    الأقسام النشطة اللي عندها منتج نشط واحد على الأقل بس (نفس منطق
+    _manufacturers_list() بالظبط) — قبل كده كان store_home/new_arrivals
+    بيستخدموا Category.objects.filter(is_active=True) من غير استبعاد
+    الأقسام الفاضية، فكان جزء من الأقسام الظاهرة في الفلتر مالوش أي
+    منتج فعلي. مرتبة تنازليًا بعدد المنتجات النشطة (الأكثر بضاعة فوق)
+    بدل الترتيب الأبجدي، عشان أهم الأقسام تبقى أول حاجة يشوفها العميل.
+    """
+    return (
+        Category.objects.filter(is_active=True, products__is_active=True)
+        .annotate(active_product_count=Count(
+            'products', filter=Q(products__is_active=True), distinct=True
+        ))
+        .distinct()
+        .order_by('-active_product_count', 'name')
+    )
+
+
 def _manufacturers_list():
     # كانت .values_list('manufacturer', flat=True).distinct() على نص خام
     # — بيرجّع أي اختلاف كتابة بسيط كشركة منفصلة (عدد غير منطقي في
-    # الفلتر). دلوقتي Company موديل مستقل، فمفيش داعي لـ distinct() أصلاً؛
-    # كل شركة نشطة ليها منتج نشط واحد على الأقل بترجع مرة واحدة بالظبط.
+    # الفلتر). دلوقتي Company موديل مستقل، فمفيش داعي لـ distinct() لتفادي
+    # تكرار الأسماء، بس لسه محتاجينها هنا عشان annotate() مع filter بيعمل
+    # JOIN بيتكرر لكل منتج نشط. مرتبة تنازليًا بعدد المنتجات النشطة (نفس
+    # منطق الأقسام بالظبط) بدل الأبجدي.
     return (
         Company.objects.filter(is_active=True, products__is_active=True)
+        .annotate(active_product_count=Count(
+            'products', filter=Q(products__is_active=True), distinct=True
+        ))
         .distinct()
-        .order_by('name')
+        .order_by('-active_product_count', 'name')
     )
+
+
+def _category_options(categories):
+    """
+    نفس فكرة _manufacturer_options() بس للأقسام — شكل {value, label, count}
+    عشان يتحقن كـ JSON جوه store_filters.html (البحث الداخلي في الدروب
+    داون شغال بـ Alpine.js على القايمة دي، مش على كائنات Category
+    الخام). count = عدد المنتجات النشطة في القسم، بيتعرض جنب الاسم في
+    الفلتر ("المستلزمات الجراحية (128)") عشان العميل يقرر يفتح القسم ده
+    من غيره من غير ما يدخله. القالب نفسه لسه بياخد `categories` (الـ
+    queryset) زي ما هو لأي استخدام تاني يحتاجه مستقبلًا.
+    """
+    return [
+        {'value': c.slug, 'label': c.name, 'count': c.active_product_count}
+        for c in categories
+    ]
+
+
+def _manufacturer_options():
+    """
+    نفس _manufacturers_list() لكن بشكل موحّد {value, label, count} بدل
+    كائنات Company الخام — القالب (store_filters.html) محتاج يتعامل مع
+    الأقسام والشركات المصنّعة بنفس الشكل من غير ما "يعرف" إن الشركة
+    المصنّعة جوّه Company.slug/.name تحديدًا (راجع STORE_FILTERS
+    redesign). value = company slug، label = company name، زي
+    category.slug/.name بالظبط.
+    """
+    return [
+        {'value': c.slug, 'label': c.name, 'count': c.active_product_count}
+        for c in _manufacturers_list()
+    ]
+
+
+def _selected_label(options, selected_value):
+    """
+    بيدوّر على label الخيار المختار (قسم أو شركة مصنّعة) عشان الفلتر
+    المدمج (store_filters.html) يعرضه كـ "chip" من غير ما يحتاج يلف على
+    القايمة تاني جوه التمبليت. options ممكن تكون queryset (Category،
+    فيها .slug/.name) أو list من dicts (manufacturer_options، فيها
+    value/label) — الاتنين مدعومين هنا.
+    """
+    if not selected_value:
+        return ''
+    for opt in options:
+        if isinstance(opt, dict):
+            if opt['value'] == selected_value:
+                return opt['label']
+        elif opt.slug == selected_value:
+            return opt.name
+    return ''
+
+
+FILTER_GROUP_SEARCH_MIN_OPTIONS = 8
+# خانة البحث الداخلي جوه مجموعة الفلتر (بحث في الأقسام/الشركات) زودة لو
+# عدد الخيارات قليل — بتتخفي تلقائيًا لو العدد أقل من العتبة دي (راجع
+# ملاحظات مراجعة الفلتر).
 
 
 def store_home(request):
-    categories = Category.objects.filter(is_active=True)
+    categories = _categories_list()
     products, selected_category, selected_manufacturer, search_q = _apply_filters(
         _base_products_queryset(), request
     )
-    manufacturers = _manufacturers_list()
+    manufacturer_options = _manufacturer_options()
+    category_options = _category_options(categories)
 
     paginator = Paginator(products, PRODUCTS_PER_PAGE)
     # لو فلتر (فئة/بحث) اتغيّر ورجع صفحة مش موجودة (مثلاً كنت في صفحة 5
@@ -112,9 +193,14 @@ def store_home(request):
         'page_obj': page_obj,
         'total_products': paginator.count,
         'categories': categories,
-        'manufacturers': manufacturers,
+        'category_options': category_options,
+        'manufacturer_options': manufacturer_options,
+        'category_search_enabled': len(category_options) >= FILTER_GROUP_SEARCH_MIN_OPTIONS,
+        'manufacturer_search_enabled': len(manufacturer_options) >= FILTER_GROUP_SEARCH_MIN_OPTIONS,
         'selected_category': selected_category,
         'selected_manufacturer': selected_manufacturer,
+        'selected_category_label': _selected_label(categories, selected_category),
+        'selected_manufacturer_label': _selected_label(manufacturer_options, selected_manufacturer),
         'search_q': search_q,
         'grid_url': 'store:home',
         'cart_quantities': _cart_quantities(request),
@@ -139,10 +225,11 @@ def new_arrivals(request):
     بحث/فلاتر المتجر العادي (قسم، شركة مصنعة، بحث بالاسم) — الصنف هنا
     فاضل موجود في المتجر العادي كمان، الصفحة دي مجرد تجميعة مفلترة.
     """
-    categories = Category.objects.filter(is_active=True)
+    categories = _categories_list()
     base_qs = _base_products_queryset().filter(new_arrival_filter())
     products, selected_category, selected_manufacturer, search_q = _apply_filters(base_qs, request)
-    manufacturers = _manufacturers_list()
+    manufacturer_options = _manufacturer_options()
+    category_options = _category_options(categories)
 
     paginator = Paginator(products.order_by('-new_arrival_at'), PRODUCTS_PER_PAGE)
     page_obj = paginator.get_page(request.GET.get('page'))
@@ -152,9 +239,14 @@ def new_arrivals(request):
         'page_obj': page_obj,
         'total_products': paginator.count,
         'categories': categories,
-        'manufacturers': manufacturers,
+        'category_options': category_options,
+        'manufacturer_options': manufacturer_options,
+        'category_search_enabled': len(category_options) >= FILTER_GROUP_SEARCH_MIN_OPTIONS,
+        'manufacturer_search_enabled': len(manufacturer_options) >= FILTER_GROUP_SEARCH_MIN_OPTIONS,
         'selected_category': selected_category,
         'selected_manufacturer': selected_manufacturer,
+        'selected_category_label': _selected_label(categories, selected_category),
+        'selected_manufacturer_label': _selected_label(manufacturer_options, selected_manufacturer),
         'search_q': search_q,
         'window_days': NEW_ARRIVALS_WINDOW_DAYS,
         'grid_url': 'store:new_arrivals',

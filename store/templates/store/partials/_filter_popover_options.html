@@ -1,0 +1,58 @@
+{% comment %}
+پارامترات لازم توصل من الـ include:
+query_var    : اسم متغيّر Alpine للبحث جوه الدروب داون (categoryQuery / manufacturerQuery)
+selected_var : اسم متغيّر Alpine للقيمة المختارة (selectedCategory / selectedManufacturer)
+options_var  : اسم الـ getter اللي بيرجّع القايمة المفلترة (filteredCategories / filteredManufacturers)
+choose_fn    : اسم دالة Alpine بتتنفذ عند اختيار عنصر (chooseCategory / chooseManufacturer)
+all_label    : نص "كل الأقسام" / "كل الشركات"
+search_placeholder : نص placeholder لخانة البحث الداخلية
+empty_label  : نص لما البحث الداخلي مايلاقيش نتيجة
+input_id     : id فريد لخانة البحث (للـ label/for)
+{% endcomment %}
+<div class="p-3">
+    <label class="sr-only" for="{{ input_id }}">{{ search_placeholder }}</label>
+    <div class="relative mb-2">
+        <input
+            type="text"
+            id="{{ input_id }}"
+            x-model="{{ query_var }}"
+            x-ref="{{ input_id }}"
+            placeholder="{{ search_placeholder }}"
+            autocomplete="off"
+            class="w-full rounded-lg border border-gray-200 py-2 ps-3 pe-8 text-sm text-gray-700 outline-none transition focus:border-primary-500 focus:ring-2 focus:ring-primary-100">
+        <svg class="pointer-events-none absolute end-2.5 top-1/2 w-4 h-4 -translate-y-1/2 text-gray-300"
+             fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M21 21l-4.35-4.35M18 10.5a7.5 7.5 0 11-15 0 7.5 7.5 0 0115 0z"/>
+        </svg>
+    </div>
+
+    <div class="max-h-60 overflow-y-auto space-y-0.5" role="listbox" aria-label="{{ search_placeholder }}">
+
+        <button
+            type="button"
+            role="option"
+            @click="{{ choose_fn }}('', '')"
+            :aria-selected="({{ selected_var }} === '').toString()"
+            class="flex w-full items-center rounded-lg px-3 py-2 text-start text-sm transition hover:bg-gray-50"
+            :class="{{ selected_var }} === '' ? 'bg-primary-50 font-semibold text-primary-700' : 'text-gray-600'">
+            {{ all_label }}
+        </button>
+
+        <template x-for="opt in {{ options_var }}" :key="opt.value">
+            <button
+                type="button"
+                role="option"
+                @click="{{ choose_fn }}(opt.value, opt.label)"
+                :aria-selected="({{ selected_var }} === opt.value).toString()"
+                class="flex w-full items-center rounded-lg px-3 py-2 text-start text-sm transition hover:bg-gray-50"
+                :class="{{ selected_var }} === opt.value ? 'bg-primary-50 font-semibold text-primary-700' : 'text-gray-600'"
+                x-text="opt.label">
+            </button>
+        </template>
+
+        <p x-show="{{ options_var }}.length === 0" class="px-3 py-6 text-center text-sm text-gray-400">
+            {{ empty_label }}
+        </p>
+
+    </div>
+</div>

@@ -1,4 +1,11 @@
 {% if products %}
+<!-- عدد النتائج: جوه الجزء اللي بيتبدّل بـ htmx مع كل فلتر/بحث، عشان
+     يفضل دايمًا متزامن مع النتائج المعروضة فعليًا (بدل ما يتحسب مرة
+     واحدة بس عند تحميل الصفحة الأول). -->
+<p class="mb-3 text-sm text-gray-500">
+  {{ total_products }} منتج
+</p>
+
 <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
   {% for product in products %}
     {% include 'store/partials/product_card.html' %}
@@ -13,7 +20,7 @@
         class="px-3 py-2 rounded-lg bg-white shadow-sm hover:bg-primary-50 text-gray-600"
         hx-get="{% url grid_url|default:'store:home' %}"
         hx-vals='{"page": {{ page_obj.previous_page_number }}}'
-        hx-include="#filter-form, #search-q, #category-select"
+        hx-include="#filter-form, #search-q"
         hx-target="#product-grid"
         hx-swap="innerHTML"
         hx-push-url="true">
@@ -30,7 +37,7 @@
         class="px-3 py-2 rounded-lg bg-white shadow-sm hover:bg-primary-50 text-gray-600"
         hx-get="{% url grid_url|default:'store:home' %}"
         hx-vals='{"page": {{ page_obj.next_page_number }}}'
-        hx-include="#filter-form, #search-q, #category-select"
+        hx-include="#filter-form, #search-q"
         hx-target="#product-grid"
         hx-swap="innerHTML"
         hx-push-url="true">

@@ -1,0 +1,34 @@
+{% comment %}
+شريط الفلاتر النشطة — يظهر فوق شبكة المنتجات مباشرة (ديسكتوب وموبايل
+مع بعض)، عشان المستخدم يعرف الفلاتر الشغالة من غير ما يحتاج يفتح
+السايد بار أو الدرج تاني. كل شريحة قابلة للإزالة لوحدها + زرار "مسح
+الكل". محتاج نفس x-data الموجود جوّه store_filters.html (الأب).
+{% endcomment %}
+<div x-show="hasActiveFilters" x-cloak class="mb-4 flex flex-wrap items-center gap-2">
+    <span class="text-xs font-medium text-gray-500">الفلاتر المطبّقة:</span>
+
+    <template x-if="selectedCategory">
+        <button type="button" @click="clearCategory()"
+                class="inline-flex items-center gap-1.5 rounded-full bg-primary-50 py-1.5 ps-3 pe-2 text-xs font-medium text-primary-700 transition hover:bg-primary-100">
+            <span x-text="selectedCategoryLabel"></span>
+            <svg class="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2.5">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/>
+            </svg>
+        </button>
+    </template>
+
+    <template x-if="selectedManufacturer">
+        <button type="button" @click="clearManufacturer()"
+                class="inline-flex items-center gap-1.5 rounded-full bg-primary-50 py-1.5 ps-3 pe-2 text-xs font-medium text-primary-700 transition hover:bg-primary-100">
+            <span x-text="selectedManufacturerLabel"></span>
+            <svg class="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2.5">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/>
+            </svg>
+        </button>
+    </template>
+
+    <button type="button" @click="clearAllFilters()"
+            class="text-xs font-medium text-gray-500 underline-offset-2 hover:text-gray-700 hover:underline">
+        مسح الكل
+    </button>
+</div>
