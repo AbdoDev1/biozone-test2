@@ -9,3 +9,4 @@ staticfiles/
 locustfile.py
 docker-compose.yml
 backups/
+pgbouncer/userlist.txt

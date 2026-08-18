@@ -13,3 +13,6 @@ staticfiles/
 .vscode/
 node_modules/
 backups/
+# مولّد تلقائيًا جوه الحاوية وقت التشغيل (راجع pgbouncer/pgbouncer.ini) —
+# مفروض ميوصلش لهنا أصلًا، الاستثناء ده مجرد حماية إضافية.
+pgbouncer/userlist.txt

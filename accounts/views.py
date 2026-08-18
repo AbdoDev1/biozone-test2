@@ -1,5 +1,3 @@
-import time  # مؤقت — للتشخيص بس، هيتشال بعد القياس
-
 from django.shortcuts import render, redirect
 from django.contrib.auth import authenticate, login, logout
 from django.contrib import messages
@@ -47,22 +45,11 @@ def login_view(request):
                 messages.error(request, LOGIN_BLOCKED_MESSAGE)
                 return render(request, 'accounts/login.html', {'form': form})
 
-            _tq0 = time.perf_counter()  # مؤقت
-            try:
-                User.objects.get(username=username)
-            except User.DoesNotExist:
-                pass
-            _tq1 = time.perf_counter()  # مؤقت
-            print(f"[TIMING] user lookup query alone: {(_tq1 - _tq0) * 1000:.0f}ms")  # مؤقت
-
-            _t0 = time.perf_counter()  # مؤقت
             user = authenticate(
                 request,
                 username=username,
                 password=form.cleaned_data['password'],
             )
-            _t1 = time.perf_counter()  # مؤقت
-            print(f"[TIMING] authenticate(): {(_t1 - _t0) * 1000:.0f}ms")  # مؤقت
             if user:
                 # موظف حاول يدخل من بوابة العملاء — رسالة عامة موحّدة
                 # (نفس رسالة "بيانات خاطئة") عشان منسربش إن اليوزرنيم ده
@@ -81,10 +68,7 @@ def login_view(request):
                     messages.error(request, 'تم رفض طلب تسجيلك.')
                 else:
                     reset_login_attempts(request, username)
-                    _t2 = time.perf_counter()  # مؤقت
                     login(request, user)
-                    _t3 = time.perf_counter()  # مؤقت
-                    print(f"[TIMING] login(): {(_t3 - _t2) * 1000:.0f}ms")  # مؤقت
                     return redirect('store:home')
             else:
                 record_failed_login(request, username)
