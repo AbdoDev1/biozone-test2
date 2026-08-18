@@ -13,7 +13,7 @@ import uuid
 from django.conf import settings
 from django.core.cache import cache
 from django.core.paginator import Paginator
-from django.http import JsonResponse
+from django.http import HttpResponse, JsonResponse
 from django.shortcuts import render, redirect
 from django.contrib import messages
 from django.db import transaction
@@ -24,7 +24,7 @@ from products.matching import normalize_name
 from products.new_arrivals import NEW_ARRIVALS_WINDOW_DAYS
 from products.services import import_export as import_export_service
 from staff.permissions import perm_required
-from staff.excel_utils import workbook_response
+from staff.excel_utils import XLSX_CONTENT_TYPE, workbook_response
 
 IMPORT_SESSION_KEY = 'product_import_batch'
 IMPORT_ERRORS_SESSION_KEY = 'product_import_last_errors'
@@ -271,12 +271,73 @@ def download_template(request):
 
 @perm_required('products.view_product')
 def export_products(request):
-    """تصدير كل الأصناف الحالية دفعة واحدة (بدون اختيار)."""
-    products = Product.objects.select_related('category').prefetch_related(
-        'units__discounts__account_type',
-    ).all()
-    wb = import_export_service.build_products_export_workbook(products)
-    return workbook_response(wb, 'biozone_products_export.xlsx')
+    """
+    تصدير كل الأصناف الحالية دفعة واحدة (بدون اختيار) — كان بيبني ملف
+    الإكسل متزامن جوه نفس طلب الـ HTTP على web-staff (بدون أي حد أقصى
+    لعدد الصفوف)، وده بيتفاقم تلقائيًا مع نمو الكتالوج (راجع ADR-001).
+    دلوقتي بنبعت المعالجة لـ Celery في الخلفية (نفس نمط
+    import_products/parse_import_workbook_task) ونرجّع فورًا شاشة انتظار
+    بسيطة بتعمل polling على export_products_status.
+    """
+    from products.tasks import export_products_task, export_result_cache_key
+    # نظّف أي نتيجة تصدير سابقة للموظف ده (لو كان طلب تصدير قبل كده ولسه
+    # فاتح الشاشة) عشان شاشة الانتظار متتأكدش من نتيجة قديمة غلط.
+    cache.delete(export_result_cache_key(request.user.pk))
+    export_products_task.delay(request.user.pk)
+    return render(request, 'staff/products/export_processing.html')
+
+
+@perm_required('products.view_product')
+def export_products_status(request):
+    """
+    Endpoint خفيف بتستدعيه شاشة الانتظار (export_processing.html) كل
+    ثانيتين — بيتأكد هل مهمة Celery خلصت (نتيجة موجودة في الكاش) ولا لسه،
+    وهل خلصت بنجاح ولا بفشل. نفس فكرة import_products_status بالظبط.
+    """
+    from products.tasks import export_result_cache_key
+    cached = cache.get(export_result_cache_key(request.user.pk))
+    return JsonResponse({
+        'ready': cached is not None,
+        'failed': bool(cached and cached.get('status') == 'failed'),
+    })
+
+
+@perm_required('products.view_product')
+def export_products_download(request):
+    """
+    بتقرا ملف التصدير الجاهز من القرص المشترك (export_products_task حفظه
+    هناك) وترجعه للموظف كتحميل، وبعدين تمسحه فورًا — رابط استخدام واحد.
+    لو الملف مش موجود (اتحمّل قبل كده، أو الكاش انتهت صلاحيته) بترجّع
+    الموظف لصفحة التصدير تاني بدل خطأ 500.
+    """
+    from products.tasks import export_result_cache_key
+    cached = cache.get(export_result_cache_key(request.user.pk))
+    if not cached:
+        messages.error(request, 'مفيش ملف تصدير جاهز حاليًا (ممكن يكون اتحمّل قبل كده أو انتهت صلاحيته). جرّب تاني.')
+        return redirect('staff:export_products')
+
+    if cached.get('status') != 'done':
+        messages.error(request, cached.get('error_message') or 'حصل خطأ أثناء تجهيز ملف التصدير.')
+        cache.delete(export_result_cache_key(request.user.pk))
+        return redirect('staff:export_products')
+
+    file_path = cached['file_path']
+    if not os.path.exists(file_path):
+        messages.error(request, 'ملف التصدير مش موجود على السيرفر (اتحمّل قبل كده على الأرجح). جرّب تاني.')
+        cache.delete(export_result_cache_key(request.user.pk))
+        return redirect('staff:export_products')
+
+    with open(file_path, 'rb') as f:
+        data = f.read()
+    try:
+        os.remove(file_path)
+    except OSError:
+        pass
+    cache.delete(export_result_cache_key(request.user.pk))
+
+    response = HttpResponse(data, content_type=XLSX_CONTENT_TYPE)
+    response['Content-Disposition'] = 'attachment; filename="biozone_products_export.xlsx"'
+    return response
 
 
 def _export_picker_queryset(request):

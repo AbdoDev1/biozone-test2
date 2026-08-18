@@ -28,6 +28,10 @@ class Notification(models.Model):
         # products/tasks.py. نفس النوع بيتستخدم للنجاح والفشل، والفرق
         # في العنوان/الرسالة/الرابط المرفقين وقت إنشاء الإشعار.
         IMPORT_READY = 'IMPORT_READY', 'نتيجة معالجة ملف الاستيراد'
+        # نفس فكرة IMPORT_READY، بس لتصدير المنتجات (products/tasks.py:
+        # export_products_task) — بيتستخدم للنجاح (رابط التحميل) والفشل
+        # (رسالة الخطأ)، الفرق في العنوان/الرسالة/الرابط وقت الإنشاء.
+        EXPORT_READY = 'EXPORT_READY', 'نتيجة تجهيز ملف التصدير'
 
     recipient = models.ForeignKey(User, on_delete=models.CASCADE, related_name='notifications')
     kind = models.CharField(max_length=40, choices=Kind.choices)
