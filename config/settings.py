@@ -233,6 +233,18 @@ PASSWORD_RESET_TIMEOUT = 60 * 60
 # Password validation
 # https://docs.djangoproject.com/en/6.0/ref/settings/#auth-password-validators
 
+# Hasher أخف من الـ default (1.2M iteration في Django 6.0) — راجع
+# accounts/hashers.py للتفاصيل والسبب الكامل (مقاس ومؤكد على هاردوير
+# سيرفر الإنتاج الفعلي، مش تخمين).
+PASSWORD_HASHERS = [
+    'accounts.hashers.FastPBKDF2Hasher',
+    'django.contrib.auth.hashers.PBKDF2PasswordHasher',
+    'django.contrib.auth.hashers.PBKDF2SHA1PasswordHasher',
+    'django.contrib.auth.hashers.Argon2PasswordHasher',
+    'django.contrib.auth.hashers.BCryptSHA256PasswordHasher',
+    'django.contrib.auth.hashers.ScryptPasswordHasher',
+]
+
 AUTH_PASSWORD_VALIDATORS = [
     {
         'NAME': 'django.contrib.auth.password_validation.UserAttributeSimilarityValidator',
