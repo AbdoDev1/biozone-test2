@@ -15,8 +15,9 @@ def backup_manual(request):
     نجحت أو فشلت (وجود backups/last_error.txt = آخر محاولة فشلت)، آخر
     RECENT_BACKUPS_LIMIT نسخة **موجودة فعليًا على القرص دلوقتي** (مش
     سطور من ملف log قديم ممكن يشاور على ملفات اتمسحت)، وزرار "تشغيل
-    نسخة احتياطية الآن" بيشغّل نفس السكريبت بشكل متزامن
-    (staff/services/backup.py — perform_backup).
+    نسخة احتياطية الآن" بيبعت مهمة Celery في الخلفية وبيرجع فورًا
+    (راجع backup_run_now و staff/tasks.py:run_manual_backup_task) —
+    النتيجة النهائية بتوصل عن طريق نظام الإشعارات، مش هنا في نفس الصفحة.
     """
     return render(request, 'staff/backup.html', {
         'has_error': LAST_ERROR_FILE.exists(),
@@ -27,25 +28,23 @@ def backup_manual(request):
 
 @perm_required('staff.manage_backup')
 def backup_run_now(request):
+    """
+    بتبعت المهمة لـ Celery (staff/tasks.py:run_manual_backup_task) وترجع
+    فورًا من غير ما تستنى pg_dump/gzip يخلصوا (المرحلة 2 من خطة الدين
+    التقني — ADR-002؛ قبل كده كانت بتنادي perform_backup() مباشرة وتستنى
+    النتيجة جوه نفس الـ request). النتيجة الفعلية (نجاح/فشل/تعارض توقيت)
+    بتوصل لاحقًا عن طريق نظام الإشعارات الموجود، مش هنا في رسالة الصفحة.
+    """
     if request.method != 'POST':
         return redirect('staff:backup_manual')
 
-    from staff.services.backup import perform_backup
+    from staff.tasks import run_manual_backup_task
 
-    success, error_detail = perform_backup()
-    if success:
-        messages.success(request, 'تم عمل النسخة الاحتياطية بنجاح.')
-    elif isinstance(error_detail, str) and 'شغالة بالفعل دلوقتي' in error_detail:
-        # مش خطأ فني — مجرد تعارض توقيت (مثلاً الكرون شغال دلوقتي بالظبط).
-        messages.warning(request, error_detail)
-    else:
-        # نفس الرسالة العامة اللي بتوصل لكل الموظفين — التفاصيل التقنية
-        # (error_detail) متاحة بس عن طريق زرار "تحميل تفاصيل المشكلة" في
-        # نفس الصفحة، مش هنا في رسالة الموقع نفسها.
-        messages.error(
-            request,
-            'حصلت مشكلة في النسخ الاحتياطي. لو اتكررت، المشكلة محتاجة تدخل المبرمج مباشرة.'
-        )
+    run_manual_backup_task.delay(request.user.pk)
+    messages.info(
+        request,
+        'بدأ النسخ الاحتياطي في الخلفية — هتوصلك رسالة في الإشعارات لما يخلص (نجاح أو فشل).'
+    )
     return redirect('staff:backup_manual')
 
 

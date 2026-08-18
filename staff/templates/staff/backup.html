@@ -83,7 +83,7 @@
 
     <div class="flex flex-wrap items-center gap-3">
         <form method="post" action="{% url 'staff:backup_run_now' %}"
-              data-confirm="تشغيل نسخة احتياطية الآن؟ العملية بتاخد ثواني معدودة وممكن تستنى النتيجة في نفس الصفحة."
+              data-confirm="تشغيل نسخة احتياطية الآن؟ العملية بتشتغل في الخلفية، والنتيجة (نجاح أو فشل) هتوصلك في الإشعارات."
               data-confirm-type="warning">
             {% csrf_token %}
             <button type="submit"

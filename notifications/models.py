@@ -32,6 +32,18 @@ class Notification(models.Model):
         # export_products_task) — بيتستخدم للنجاح (رابط التحميل) والفشل
         # (رسالة الخطأ)، الفرق في العنوان/الرسالة/الرابط وقت الإنشاء.
         EXPORT_READY = 'EXPORT_READY', 'نتيجة تجهيز ملف التصدير'
+        # نتيجة الزرار اليدوي "تشغيل نسخة احتياطية الآن" بعد نقله لـ Celery
+        # (المرحلة 2 من خطة الدين التقني — ADR-002، راجع staff/tasks.py).
+        # بيتستخدم لثلاث حالات: نجاح، تعارض توقيت مع كرون شغال (رسالة
+        # مختلفة عن فشل حقيقي)، وفشل فني حقيقي — الفرق في العنوان/الرسالة.
+        # ده إشعار شخصي للموظف اللي ضغط الزرار بس؛ الفشل الحقيقي كمان
+        # بيتبعت بشكل منفصل لكل أصحاب صلاحية staff.manage_backup عن طريق
+        # BACKUP_FAILED جوه staff/services/backup.py:report_backup_result
+        # (منطق موجود بالفعل ومتلمسناهوش) — عشان كده الـ task هنا مبيبعتش
+        # BACKUP_READY تاني في حالة الفشل الحقيقي (هيبقى تكرار لنفس
+        # الموظف)، وبيبعته بس في حالة النجاح أو تعارض التوقيت (الحالتين
+        # اللي مفيش لهم أي إشعار حاليًا).
+        BACKUP_READY = 'BACKUP_READY', 'نتيجة النسخة الاحتياطية اليدوية'
 
     recipient = models.ForeignKey(User, on_delete=models.CASCADE, related_name='notifications')
     kind = models.CharField(max_length=40, choices=Kind.choices)
