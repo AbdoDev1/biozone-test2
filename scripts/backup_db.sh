@@ -23,13 +23,18 @@ log() {
 
 notify_success() {
     local out
-    if ! out=$(docker compose exec -T web python manage.py report_backup_result --success --file "$1" 2>&1); then
+    # web-store هي الخدمة الوحيدة اللي مضمون وجودها ومستقرة دايمًا (راجع
+    # docker-compose.yml — الاتنين التانيين depends_on عليها) بعد تقسيم
+    # الخدمة الواحدة "web" لـ web-store/web-staff/celery-worker (مرحلة 1
+    # من خطة الأداء) — أي واحدة فيهم كانت هتشتغل بنفس الشكل لأمر manage.py
+    # لمرة واحدة زي ده، لكن web-store الأضمن وجودًا.
+    if ! out=$(docker compose exec -T web-store python manage.py report_backup_result --success --file "$1" 2>&1); then
         log "تنبيه: تعذّر إبلاغ نظام الإشعارات بنجاح النسخة. التفاصيل: $(echo "$out" | tr '\n' ' ' | head -c 300)"
     fi
 }
 notify_error() {
     local out
-    if ! out=$(docker compose exec -T web python manage.py report_backup_result --error "$1" 2>&1); then
+    if ! out=$(docker compose exec -T web-store python manage.py report_backup_result --error "$1" 2>&1); then
         log "تنبيه: تعذّر إبلاغ نظام الإشعارات بفشل النسخة. التفاصيل: $(echo "$out" | tr '\n' ' ' | head -c 300)"
     fi
 }

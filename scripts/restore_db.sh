@@ -62,8 +62,12 @@ cd "$PROJECT_DIR"
 
 log "== Starting restore from: $BACKUP_FILE =="
 
-log "Stopping web container (prevents writes during restore)..."
-docker compose stop web
+log "Stopping app containers (prevents writes during restore)..."
+# Stop all three — web-store, web-staff, AND celery-worker — not just one.
+# Since Stage 1 of the performance plan split the single "web" service into
+# three, celery-worker can be mid-import (writing to the DB) independently
+# of any HTTP traffic, so it must be stopped too before DROP SCHEMA.
+docker compose stop web-store web-staff celery-worker
 
 log "Dropping and recreating the public schema..."
 docker compose exec -T -e PGPASSWORD="$DB_PASSWORD" db \
@@ -75,12 +79,12 @@ if gunzip -c "$BACKUP_FILE" | docker compose exec -T -e PGPASSWORD="$DB_PASSWORD
     log "Restore completed successfully."
 else
     log "Restore failed! Check the messages above."
-    docker compose start web
+    docker compose start web-store web-staff celery-worker
     exit 1
 fi
 
-log "Restarting web container..."
-docker compose start web
+log "Restarting app containers..."
+docker compose start web-store web-staff celery-worker
 
 log "== Done =="
 echo "Restore complete. Open the site and verify the data."

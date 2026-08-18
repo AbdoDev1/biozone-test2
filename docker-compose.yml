@@ -131,7 +131,17 @@ services:
     environment:
       <<: *web-base-environment
       SERVICE_ROLE: store
-    # مفيش حاجة إضافية غير الـ base
+    # بتعيد تعريف volumes صراحةً هنا (بدل ما تورّث كل قايمة x-web-base
+    # زي ما هي) عشان تستثني import_tmp — دي مخصصة لـ web-staff وceleryworker
+    # بس (راجع تعليق import_tmp فوق)، ومعرّفة جوه x-web-base نفسها لأنها
+    # مشتركة بين التنين دول، مش لأنها لازمة لـ web-store. مفتاح `<<:`
+    # بيستبدل القايمة بالكامل هنا لو اتعرّفت تاني، مش بيدمجها مع الأصل —
+    # فلازم نكرر باقي الأربعة السطور زي ما هي بالظبط.
+    volumes:
+      - static_volume:/app/staticfiles
+      - ./media:/app/media
+      - ./logs:/app/logs
+      - ./backups:/app/backups
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/healthz/"]
       interval: 10s

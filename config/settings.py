@@ -27,7 +27,8 @@ DEBUG = config('DEBUG', cast=bool)
 # الدومين/الدومينات الحقيقية بتتحدد وقت التشغيل من .env، مش هنا في الكود.
 # ده معناه إنك تقدر تغيّر الدومين أو تضيف واحد جديد (أو تشغّل على IP مباشرة)
 # من غير ما تلمس settings.py خالص ولا تعمل --build تاني — بس تعدّل .env.production
-# وتعمل `docker compose restart web`.
+# وتعمل `docker compose restart web-store web-staff` (وceleryworker لو حبيت،
+# بس مش لازم تقنيًا — الإعداد ده مش بيتقرا غير وقت تعامل مع طلبات HTTP).
 #
 # القيمة في .env بتبقى قائمة مفصولة بفواصل، مثلاً:
 #   EXTRA_ALLOWED_HOSTS=biozone.example.com,www.biozone.example.com

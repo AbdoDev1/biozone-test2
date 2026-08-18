@@ -15,7 +15,7 @@ class Command(BaseCommand):
         'من غير داعي حقيقي — لو محتاج استرجاع أدق من فرق يوم، زوّد التردد '
         'لكل 6 ساعات مثلًا بدل كل ساعة):\n'
         '  0 3 * * * cd /path/to/project && '
-        'docker compose exec -T web python manage.py run_backup'
+        'docker compose exec -T web-store python manage.py run_backup'
     )
 
     def handle(self, *args, **options):
