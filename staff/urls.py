@@ -47,6 +47,7 @@ urlpatterns = [
     path('products/<int:pk>/relations/<str:relation>/remove/', products.product_relation_remove, name='product_relation_remove'),
     path('products/<int:pk>/delete/', products.product_delete, name='product_delete'),
     path('products/import/', products.import_products, name='import_products'),
+    path('products/import/status/', products.import_products_status, name='import_products_status'),
     path('products/import/review/', products.import_products_review, name='import_products_review'),
     path('products/import/confirm/', products.import_products_confirm, name='import_products_confirm'),
     path('products/import/errors/', products.import_products_errors, name='import_products_errors'),

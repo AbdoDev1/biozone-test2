@@ -18,3 +18,7 @@ channels-redis==4.3.0
 daphne==4.2.3
 uvicorn[standard]==0.51.0
 uvicorn-worker==0.4.0
+
+# تنفيذ المهام الطويلة (استيراد إكسل كبير) في الخلفية بعيدًا عن Gunicorn
+# — راجع config/celery.py و products/tasks.py.
+celery==5.4.0

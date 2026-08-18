@@ -4,6 +4,49 @@ x-logging: &default-logging
     max-size: "10m"
     max-file: "3"
 
+# متغيرات مشتركة بين خدمات web-store / web-staff / celery-worker الاتلاتة
+# (نفس الصورة، نفس ملف env، نفس DNS، بس كل واحدة بـ SERVICE_ROLE مختلف
+# وحدود موارد مختلفة). YAML anchor عشان منكررش نفس البلوك 3 مرات.
+x-web-base: &web-base
+  build: .
+  restart: unless-stopped
+  logging: *default-logging
+  # DNS عام صريح (بدل ما نعتمد على /etc/resolv.conf بتاع الـ host، اللي
+  # بيتقلّد جوه الحاوية تلقائيًا). على سيرفرات سحابية زي Alibaba Cloud،
+  # الـ host بيستخدم DNS داخلي خاص (100.100.100.100) شغال بس من على
+  # الـ host نفسه — مش قابل للوصول من جوه شبكة Docker الداخلية بتاعة
+  # الحاوية، فأي domain خارجي (زي sentry.io) كان بيفشل resolution من
+  # جوه web بالتحديد، حتى لو الـ host نفسه شايف الدنيا تمام.
+  dns:
+    - 8.8.8.8
+    - 1.1.1.1
+  env_file:
+    - .env.production
+  environment: &web-base-environment
+    # All services now connect through pgbouncer instead of db directly
+    # (Stage 3 of the performance plan) — see the pgbouncer service
+    # comment below for details.
+    DB_HOST: pgbouncer
+    DB_PORT: 6432
+  volumes:
+    - static_volume:/app/staticfiles
+    # bind mount حقيقي بدل named volume — عشان الصور متتفقدش لو حد شغّل
+    # `docker compose down -v`. لازم مجلد ./media يكون موجود على الـ
+    # host قبل أول تشغيل.
+    - ./media:/app/media
+    - ./logs:/app/logs
+    - ./backups:/app/backups
+    # مجلد مؤقت مشترك بين web-staff وcelery-worker بس: web-staff بيحفظ
+    # فيه ملف الإكسل المرفوع، وceleryworker بيقراه في الخلفية. مش لازم
+    # يبقى متاح لـ web-store أو nginx — عن قصد مش تحت ./media (عشان ملف
+    # مؤقت أثناء المعالجة ميبقاش قابل للوصول عبر /media/ العام بالخطأ).
+    - import_tmp:/app/tmp_imports
+  depends_on:
+    pgbouncer:
+      condition: service_healthy
+    redis:
+      condition: service_healthy
+
 services:
   db:
     image: postgres:16-alpine
@@ -21,8 +64,9 @@ services:
       timeout: 5s
       retries: 10
 
-  # Redis دلوقتي مستخدم فعليًا كـ CACHES و SESSION_ENGINE في config/settings.py
-  # (REDIS_URL بيتقرا من .env.production، افتراضيًا redis://redis:6379/1).
+  # Redis مستخدم فعليًا لـ 3 أغراض دلوقتي (CACHES/SESSION_ENGINE،
+  # CHANNEL_LAYERS، وبقى كمان Celery broker/result backend — كل غرض على
+  # رقم DB منفصل جوه نفس Redis، راجع config/settings.py).
   redis:
     image: redis:7-alpine
     restart: unless-stopped
@@ -35,47 +79,88 @@ services:
       timeout: 3s
       retries: 10
 
-  web:
-    build: .
+  # PgBouncer — connection pooler sitting between every service (web-store,
+  # web-staff, celery-worker) and Postgres (Stage 3 of the performance plan).
+  # Before this, each container opened its own direct connections to
+  # Postgres, and the high CONN_MAX_AGE kept each connection alive for a
+  # full minute after every request — when celery-worker was processing a
+  # large import, its connection competed with web-store's connections for
+  # the same Postgres resources (CPU/I-O/locks), even though the total
+  # connection count stayed well under max_connections. Now every service
+  # connects to pgbouncer:6432 instead of db:5432 directly (see
+  # web-base-environment above), and pgbouncer itself is the one holding a
+  # small, bounded pool of real connections to db (pgbouncer/pgbouncer.ini).
+  # pool_mode=transaction means CONN_MAX_AGE in settings.py must be 0 (see
+  # .env.production.example) — leaving it high alongside transaction
+  # pooling cancels out the benefit of pooling.
+  pgbouncer:
+    image: edoburu/pgbouncer:latest
     restart: unless-stopped
     logging: *default-logging
-    # DNS عام صريح (بدل ما نعتمد على /etc/resolv.conf بتاع الـ host، اللي
-    # بيتقلّد جوه الحاوية تلقائيًا). على سيرفرات سحابية زي Alibaba Cloud،
-    # الـ host بيستخدم DNS داخلي خاص (100.100.100.100) شغال بس من على
-    # الـ host نفسه — مش قابل للوصول من جوه شبكة Docker الداخلية بتاعة
-    # الحاوية، فأي domain خارجي (زي sentry.io) كان بيفشل resolution من
-    # جوه web بالتحديد، حتى لو الـ host نفسه شايف الدنيا تمام.
-    dns:
-      - 8.8.8.8
-      - 1.1.1.1
-    env_file:
-      - .env.production
     environment:
+      # The image auto-generates userlist.txt at startup from these vars
+      # (an MD5 hash, not a plaintext credential) — no secret is stored in
+      # any git-tracked file. pgbouncer.ini itself (mounted below) is
+      # pre-provided, so there's no conflict with the image's own
+      # auto-generation logic.
+      DB_USER: ${DB_USER:-biozone}
+      DB_PASSWORD: ${DB_PASSWORD:-changeme}
       DB_HOST: db
       DB_PORT: 5432
-      # لو GUNICORN_WORKERS متحدد في .env.production بيتاخد زي ما هو (تحكم
-      # يدوي). لو المشروع صغير (عدد عملاء وموظفين محدود) بننصح تحدده يدويًا
-      # (GUNICORN_WORKERS=3 مثلًا) بدل الاعتماد على حساب (2×الأنوية)+1
-      # التلقائي، لأنه ممكن يشغّل عدد workers أكبر من اللي رام السيرفر
-      # تقدر تستحمله لو السيرفر عنده أنوية كتير ورام محدودة.
+      DB_NAME: ${DB_NAME:-biozone}
+      AUTH_TYPE: plain
     volumes:
-      - static_volume:/app/staticfiles
-      # bind mount حقيقي بدل named volume — عشان الصور متتفقدش لو حد
-      # شغّل `docker compose down -v` (بيمسح الـ named volumes، لكن
-      # مبيلمسش مجلدات الـ host العادية زي ./media). لازم مجلد ./media
-      # يكون موجود على الـ host قبل أول تشغيل (docker بيعمله تلقائيًا
-      # لو مش موجود، لكن الأفضل تتأكد صلاحيات الكتابة عليه سليمة).
-      - ./media:/app/media
-      - ./logs:/app/logs
-      # الحاوية بقت هي اللي بتعمل pg_dump فعليًا (زرار "تشغيل الآن" +
-      # run_backup عبر الكرون) وتكتب هنا مباشرة — مش read-only بقى.
-      # لو ./backups نفسه هو نقطة تركيب فلاشة خارجية على السيرفر (راجع
-      # تعليق الفلاشة في الرسائل السابقة)، الحاوية هتكتب فيها هي نفسها.
-      - ./backups:/app/backups
+      - ./pgbouncer/pgbouncer.ini:/etc/pgbouncer/pgbouncer.ini:ro
     depends_on:
       db:
         condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -h 127.0.0.1 -p 6432 -U ${DB_USER:-biozone}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    mem_limit: 128m
+    cpus: 0.5
+
+  # خدمة "المتجر" — كل حركة الزوار/العملاء العادية (/, /store/, /cart/,
+  # /orders/...). هي الوحيدة اللي بتنفّذ migrate/collectstatic/ensure_admin
+  # عند الإقلاع (راجع entrypoint.sh). أعلى أولوية موارد لأنها الأكثر
+  # حركة وحساسية للـ latency.
+  web-store:
+    <<: *web-base
+    environment:
+      <<: *web-base-environment
+      SERVICE_ROLE: store
+    # مفيش حاجة إضافية غير الـ base
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/healthz/"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    # حدود موارد Docker العادية (مش deploy.resources — دي بتتفعّل بس مع
+    # `docker stack deploy`/Swarm؛ mem_limit/cpus هنا شغالين فعليًا مع
+    # `docker compose up` العادي). على سيرفر بـ4 كور: أغلبية القدرة
+    # للمتجر.
+    mem_limit: 700m
+    cpus: 2.5
+
+  # خدمة "الموظفين" — كل حاجة تحت /staff/ (nginx بيوجّهها هنا، راجع
+  # nginx.conf). حدود موارد أقل عمدًا، عشان أي ضغط في لوحة الموظفين
+  # (تصدير كبير، تقارير) ميقدرش ياخد كل موارد السيرفر على حساب المتجر.
+  web-staff:
+    <<: *web-base
+    environment:
+      <<: *web-base-environment
+      SERVICE_ROLE: staff
+    depends_on:
+      pgbouncer:
+        condition: service_healthy
       redis:
+        condition: service_healthy
+      # بننتظر web-store يبقى healthy (يعني الميجريشن وcollectstatic
+      # خلصوا) قبل ما نستقبل حمل فعلي.
+      web-store:
         condition: service_healthy
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/healthz/"]
@@ -83,6 +168,29 @@ services:
       timeout: 5s
       retries: 5
       start_period: 30s
+    mem_limit: 400m
+    cpus: 1.5
+
+  # Celery worker — بينفذ المهام الطويلة في الخلفية (حاليًا: قراءة ملف
+  # استيراد المنتجات) بعيدًا تمامًا عن أي worker بيخدم طلبات HTTP. ده
+  # الحل الجذري لمشكلة الـ 504 (راجع products/tasks.py).
+  celery-worker:
+    <<: *web-base
+    environment:
+      <<: *web-base-environment
+      SERVICE_ROLE: celery
+      CELERY_CONCURRENCY: ${CELERY_CONCURRENCY:-2}
+    depends_on:
+      pgbouncer:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      web-store:
+        condition: service_healthy
+    # مفيش healthcheck HTTP هنا (مش gunicorn) — Docker restart policy
+    # (unless-stopped) كفاية للتعافي لو الـ process وقع.
+    mem_limit: 400m
+    cpus: 1
 
   nginx:
     image: nginx:alpine
@@ -95,10 +203,13 @@ services:
       - static_volume:/app/staticfiles:ro
       - ./media:/app/media:ro
     depends_on:
-      web:
+      web-store:
+        condition: service_healthy
+      web-staff:
         condition: service_healthy
 
 volumes:
   postgres_data:
   redis_data:
   static_volume:
+  import_tmp:

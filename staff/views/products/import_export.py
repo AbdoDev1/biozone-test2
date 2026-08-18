@@ -7,6 +7,11 @@
 لـ products.services.import_export عشان يبقى قابل للاختبار من غير ما نمر
 بـ request/session — هنا بس تنسيق الـ HTTP request/response وrenders.
 """
+import os
+import uuid
+
+from django.conf import settings
+from django.core.cache import cache
 from django.core.paginator import Paginator
 from django.http import JsonResponse
 from django.shortcuts import render, redirect
@@ -30,6 +35,11 @@ IMPORT_ERRORS_SESSION_KEY = 'product_import_last_errors'
 # أكبر فعلاً، يقسّم الملف على أكتر من دفعة).
 IMPORT_MAX_FILE_SIZE_MB = 5
 IMPORT_MAX_ROWS = 3000
+
+# مجلد مؤقت مشترك بين هذه الحاوية (web-staff) وceleryworker عن طريق
+# import_tmp volume في docker-compose.yml — بنحفظ فيه الملف المرفوع
+# عشان مهمة Celery (products/tasks.py) تقدر توصله وتقراه في الخلفية.
+IMPORT_TMP_DIR = os.path.join(settings.BASE_DIR, 'tmp_imports')
 
 # قبل كده كانت شاشة المراجعة بترندر كل صفوف "هيتحدّث"/"هيتضاف" (لحد آلاف
 # السطور مع ملف كبير) في قائمة واحدة من غير أي تقسيم — الحل: نفس Paginator
@@ -80,22 +90,38 @@ def import_products(request):
             )
             return redirect('staff:import_products')
 
-        rows, errors, error_message = import_export_service.read_import_workbook(
-            excel_file, max_rows=IMPORT_MAX_ROWS,
-        )
-        if error_message:
-            messages.error(request, error_message)
-            return redirect('staff:import_products')
+        # قراءة وتصنيف الملف (خصوصًا مع 3000 صف) كانت بتتنفذ هنا مباشرة
+        # جوه نفس طلب الـ HTTP — بتاخد Gunicorn worker كامل لمدة طويلة،
+        # وده اللي كان بيسبب 504 Gateway Timeout من nginx (راجع تقرير
+        # اختبار المرحلة 0). دلوقتي بنحفظ الملف على القرص المشترك
+        # (import_tmp) وبنبعت المعالجة لـ Celery في الخلفية، ونرجع
+        # فورًا — مفيش أصلًا طلب HTTP طويل يتقاس ضده أي timeout.
+        os.makedirs(IMPORT_TMP_DIR, exist_ok=True)
+        tmp_path = os.path.join(IMPORT_TMP_DIR, f'{uuid.uuid4().hex}.xlsx')
+        with open(tmp_path, 'wb') as dest:
+            for chunk in excel_file.chunks():
+                dest.write(chunk)
 
-        if not rows:
-            messages.error(request, 'مفيش أي صف صالح في الملف.')
-            for err in errors:
-                messages.warning(request, err)
-            return redirect('staff:import_products')
+        from products.tasks import import_result_cache_key, parse_import_workbook_task
+        # نظّف أي نتيجة استيراد سابقة للموظف ده (لو رفع ملف قبل كده ولسه
+        # فاتحة الشاشة) عشان شاشة الانتظار متتأكدش من نتيجة قديمة غلط.
+        cache.delete(import_result_cache_key(request.user.pk))
+        parse_import_workbook_task.delay(tmp_path, IMPORT_MAX_ROWS, request.user.pk)
 
-        request.session[IMPORT_SESSION_KEY] = {'rows': rows, 'errors': errors}
-        return redirect('staff:import_products_review')
+        return render(request, 'staff/products/import_processing.html')
     return render(request, 'staff/products/import.html')
+
+
+@perm_required('products.add_product')
+def import_products_status(request):
+    """
+    Endpoint خفيف بتستدعيه شاشة الانتظار (import_processing.html) كل
+    ثانيتين عن طريق JS بسيط — بيتأكد هل مهمة Celery خلصت (النتيجة موجودة
+    في الكاش) ولا لسه. مفيش حاجة تقيلة هنا، مجرد قراءة كاش.
+    """
+    from products.tasks import import_result_cache_key
+    cached = cache.get(import_result_cache_key(request.user.pk))
+    return JsonResponse({'ready': cached is not None})
 
 
 @perm_required('products.add_product')
@@ -106,6 +132,22 @@ def import_products_review(request):
     نفس الصنف (تحديث) ولا صنف جديد فعلًا — قبل أي حفظ في قاعدة البيانات.
     """
     batch = request.session.get(IMPORT_SESSION_KEY)
+    if not batch:
+        # أول ما يوصل هنا (من رابط الإشعار أو تحويلة شاشة الانتظار)،
+        # النتيجة لسه في الكاش (Celery حطها هناك، مش في السيشن — راجع
+        # products/tasks.py). ننقلها للسيشن مرة واحدة عشان باقي شاشات
+        # الاستيراد (التأكيد، الأخطاء) تفضل شغالة زي ما هي بالظبط.
+        from products.tasks import import_result_cache_key
+        cached = cache.get(import_result_cache_key(request.user.pk))
+        if cached and cached.get('status') == 'done' and not cached.get('error_message'):
+            batch = {'rows': cached['rows'], 'errors': cached['errors']}
+            request.session[IMPORT_SESSION_KEY] = batch
+            cache.delete(import_result_cache_key(request.user.pk))
+        elif cached:
+            messages.error(request, cached.get('error_message') or 'حصل خطأ أثناء قراءة الملف.')
+            cache.delete(import_result_cache_key(request.user.pk))
+            return redirect('staff:import_products')
+
     if not batch:
         messages.error(request, 'مفيش عملية استيراد جارية. من فضلك ارفع الملف تاني.')
         return redirect('staff:import_products')

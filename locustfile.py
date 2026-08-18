@@ -48,12 +48,17 @@ class LoggedInClient(HttpUser):
     wait_time = between(2, 5)
 
     def on_start(self):
-        # عدّل بيانات الدخول دي لحساب عميل تجريبي حقيقي موجود في قاعدة اختبارك
-        self.client.get("/accounts/login/")
-        self.client.post("/accounts/login/", {
-            "username": "test_client",
-            "password": "test_password_123",
-        })
+        response = self.client.get("/accounts/login/")
+        csrf_token = response.cookies.get("csrftoken")
+        self.client.post(
+            "/accounts/login/",
+            {
+                "username": "test_client",
+                "password": "test_password_123",
+                "csrfmiddlewaretoken": csrf_token,
+            },
+            headers={"Referer": self.host + "/accounts/login/"},
+        )
 
     @task(2)
     def browse_store(self):
@@ -66,4 +71,3 @@ class LoggedInClient(HttpUser):
     @task(1)
     def view_orders(self):
         self.client.get("/orders/", name="/orders/")
-

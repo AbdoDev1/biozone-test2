@@ -1,6 +1,7 @@
 """
 منطق النسخ الاحتياطي لقاعدة البيانات — بيعمل pg_dump مباشرة (اتصال شبكة
-عادي بـ DB_HOST:DB_PORT، بالظبط زي ما Django نفسه بيتصل بقاعدة البيانات)
+عادي على db:5432، عمدًا مش نفس DB_HOST:DB_PORT بتاع Django — دول بقوا
+يمروا على pgbouncer، وpg_dump محتاج يتجاوزه، راجع تعليق _run_pg_dump)
 من غير ما يحتاج docker CLI ولا وصول لـ docker socket. ده بيخليه يشتغل
 بنفس الطريقة بالظبط سواء:
   - جوه حاوية web (زرار "تشغيل نسخة احتياطية الآن" في staff/views/backup.py)
@@ -237,8 +238,16 @@ def _run_pg_dump():
     env['PGPASSWORD'] = db['PASSWORD']
     cmd = [
         'pg_dump',
-        '-h', db['HOST'],
-        '-p', str(db.get('PORT') or '5432'),
+        # Deliberately NOT db['HOST']/db['PORT'] — those now point at
+        # pgbouncer (Stage 3 of the performance plan), and a dump can run
+        # for minutes while holding one real Postgres connection the whole
+        # time. Routing that through pgbouncer's transaction pool would tie
+        # up one of its limited pooled slots for the entire dump, competing
+        # with real web traffic — exactly what pgbouncer was added to
+        # avoid. pg_dump goes straight to the db service instead, same as
+        # scripts/backup_db.sh already does via `docker compose exec db`.
+        '-h', 'db',
+        '-p', '5432',
         '-U', db['USER'],
         db['NAME'],
     ]

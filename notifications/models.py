@@ -24,6 +24,10 @@ class Notification(models.Model):
         PAYMENT_RECEIVED = 'PAYMENT_RECEIVED', 'تم تسجيل دفعة على حسابك'
         RETURN_CREATED = 'RETURN_CREATED', 'تم تسجيل مرتجع على طلبك'
         BACKUP_FAILED = 'BACKUP_FAILED', 'فشل النسخ الاحتياطي'
+        # نتيجة معالجة ملف استيراد المنتجات في الخلفية (Celery) — راجع
+        # products/tasks.py. نفس النوع بيتستخدم للنجاح والفشل، والفرق
+        # في العنوان/الرسالة/الرابط المرفقين وقت إنشاء الإشعار.
+        IMPORT_READY = 'IMPORT_READY', 'نتيجة معالجة ملف الاستيراد'
 
     recipient = models.ForeignKey(User, on_delete=models.CASCADE, related_name='notifications')
     kind = models.CharField(max_length=40, choices=Kind.choices)
