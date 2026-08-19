@@ -99,6 +99,36 @@ def studio(request):
     # إضافي لكل صورة في حلقة الجاليري (لحد 40 استعلام زيادة لكل صفحة).
     landing_settings = LandingPageSettings.objects.select_related('hero_image', 'banner_1', 'banner_2').first()
 
+    # thumb URL لكل صورة لاندينج مختارة (hero/banner1/banner2) محسوب هنا
+    # (بايثون) مش في التمبليت — الوصول لـ .url مباشرة على حقل ImageField
+    # فاضي (زي thumbnail لصورة استوديو معندهاش thumbnail لسه) بيرمي
+    # ValueError، فلازم {% if %} صريح أو حساب مسبق زي ده، مش |default
+    # (نفس الملحوظة الموجودة أصلاً في gallery.html وpicker_url فوق).
+    def _landing_picker_thumb(image):
+        if not image:
+            return ''
+        if image.thumbnail:
+            return image.thumbnail.url
+        return image.image.url
+
+    landing_picker_initials = {
+        'hero_image': {
+            'id': landing_settings.hero_image_id if landing_settings else None,
+            'thumb': _landing_picker_thumb(landing_settings.hero_image if landing_settings else None),
+            'name': landing_settings.hero_image.original_filename if landing_settings and landing_settings.hero_image else '',
+        },
+        'banner_1': {
+            'id': landing_settings.banner_1_id if landing_settings else None,
+            'thumb': _landing_picker_thumb(landing_settings.banner_1 if landing_settings else None),
+            'name': landing_settings.banner_1.original_filename if landing_settings and landing_settings.banner_1 else '',
+        },
+        'banner_2': {
+            'id': landing_settings.banner_2_id if landing_settings else None,
+            'thumb': _landing_picker_thumb(landing_settings.banner_2 if landing_settings else None),
+            'name': landing_settings.banner_2.original_filename if landing_settings and landing_settings.banner_2 else '',
+        },
+    }
+
     # بنحسب عدد المنتجات/الأقسام المرتبطة وتسميات استخدام الـ Landing لكل
     # صورة مرة واحدة هنا (بدل ما نستدعي get_usage() تاني في التمبليت لرسالة
     # تأكيد الحذف) — وبنحطهم كخصائص عادية على الكائن (مش حقول موديل) عشان
@@ -138,6 +168,7 @@ def studio(request):
         'folder_filter': folder_filter,
         'folders': StudioFolder.objects.all(),
         'landing_settings': landing_settings,
+        'landing_picker_initials': landing_picker_initials,
     })
 
 
@@ -362,6 +393,12 @@ def studio_picker(request):
         return redirect('staff:login')
 
     search_q = request.GET.get('q', '').strip()
+    # picker_target_id (اختياري) — بيسمح بأكتر من منتقي صورة في نفس الصفحة
+    # (مثلاً hero_image/banner_1/banner_2 في إعدادات اللاندينج) من غير ما
+    # الـ htmx swap بتاعهم يتعارض؛ لو مش متبعت، القيمة الافتراضية هي نفس
+    # الـ id القديم المستخدم في منتقي صورة المنتج/القسم (توافق كامل مع
+    # الاستخدام الحالي بلا أي تغيير هناك).
+    picker_target_id = request.GET.get('picker_target_id', 'studio-picker-results').strip() or 'studio-picker-results'
     qs = StudioImage.objects.all()
     if search_q:
         qs = qs.filter(original_filename__icontains=search_q)
@@ -385,6 +422,7 @@ def studio_picker(request):
     return render(request, 'staff/studio/partials/picker_results.html', {
         'page_obj': page_obj,
         'images': page_obj,
+        'picker_target_id': picker_target_id,
     })
 
 

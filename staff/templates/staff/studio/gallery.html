@@ -1,6 +1,6 @@
 {% extends 'staff/base.html' %}
 {% load staff_ui %}
-{% block title %}الاستوديو — MG Pharmacy{% endblock %}
+{% block title %}الاستوديو — Biozone{% endblock %}
 {% block breadcrumbs %}
 <nav class="flex items-center text-sm text-gray-500 mb-4">
     {% crumb "الرئيسية" "staff:dashboard" %}
@@ -74,6 +74,55 @@
 </div>
 {% endif %}
 
+{% if perms.studio.change_studioimage %}
+<!-- إعدادات صور اللاندينج بيدج (hero_image/banner_1/banner_2) — كان
+     الموديل (studio.models.LandingPageSettings) والـview بتاع الحفظ
+     (staff:landing_settings_save) موجودين من الأول، بس ما كانش فيه أي
+     واجهة فعلية لاختيارهم؛ الحقل ده هو أول مكان بيوصل بينهم. نفس
+     منتقي الصورة المستخدم في فورم المنتج/القسم (field_image_picker.html،
+     نسخة معمّمة من image_picker.html بلا اعتماد على form Django)، ثلاث
+     مرات بـ picker_uid مختلف لكل واحد (hero/banner1/banner2) عشان
+     المودالات متتعارضش مع بعض في نفس الصفحة — راجع تحديث أغسطس 2026 في
+     picker_results.html. فورم واحد بيبعت الثلاثة + رابطي البانرين مع
+     بعض لـ landing_settings_save دفعة واحدة. -->
+<div x-data="{ open: false }" class="mb-6">
+    <button type="button" @click="open = !open"
+            class="text-sm text-primary-600 font-semibold hover:underline flex items-center gap-1">
+        إعدادات الصفحة الرئيسية (Hero والبانرات)
+        <svg class="w-3.5 h-3.5 transition" :class="open ? 'rotate-180' : ''" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M19.5 8.25l-7.5 7.5-7.5-7.5" />
+        </svg>
+    </button>
+    <div x-show="open" x-cloak x-transition class="bg-white rounded-2xl shadow-sm p-5 mt-2 space-y-6">
+        <form method="POST" action="{% url 'staff:landing_settings_save' %}">
+            {% csrf_token %}
+            <div class="grid gap-6 md:grid-cols-3">
+                <div>
+                    {% include 'staff/studio/partials/field_image_picker.html' with picker_field_name='hero_image' picker_uid='hero' picker_label='صورة الـ Hero' picker_initial_id=landing_picker_initials.hero_image.id picker_initial_thumb=landing_picker_initials.hero_image.thumb picker_initial_name=landing_picker_initials.hero_image.name %}
+                </div>
+                <div class="space-y-2">
+                    {% include 'staff/studio/partials/field_image_picker.html' with picker_field_name='banner_1' picker_uid='banner1' picker_label='البانر الأول' picker_initial_id=landing_picker_initials.banner_1.id picker_initial_thumb=landing_picker_initials.banner_1.thumb picker_initial_name=landing_picker_initials.banner_1.name %}
+                    <label class="text-xs text-gray-500 block">رابط البانر الأول (اختياري)</label>
+                    <input type="url" name="banner_1_link" maxlength="500" value="{{ landing_settings.banner_1_link|default:'' }}"
+                           placeholder="https://..."
+                           class="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-sm outline-none focus:border-primary-400">
+                </div>
+                <div class="space-y-2">
+                    {% include 'staff/studio/partials/field_image_picker.html' with picker_field_name='banner_2' picker_uid='banner2' picker_label='البانر الثاني' picker_initial_id=landing_picker_initials.banner_2.id picker_initial_thumb=landing_picker_initials.banner_2.thumb picker_initial_name=landing_picker_initials.banner_2.name %}
+                    <label class="text-xs text-gray-500 block">رابط البانر الثاني (اختياري)</label>
+                    <input type="url" name="banner_2_link" maxlength="500" value="{{ landing_settings.banner_2_link|default:'' }}"
+                           placeholder="https://..."
+                           class="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-sm outline-none focus:border-primary-400">
+                </div>
+            </div>
+            <button type="submit"
+                    class="mt-5 bg-primary-600 hover:bg-primary-700 text-white text-sm font-semibold px-4 py-2 rounded-lg transition">
+                حفظ إعدادات الصفحة الرئيسية
+            </button>
+        </form>
+    </div>
+</div>
+{% endif %}
 
 <!-- فلتر الاستخدام (المرحلة 4) — لسه الكل هيظهر "غير مستخدمة" مؤقتًا لحد
      ما المرحلة 8 تربط الصور فعليًا بالمنتجات/الأقسام؛ راجع تعليق

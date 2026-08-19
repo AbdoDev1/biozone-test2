@@ -209,8 +209,30 @@
      بيرمي "Cannot read properties of null (reading 'addEventListener')"
      ويوقف تنفيذ باقي السكريبت كله (وأي إعدادات htmx بعده) من غير أي
      رسالة خطأ واضحة في الصفحة نفسها. اتنقل هنا آخر <body> عشان
-     document.body يبقى موجود فعليًا وقت التنفيذ. -->
+     document.body يبقى موجود فعليًا وقت التنفيذ.
+
+     تحديث مهم: السكريبت ده لسه قاعد جوه <body>، ومع hx-boost="true"
+     full-page navigation، htmx بيستبدل innerHTML بتاع <body> بالكامل بمحتوى
+     الصفحة الجديدة — يعني السكريبت ده بيتشال وينضاف تاني (كعنصر <script>
+     جديد) مع كل تنقّل، وhtmx بينفّذه تاني (allowScriptTags). document.body
+     نفسه (العنصر) بيفضل هو هو (مش بيتغيّر)، فأي addEventListener اتسجل
+     عليه من أول مرة بيفضل شغال ومتراكم فوق أي نسخة جديدة بتتسجل. النتيجة:
+     (1) `const pageProgress` بيتحاول يتعرّف تاني في نفس الـ global scope
+     فيرمي "Identifier already declared" (SyntaxError بيوقف باقي السكريبت
+     كله، حتى الأسطر اللي قبله)، و(2) الأخطر: مستمع 'htmx:afterSettle' اللي
+     بينادي Alpine.initTree() بيتسجل من تاني مع كل تنقّل ناجح (قبل ما يوصل
+     لسطر pageProgress اللي بيوقف الباقي)، فبيتراكم أكتر من مستمع واحد،
+     ويبقى Alpine.initTree() بينادى أكتر من مرة على نفس العناصر مع كل
+     afterSettle لاحقة — وده اللي بيكسر scope بتاع x-for في جرس الإشعارات
+     (notifications/partials/bell.html: "n is not defined") ويخلي
+     this.$el.querySelector('[name=csrfmiddlewaretoken]') يرجع null أحيانًا
+     في markAllRead(). نفس الحل المستخدم أصلاً في bell.html
+     (window.__biozoneNotifState) لنفس السبب بالظبط: حارس بسيط يضمن إن كل
+     الكود ده (تعريف المتغيرات + تسجيل كل الـ event listeners) بيتنفذ مرة
+     واحدة بس طول عمر الصفحة، مهما اتكرر التنقّل بالـ htmx boost. -->
     <script>
+      if (!window.__biozoneBaseInit) {
+        window.__biozoneBaseInit = true;
         // htmx بيحتاج يبعت CSRF token في header يدويًا لأي POST مُعمول
         // boost (زي فورم تسجيل الخروج)، لأنه مش فورم عادي بيتقرا من
         // الـ input المخفي وقت الإرسال — بنقرأه من كوكي csrftoken.
@@ -373,6 +395,7 @@
                 }
             });
         })();
+      } // end of window.__biozoneBaseInit guard
     </script>
 </body>
 </html>

@@ -1,0 +1,177 @@
+{% comment %}
+منتقي صورة واحدة عام — نسخة معمّمة من
+staff/products/partials/image_picker.html، لاستخدام مش مرتبط بفورم
+Django (زي صور اللاندينج بيدج: hero_image/banner_1/banner_2 في
+LandingPageSettings). نفس آلية المودال + البحث + المعاينة + الإدخال
+اليدوي بالظبط، بس بارامترات عامة بدل form.image.* المربوطة بفورم
+منتج/قسم.
+
+يتوقع في الـ context:
+  picker_field_name    — اسم الـ input المُرسل فعليًا (مثلاً "hero_image")
+  picker_label          — النص فوق الحقل
+  picker_uid             — سلسلة فريدة (مثلاً "hero") تُستخدم في IDs الـ
+                          DOM عشان تفادي تعارض لو أكتر من منتقي في نفس
+                          الصفحة (زي إعدادات اللاندينج اللي فيها 3
+                          منتقيين مع بعض) — راجع تحديث أغسطس 2026 في
+                          picker_results.html.
+  picker_initial_id     — قيمة StudioImage.pk المبدئية (أو فاضي)
+  picker_initial_thumb  — رابط الـ thumbnail المبدئي (أو فاضي)
+  picker_initial_name   — اسم الملف المبدئي (أو فاضي)
+{% endcomment %}
+<div x-data="{
+        open: false,
+        selectedId: {{ picker_initial_id|default:'null' }},
+        selectedThumb: '{{ picker_initial_thumb|default:''|escapejs }}',
+        selectedName: '{{ picker_initial_name|default:''|escapejs }}',
+        manualId: '',
+        manualLoading: false,
+        manualError: '',
+        previewOpen: false,
+        previewUrl: '',
+        previewLoading: false,
+        previewId: null,
+        previewName: '',
+        copyFeedback: false,
+        pick(id, thumb, name) {
+            this.selectedId = id;
+            this.selectedThumb = thumb;
+            this.selectedName = name;
+            this.open = false;
+            this.manualId = '';
+            this.manualError = '';
+        },
+        clear() {
+            this.selectedId = null;
+            this.selectedThumb = '';
+            this.selectedName = '';
+        },
+        lookupManual() {
+            this.manualError = '';
+            if (!this.manualId) return;
+            this.manualLoading = true;
+            fetch('{% url "staff:studio_image_lookup" %}?id=' + encodeURIComponent(this.manualId))
+                .then(r => r.json())
+                .then(data => {
+                    this.manualLoading = false;
+                    if (data.found) {
+                        this.pick(data.id, data.thumb_url, data.filename);
+                    } else {
+                        this.manualError = 'مفيش صورة بالمعرف ده في الاستوديو.';
+                    }
+                })
+                .catch(() => {
+                    this.manualLoading = false;
+                    this.manualError = 'حصل خطأ أثناء البحث، حاول تاني.';
+                });
+        },
+        openPreview() {
+            if (!this.selectedId) return;
+            this.setPreview(this.selectedId, this.selectedName, '');
+            fetch('{% url "staff:studio_image_lookup" %}?id=' + this.selectedId)
+                .then(r => r.json())
+                .then(data => {
+                    this.previewLoading = false;
+                    if (data.found) this.previewUrl = data.full_url;
+                })
+                .catch(() => { this.previewLoading = false; });
+        },
+        setPreview(id, name, url) {
+            this.previewOpen = true;
+            this.previewId = id;
+            this.previewName = name;
+            this.previewUrl = url || '';
+            this.previewLoading = !url;
+        },
+        copyId() {
+            if (!this.selectedId) return;
+            navigator.clipboard.writeText(String(this.selectedId)).then(() => {
+                this.copyFeedback = true;
+                setTimeout(() => this.copyFeedback = false, 1500);
+            });
+        },
+    }"
+>
+    <label class="text-sm font-medium text-gray-700 mb-1 block">{{ picker_label }}</label>
+    <input type="hidden" name="{{ picker_field_name }}" :value="selectedId ?? ''">
+
+    <div class="flex items-start gap-3">
+        <button type="button" @click="openPreview()" x-show="selectedThumb" x-cloak
+                class="w-20 h-20 rounded-lg border border-gray-200 bg-gray-50 flex items-center justify-center overflow-hidden shrink-0"
+                title="اضغط للمعاينة بالحجم الكامل">
+            <img :src="selectedThumb" :alt="selectedName" class="w-full h-full object-cover">
+        </button>
+        <div x-show="!selectedThumb" x-cloak class="w-20 h-20 rounded-lg border border-gray-200 bg-gray-50 flex items-center justify-center overflow-hidden shrink-0">
+            <svg class="w-8 h-8 text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="1.5">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M2.25 15.75l5.159-5.159a2.25 2.25 0 013.182 0l5.159 5.159m-1.5-1.5l1.409-1.409a2.25 2.25 0 013.182 0l2.909 2.909m-18 3.75h16.5a1.5 1.5 0 001.5-1.5V6a1.5 1.5 0 00-1.5-1.5H3.75A1.5 1.5 0 002.25 6v12a1.5 1.5 0 001.5 1.5zm10.5-11.25h.008v.008h-.008V8.25zm.375 0a.375.375 0 11-.75 0 .375.375 0 01.75 0z" />
+            </svg>
+        </div>
+        <div class="flex flex-col gap-1.5">
+            <button type="button" @click="open = true" class="text-primary-600 text-sm font-semibold hover:underline text-right w-fit">
+                اختر من الاستوديو
+            </button>
+
+            <p x-show="selectedId" x-cloak class="text-xs text-gray-500 flex items-center gap-1.5">
+                <span>المعرف: <span class="font-mono font-semibold text-gray-700" x-text="selectedId"></span></span>
+                <button type="button" @click="copyId()" class="text-gray-400 hover:text-primary-600" title="نسخ المعرف">
+                    <svg x-show="!copyFeedback" class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="1.8">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M15.75 17.25v3.375c0 .621-.504 1.125-1.125 1.125h-9.75a1.125 1.125 0 01-1.125-1.125V7.875c0-.621.504-1.125 1.125-1.125H6.75a9.06 9.06 0 011.5.124m7.5 10.376h3.375c.621 0 1.125-.504 1.125-1.125V11.25c0-4.46-3.243-8.161-7.5-8.876a9.06 9.06 0 00-1.5-.124H9.375c-.621 0-1.125.504-1.125 1.125v3.5m7.5 10.375H9.375a1.125 1.125 0 01-1.125-1.125v-9.25m12 6.625v-1.875a3.375 3.375 0 00-3.375-3.375h-1.5a1.125 1.125 0 01-1.125-1.125v-1.5a3.375 3.375 0 00-3.375-3.375H9.75" />
+                    </svg>
+                    <span x-show="copyFeedback" x-cloak class="text-emerald-600 text-[11px] font-semibold">تم النسخ</span>
+                </button>
+            </p>
+
+            <button type="button" x-show="selectedId" x-cloak @click="clear()" class="text-gray-400 text-xs hover:underline text-right w-fit">
+                إزالة الصورة
+            </button>
+
+            <div class="flex items-center gap-1.5 mt-1">
+                <input type="text" inputmode="numeric" x-model="manualId" @keydown.enter.prevent="lookupManual()"
+                       placeholder="أو أدخل المعرف يدويًا"
+                       class="w-36 border border-gray-200 rounded-lg px-2 py-1 text-xs outline-none focus:border-primary-400">
+                <button type="button" @click="lookupManual()" :disabled="manualLoading || !manualId"
+                        class="text-primary-600 text-xs font-semibold hover:underline disabled:opacity-40 disabled:cursor-not-allowed">
+                    <span x-show="!manualLoading">تطبيق</span>
+                    <span x-show="manualLoading" x-cloak>جارِ البحث...</span>
+                </button>
+            </div>
+            <p x-show="manualError" x-cloak class="text-red-500 text-[11px]" x-text="manualError"></p>
+        </div>
+    </div>
+
+    <div x-show="open" x-cloak x-transition class="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4" @keydown.escape.window="open = false">
+        <div @click.outside="open = false" class="bg-white rounded-2xl shadow-xl w-full max-w-3xl max-h-[85vh] flex flex-col overflow-hidden">
+            <div class="p-4 border-b border-gray-100 flex items-center justify-between gap-3 shrink-0">
+                <h3 class="font-bold text-gray-800">اختر صورة من الاستوديو</h3>
+                <button type="button" @click="open = false" class="text-gray-400 hover:text-gray-600 text-xl leading-none">&times;</button>
+            </div>
+            <div class="p-4 border-b border-gray-100 shrink-0">
+                <input type="text" placeholder="بحث بالاسم..." autocomplete="off"
+                       class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm outline-none focus:border-primary-400"
+                       hx-get="{% url 'staff:studio_picker' %}?picker_target_id=studio-picker-results-{{ picker_uid }}"
+                       hx-trigger="keyup changed delay:300ms"
+                       hx-target="#studio-picker-results-{{ picker_uid }}"
+                       hx-include="this"
+                       hx-boost="false"
+                       name="q">
+            </div>
+            <div id="studio-picker-results-{{ picker_uid }}" class="p-4 overflow-y-auto flex-1"
+                 hx-get="{% url 'staff:studio_picker' %}?picker_target_id=studio-picker-results-{{ picker_uid }}" hx-trigger="load" hx-swap="innerHTML" hx-boost="false">
+                <p class="text-xs text-gray-400 text-center py-8">جارِ التحميل...</p>
+            </div>
+        </div>
+    </div>
+
+    <div x-show="previewOpen" x-cloak x-transition class="fixed inset-0 z-[60] bg-black/70 flex items-center justify-center p-4" @keydown.escape.window="previewOpen = false" @click.outside="previewOpen = false">
+        <div class="max-w-2xl w-full flex flex-col items-center gap-3">
+            <div class="bg-white rounded-xl p-2 max-h-[75vh] flex items-center justify-center overflow-hidden">
+                <p x-show="previewLoading" class="text-gray-400 text-sm py-12 px-16">جارِ تحميل الصورة...</p>
+                <img x-show="!previewLoading && previewUrl" x-cloak :src="previewUrl" class="max-h-[70vh] max-w-full object-contain">
+            </div>
+            <div class="bg-white/95 rounded-lg px-3 py-1.5 text-xs text-gray-600 flex items-center gap-2">
+                <span>المعرف: <span class="font-mono font-semibold" x-text="previewId"></span></span>
+                <span x-show="previewName" x-cloak x-text="'— ' + previewName"></span>
+            </div>
+            <button type="button" @click="previewOpen = false" class="text-white/80 hover:text-white text-sm">إغلاق</button>
+        </div>
+    </div>
+</div>

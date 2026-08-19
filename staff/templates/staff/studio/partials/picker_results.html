@@ -14,6 +14,12 @@ thumbnails قابلة للاختيار (بلا تحديد جماعي، بلا ح
 (setPreview) بحجم الصورة الحقيقي، بلا ما يختارها، عشان يتأكد منها الأول
 قبل ما يقرر. @click.stop ضروري على زرار المعاينة عشان مايفعّلش pick()
 الأب (الزرارين متداخلين بصريًا فوق بعض).
+
+تحديث تاني (أغسطس 2026): pagination بقت بتستهدف `picker_target_id` (جاي
+من الـview) بدل ID ثابت — عشان تسمح بأكتر من منتقي في نفس الصفحة (زي 3
+منتقيين في إعدادات اللاندينج) بلا ما الـ swap بتاعهم يتعارض. الافتراضي
+لو مش متبعت لسه نفس القديم (studio-picker-results) فمنتقي صورة المنتج/
+القسم مش محتاج أي تغيير.
 {% endcomment %}
 <div class="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 gap-3">
     {% for image in images %}
@@ -46,14 +52,14 @@ thumbnails قابلة للاختيار (بلا تحديد جماعي، بلا ح
 <div class="flex items-center justify-center gap-2 mt-4 text-xs">
     {% if page_obj.has_previous %}
     <button type="button" class="px-2 py-1 rounded bg-gray-50 hover:bg-gray-100 text-gray-600"
-            hx-get="{% url 'staff:studio_picker' %}?page={{ page_obj.previous_page_number }}{% if request.GET.q %}&q={{ request.GET.q|urlencode }}{% endif %}"
-            hx-target="#studio-picker-results" hx-boost="false">السابق</button>
+            hx-get="{% url 'staff:studio_picker' %}?page={{ page_obj.previous_page_number }}{% if request.GET.q %}&q={{ request.GET.q|urlencode }}{% endif %}&picker_target_id={{ picker_target_id|default:'studio-picker-results'|urlencode }}"
+            hx-target="#{{ picker_target_id|default:'studio-picker-results' }}" hx-boost="false">السابق</button>
     {% endif %}
     <span class="text-gray-400">صفحة {{ page_obj.number }} من {{ page_obj.paginator.num_pages }}</span>
     {% if page_obj.has_next %}
     <button type="button" class="px-2 py-1 rounded bg-gray-50 hover:bg-gray-100 text-gray-600"
-            hx-get="{% url 'staff:studio_picker' %}?page={{ page_obj.next_page_number }}{% if request.GET.q %}&q={{ request.GET.q|urlencode }}{% endif %}"
-            hx-target="#studio-picker-results" hx-boost="false">التالي</button>
+            hx-get="{% url 'staff:studio_picker' %}?page={{ page_obj.next_page_number }}{% if request.GET.q %}&q={{ request.GET.q|urlencode }}{% endif %}&picker_target_id={{ picker_target_id|default:'studio-picker-results'|urlencode }}"
+            hx-target="#{{ picker_target_id|default:'studio-picker-results' }}" hx-boost="false">التالي</button>
     {% endif %}
 </div>
 {% endif %}
