@@ -11,6 +11,7 @@
     <meta name="theme-color" content="#1d4ed8">
     <link rel="stylesheet" href="{% static 'css/fonts.css' %}">
     <link rel="stylesheet" href="{% static 'css/tailwind.css' %}">
+    <script defer src="{% static 'js/pwa-install.js' %}"></script>
     <!-- htmx بيعالج عناصر الصفحة (hx-get, hx-trigger...) لما DOMContentLoaded
          يطلق، فـ defer آمن هنا (بيأجل تحميل/تنفيذ السكريبت لحد ما الـ HTML
          يخلص parsing، بدل ما يوقف الرندر وهو بيتحمّل زي ما كان). ده بيقلل
@@ -71,7 +72,7 @@
      يبقى شكل موحّد في السيستم كله، ولأن جرس الإشعارات (bell.html) أصلاً
      متلوّن بألوان تفترض هيدر غامق (text-primary-100) وكان يختفي على خلفية
      بيضاء. -->
-<nav class="bg-primary-600 shadow-md sticky top-0 z-50 px-4 sm:px-6 py-3 flex flex-wrap justify-between items-center gap-2">
+<nav id="site-navbar" class="bg-primary-600 shadow-md sticky top-0 z-50 px-4 sm:px-6 py-3 flex flex-wrap justify-between items-center gap-2">
     <a href="{% url 'home' %}" class="flex items-center gap-2 text-xl font-bold text-white shrink-0">
         <span class="w-8 h-8 rounded-lg bg-white/15 flex items-center justify-center text-sm">B</span>
         Biozone

@@ -34,6 +34,7 @@
          جاهزة قبل أي سكريبت رسم بياني في أي صفحة. بقى ملف محلي برضه لنفس
          سبب htmx فوق. -->
     <script src="{% static 'js/chart.umd.min.js' %}"></script>
+    <script defer src="{% static 'js/pwa-install.js' %}"></script>
     <style>
         ::view-transition-old(root),
         ::view-transition-new(root) {
@@ -102,7 +103,7 @@
 </div>
 {% with url_name=request.resolver_match.url_name %}
 <!-- Topbar -->
-<header class="fixed top-0 right-0 left-0 h-14 bg-primary-600 shadow z-30 flex items-center px-4 gap-4">
+<header id="staff-topbar" class="fixed top-0 right-0 left-0 h-14 bg-primary-600 shadow z-30 flex items-center px-4 gap-4">
     <button @click="sidebarOpen = !sidebarOpen" class="text-primary-100 hover:text-white">
         <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"/>
@@ -128,7 +129,7 @@
 <!-- Sidebar — ثابت وظاهر في كل صفحات لوحة الموظف بما فيها الرئيسية،
      مقسّم لأقسام وظيفية (نفس عناصر staff/navigation.py وصلاحياتها
      بالظبط، مجمّعة بصريًا بس عن طريق فلتر nav_section). -->
-<aside class="fixed top-14 bottom-0 right-0 bg-white shadow-md z-20 transition-all duration-300 overflow-y-auto overflow-x-hidden"
+<aside id="staff-sidebar" class="fixed top-14 bottom-0 right-0 bg-white shadow-md z-20 transition-all duration-300 overflow-y-auto overflow-x-hidden"
        :class="sidebarOpen ? 'w-64 md:w-56' : 'w-0'">
     <nav class="p-4 space-y-5 text-sm w-64 md:w-56">
         {% for item in staff_nav_items %}
@@ -175,7 +176,7 @@
     </nav>
 </aside>
 <!-- Main Content -->
-<main class="pt-14 transition-all duration-300"
+<main id="staff-main" class="pt-14 transition-all duration-300"
       :class="sidebarOpen ? 'md:mr-56' : 'mr-0'">
     {% if messages %}
     <div class="fixed top-16 left-1/2 -translate-x-1/2 z-50 space-y-2">

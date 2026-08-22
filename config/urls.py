@@ -1,3 +1,5 @@
+from pathlib import Path
+
 from django.contrib import admin
 from django.urls import path, include
 from django.conf import settings
@@ -7,6 +9,20 @@ from django.http import HttpResponse
 from django.views.generic.base import RedirectView
 from store.views import store_home
 from config.home import home
+
+def service_worker(request):
+    """
+    بيقرا static/js/sw.js من على القرص مباشرة (مش عن طريق /static/js/sw.js
+    العادي) عشان الـ scope الافتراضي بتاع الـ service worker يبقى الجذر "/"
+    مطابق لـ "scope": "/" في manifest.json. لو الملف اتسجل من مساره
+    الطبيعي جوه /static/js/، الـ scope الافتراضي كان هيبقى "/static/js/"
+    بس (المجلد اللي الملف نفسه فيه) وهيقصّر تغطيته على static بس بدل
+    الموقع كله. بنقراه مباشرة من BASE_DIR/static (مش عن طريق آلية
+    staticfiles/collectstatic) عشان يشتغل صح في DEBUG من غير أي خطوة
+    build إضافية، وبرضه بعد collectstatic في الإنتاج.
+    """
+    sw_path = Path(settings.BASE_DIR) / 'static' / 'js' / 'sw.js'
+    return HttpResponse(sw_path.read_text(encoding='utf-8'), content_type='application/javascript')
 
 def healthz(request):
     """
@@ -30,6 +46,7 @@ class LegacyCatalogRedirect(RedirectView):
 
 urlpatterns = [
     path('healthz/', healthz, name='healthz'),
+    path('sw.js', service_worker, name='service_worker'),
     path('admin/', admin.site.urls),
     path('', home, name='home'),
     path('accounts/', include('accounts.urls')),

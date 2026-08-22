@@ -11,6 +11,7 @@
 <link rel="manifest" href="{% static 'manifest.json' %}">
 <meta name="theme-color" content="#1d4ed8">
 <link rel="stylesheet" href="{% static 'css/fonts.css' %}">
+<script defer src="{% static 'js/pwa-install.js' %}"></script>
 <style>
 :root{--blue:#2457d6;--blue-dark:#1747c2;--blue-soft:#edf4ff;--ink:#17213a;--muted:#6d7890;--line:#e6ebf4;--white:#fff;--green:#16a34a;--shadow:0 12px 35px rgba(31,56,100,.07)}
 *{box-sizing:border-box}html{scroll-behavior:smooth}body{margin:0;font-family:Cairo,Arial,sans-serif;background:#fff;color:var(--ink)}a{text-decoration:none;color:inherit}.container{width:min(1180px,calc(100% - 48px));margin:auto}
@@ -28,7 +29,7 @@
 </style>
 </head>
 <body>
-<header class="header"><div class="container header-inner">
+<header class="header" id="landing-header"><div class="container header-inner">
 <a class="logo" href="{% url 'home' %}"><span>Biozone</span><span class="logo-mark">◇</span></a>
 <nav class="nav-links"><a href="#home">الرئيسية</a><a href="#about">عن Biozone</a><a href="#benefits">المميزات</a><a href="#how">طريقة الطلب</a><a href="#contact">تواصل معنا</a></nav>
 <div class="header-actions">{% if request.user.is_authenticated %}<a class="btn btn-outline" href="{% url 'accounts:dashboard' %}">{{ request.user.username }}</a>{% else %}<a class="btn btn-outline" href="{% url 'accounts:login' %}">تسجيل الدخول</a>{% endif %}<a class="btn btn-primary" href="{% url 'store:home' %}">الدخول إلى المتجر</a></div><button class="mobile-menu" type="button" aria-label="القائمة" aria-expanded="false" id="mobileMenuButton">☰</button><nav class="mobile-nav" id="mobileNav"><a href="#home">الرئيسية</a><a href="#about">عن Biozone</a><a href="#benefits">المميزات</a><a href="#how">طريقة الطلب</a><a href="#contact">تواصل معنا</a></nav>
