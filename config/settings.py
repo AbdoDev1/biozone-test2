@@ -213,6 +213,18 @@ CELERY_ACCEPT_CONTENT = ['json']
 CELERY_TASK_TIME_LIMIT = 15 * 60
 CELERY_TASK_SOFT_TIME_LIMIT = 10 * 60
 
+# النسخ الاحتياطي اليدوي (staff.tasks.run_manual_backup_task) بيتوجّه
+# لطابور 'backup' منفصل بدل الطابور الافتراضي 'celery' اللي باقي المهام
+# (استيراد/تصدير المنتجات، تصدير التقارير، نشر الإشعارات الجماعية)
+# بتستخدمه — راجع docker-compose.yml (celery-worker-backup) وentrypoint.sh
+# (CELERY_QUEUES) لتفاصيل الـworker المخصص. السبب: worker واحد بيشارك
+# فيه الاستيراد/التصدير والنسخ الاحتياطي كان معناه إن نسخة احتياطية طويلة
+# (pg_dump + رفع لسحابة) ممكن تأخر استيراد/تصدير موظف تاني مستني في نفس
+# الطابور (منقول من mg).
+CELERY_TASK_ROUTES = {
+    'staff.tasks.run_manual_backup_task': {'queue': 'backup'},
+}
+
  #----- الإيميل (لازم لإرسال روابط إعادة تعيين كلمة السر) -----
 # EMAIL_BACKEND الافتراضي بيطبع الإيميل في الـ console (docker compose logs -f web)
 # ده مفيد جدًا للتجربة المحلية من غير ما تحتاج SMTP حقيقي.

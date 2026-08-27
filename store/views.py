@@ -1,4 +1,5 @@
 from django.contrib.auth.decorators import login_required
+from django.core.cache import cache
 from django.core.paginator import Paginator
 from django.http import HttpResponse
 from django.shortcuts import render, get_object_or_404
@@ -24,6 +25,17 @@ def _cart_quantities(request):
 
 
 PRODUCTS_PER_PAGE = 24
+
+# مدة كاش Redis لنتيجة _categories_list()/_manufacturers_list() (المرحلة
+# 4.ب من خطة نقل تعديلات mg) — الدالتين دول كانتا بتعملوا aggregate
+# (annotate + Count) على الكتالوج كله في *كل* طلب لـ store_home/
+# new_arrivals، رغم إن عدد المنتجات لكل قسم/شركة بيتغيّر ببطء شديد مقارنة
+# بمعدل الزيارات، وده كان بيتفاقم تحت حمل متزامن (راجع تقرير اختبار
+# المرحلة 0 — / و/store/ من أبطأ صفحتين حتى من غير أي حمل تاني). TTL
+# قصير (60 ثانية) — يعني تحديث عدد المنتجات في الفلتر (بعد استيراد كبير
+# مثلًا) ممكن ياخد لحد دقيقة يظهر، قرار مقصود بدل تعقيد الموضوع بـ
+# invalidation عند كل تعديل صنف/استيراد.
+CATALOG_FILTERS_CACHE_TTL = 60
 
 
 def _base_products_queryset():
@@ -91,8 +103,16 @@ def _categories_list():
     الأقسام الفاضية، فكان جزء من الأقسام الظاهرة في الفلتر مالوش أي
     منتج فعلي. مرتبة تنازليًا بعدد المنتجات النشطة (الأكثر بضاعة فوق)
     بدل الترتيب الأبجدي، عشان أهم الأقسام تبقى أول حاجة يشوفها العميل.
+
+    مكاشة (CATALOG_FILTERS_CACHE_TTL ثانية، راجع تعليق الثابت فوق) —
+    بترجّع list مُقيَّمة (list(...)) مش QuerySet كسول، عشان تتخزن في
+    الكاش كقيمة عادية وترجع منها زي ما هي من غير ما تعمل أي استعلام
+    إضافي وقت القراءة من الكاش.
     """
-    return (
+    cached = cache.get('store:categories_list')
+    if cached is not None:
+        return cached
+    categories = list(
         Category.objects.filter(is_active=True, products__is_active=True)
         .annotate(active_product_count=Count(
             'products', filter=Q(products__is_active=True), distinct=True
@@ -100,6 +120,8 @@ def _categories_list():
         .distinct()
         .order_by('-active_product_count', 'name')
     )
+    cache.set('store:categories_list', categories, CATALOG_FILTERS_CACHE_TTL)
+    return categories
 
 
 def _manufacturers_list():
@@ -109,7 +131,12 @@ def _manufacturers_list():
     # تكرار الأسماء، بس لسه محتاجينها هنا عشان annotate() مع filter بيعمل
     # JOIN بيتكرر لكل منتج نشط. مرتبة تنازليًا بعدد المنتجات النشطة (نفس
     # منطق الأقسام بالظبط) بدل الأبجدي.
-    return (
+    #
+    # مكاشة (نفس سبب/TTL _categories_list() فوق بالظبط).
+    cached = cache.get('store:manufacturers_list')
+    if cached is not None:
+        return cached
+    manufacturers = list(
         Company.objects.filter(is_active=True, products__is_active=True)
         .annotate(active_product_count=Count(
             'products', filter=Q(products__is_active=True), distinct=True
@@ -117,6 +144,8 @@ def _manufacturers_list():
         .distinct()
         .order_by('-active_product_count', 'name')
     )
+    cache.set('store:manufacturers_list', manufacturers, CATALOG_FILTERS_CACHE_TTL)
+    return manufacturers
 
 
 def _category_options(categories):

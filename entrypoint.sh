@@ -37,8 +37,17 @@ fi
 
 if [ "$ROLE" = "celery" ]; then
     CONCURRENCY="${CELERY_CONCURRENCY:-2}"
-    echo "== تشغيل Celery worker (concurrency: $CONCURRENCY) =="
-    exec celery -A config worker -l info --concurrency "$CONCURRENCY"
+    # CELERY_QUEUES بيحدد الطوابير اللي الـworker ده بيستهلك منها —
+    # 'celery' هو الطابور الافتراضي في Celery (استيراد/تصدير المنتجات
+    # والتقارير ونشر الإشعارات الجماعية). لو سايبها فاضية بيرجع لـ'celery'
+    # بس، عشان أي خدمة قديمة SERVICE_ROLE=celery من غير المتغير ده تفضل
+    # شغالة بنفس السلوك السابق تمامًا. راجع docker-compose.yml —
+    # celery-worker-backup لسبب الفصل الكامل (منقول من mg: worker واحد
+    # بيشارك فيه الاستيراد/التصدير والنسخ الاحتياطي، فمهمة نسخ احتياطي
+    # طويلة كانت ممكن تأخر استيراد/تصدير موظف تاني مستني في نفس الطابور).
+    QUEUES="${CELERY_QUEUES:-celery}"
+    echo "== تشغيل Celery worker (concurrency: $CONCURRENCY, queues: $QUEUES) =="
+    exec celery -A config worker -l info --concurrency "$CONCURRENCY" -Q "$QUEUES"
 fi
 
 # عدد الـ workers مستقل لكل خدمة: GUNICORN_WORKERS_STORE أو

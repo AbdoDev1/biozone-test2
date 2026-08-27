@@ -5,6 +5,7 @@ from django.contrib.auth.decorators import login_required
 from inventory.models import Inventory
 from accounts.models import ClientProfile
 from accounts.security import is_login_blocked, record_failed_login, reset_login_attempts, LOGIN_BLOCKED_MESSAGE
+from accounts.concurrency import thread_unbound
 from orders.models import Order
 from staff.permissions import admin_required
 
@@ -13,7 +14,13 @@ from staff.permissions import admin_required
 DASHBOARD_LOW_STOCK_LIMIT = 10
 
 
+@thread_unbound
 def staff_login(request):
+    """راجع accounts/views.py — login_view لتفاصيل thread_unbound وسبب
+    استخدامه، ولماذا الـview هنا لسه sync عادي 100% عمدًا. staff_login
+    شغالة على container web-staff (مش web-store) بس نفس السبب بالظبط
+    منطبق عليها — web-staff شغال ASGI (uvicorn) كمان (راجع entrypoint.sh)،
+    فأي login هنا بيسلسل بنفس الطريقة لو من غير الديكوريتور ده."""
     if request.user.is_authenticated:
         if request.user.role in ['ADMIN', 'WAREHOUSE']:
             return redirect('staff:dashboard')

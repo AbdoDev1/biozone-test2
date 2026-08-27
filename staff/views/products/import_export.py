@@ -16,7 +16,6 @@ from django.core.paginator import Paginator
 from django.http import HttpResponse, JsonResponse
 from django.shortcuts import render, redirect
 from django.contrib import messages
-from django.db import transaction
 from django.db.models import Q
 
 from products.models import Category, Product
@@ -26,7 +25,6 @@ from products.services import import_export as import_export_service
 from staff.permissions import perm_required
 from staff.excel_utils import XLSX_CONTENT_TYPE, workbook_response
 
-IMPORT_SESSION_KEY = 'product_import_batch'
 IMPORT_ERRORS_SESSION_KEY = 'product_import_last_errors'
 # حماية من ملف إكسل ضخم بالغلط (أو مقصود): الدفعة بالكامل بتتخزن مؤقتًا في
 # الـ session (قاعدة البيانات) بين شاشة المراجعة وشاشة التأكيد، فملف بعشرات
@@ -102,11 +100,11 @@ def import_products(request):
             for chunk in excel_file.chunks():
                 dest.write(chunk)
 
-        from products.tasks import import_result_cache_key, parse_import_workbook_task
+        from products.tasks import import_result_cache_key, parse_import_file
         # نظّف أي نتيجة استيراد سابقة للموظف ده (لو رفع ملف قبل كده ولسه
         # فاتحة الشاشة) عشان شاشة الانتظار متتأكدش من نتيجة قديمة غلط.
         cache.delete(import_result_cache_key(request.user.pk))
-        parse_import_workbook_task.delay(tmp_path, IMPORT_MAX_ROWS, request.user.pk)
+        parse_import_file.delay(tmp_path, IMPORT_MAX_ROWS, request.user.pk)
 
         return render(request, 'staff/products/import_processing.html')
     return render(request, 'staff/products/import.html')
@@ -131,17 +129,22 @@ def import_products_review(request):
     وبتوقف عند أي صف اسمه قريب من صنف موجود وتسأل الموظف صراحةً هل ده
     نفس الصنف (تحديث) ولا صنف جديد فعلًا — قبل أي حفظ في قاعدة البيانات.
     """
-    batch = request.session.get(IMPORT_SESSION_KEY)
+    from products.tasks import (
+        import_result_cache_key,
+        import_review_batch_cache_key,
+        IMPORT_REVIEW_BATCH_TTL,
+    )
+    review_key = import_review_batch_cache_key(request.user.pk)
+    batch = cache.get(review_key)
     if not batch:
         # أول ما يوصل هنا (من رابط الإشعار أو تحويلة شاشة الانتظار)،
-        # النتيجة لسه في الكاش (Celery حطها هناك، مش في السيشن — راجع
-        # products/tasks.py). ننقلها للسيشن مرة واحدة عشان باقي شاشات
-        # الاستيراد (التأكيد، الأخطاء) تفضل شغالة زي ما هي بالظبط.
-        from products.tasks import import_result_cache_key
+        # النتيجة لسه في كاش النتيجة الخام (Celery حطها هناك — راجع
+        # products/tasks.py). ننقلها لمفتاح كاش المراجعة مرة واحدة عشان
+        # باقي شاشات الاستيراد (التأكيد، الأخطاء) تفضل شغالة زي ما هي
+        # بالظبط.
         cached = cache.get(import_result_cache_key(request.user.pk))
         if cached and cached.get('status') == 'done' and not cached.get('error_message'):
             batch = {'rows': cached['rows'], 'errors': cached['errors']}
-            request.session[IMPORT_SESSION_KEY] = batch
             cache.delete(import_result_cache_key(request.user.pk))
         elif cached:
             messages.error(request, cached.get('error_message') or 'حصل خطأ أثناء قراءة الملف.')
@@ -151,6 +154,11 @@ def import_products_review(request):
     if not batch:
         messages.error(request, 'مفيش عملية استيراد جارية. من فضلك ارفع الملف تاني.')
         return redirect('staff:import_products')
+
+    # تجديد الصلاحية في كل مرة الشاشة دي بتترندر (أول وصول أو أي تنقل
+    # صفحات لاحق) — عشان مراجعة طويلة (كتالوج كبير، موظف بياخد وقته)
+    # متنتهيش صلاحيتها لوحدها من نص الطريق.
+    cache.set(review_key, batch, timeout=IMPORT_REVIEW_BATCH_TTL)
 
     rows = batch['rows']
     all_update_rows = [r for r in rows if r['action'] == 'update']
@@ -183,13 +191,29 @@ def import_products_review(request):
 def import_products_confirm(request):
     """
     المرحلة التانية: بتاخد قرارات الموظف على صفوف "المراجعة" (اتحدد لكل
-    واحد منها إما تحديث صنف بعينه أو إضافته كصنف جديد فعلًا) وتنفّذ الحفظ
-    الفعلي لكل صفوف الدفعة مرة واحدة داخل transaction واحدة.
+    واحد منها إما تحديث صنف بعينه أو إضافته كصنف جديد فعلًا)، وبدل ما
+    تنفّذ الحفظ الفعلي هنا مباشرة (زي قبل كده)، بتخزّن الدفعة في الكاش
+    وتبعتها لـcelery-worker (commit_import_batch_task) وتوجّه الموظف
+    لشاشة انتظار.
+
+    السبب: الحفظ الفعلي لدفعة كبيرة (لحد 3000 صف) جوه transaction واحدة
+    كان بياخد وقت طويل نسبيًا (مئات/آلاف query منفصلة)، وكان شغال جوه
+    نفس طلب HTTP في container web-staff (0.5 CPU فقط — نصف تخصيص
+    web-store) — يعني بيقفل الـworker طول مدة الحفظ ومعرّض لـtimeout من
+    nginx/gunicorn لو الملف كبير كفاية. نفس السبب اللي خلّى مرحلة القراءة
+    (parse_import_file) تتنقل لـCelery قبل كده — دلوقتي مرحلة التأكيد
+    بتتبع نفس النمط بالظبط.
+
+    الدفعة بتتقرا من نفس مفتاح كاش المراجعة (import_review_batch_cache_key)
+    بدل الجلسة — نفس أسلوب باقي مراحل الاستيراد المؤقتة (مفتاح مبني على
+    user_id في الكاش)، بدل الاعتماد على سيشن الطلب الأصلي.
     """
     if request.method != 'POST':
         return redirect('staff:import_products')
 
-    batch = request.session.get(IMPORT_SESSION_KEY)
+    from products.tasks import import_review_batch_cache_key
+    review_key = import_review_batch_cache_key(request.user.pk)
+    batch = cache.get(review_key)
     if not batch:
         messages.error(request, 'انتهت صلاحية عملية الاستيراد دي. من فضلك ارفع الملف تاني.')
         return redirect('staff:import_products')
@@ -199,43 +223,71 @@ def import_products_confirm(request):
         row['row_num']: request.POST.get(f"decision_{row['row_num']}", 'new')
         for row in rows if row['action'] == 'review'
     }
-    try:
-        with transaction.atomic():
-            created_count, updated_count, restocked_count = import_export_service.commit_import_batch(
-                rows, decisions, request.user,
-            )
-    except Exception as e:
-        messages.error(request, f'حصل خطأ أثناء الحفظ ولم يتم حفظ أي صنف: {str(e)}')
+
+    from products.tasks import (
+        commit_import_batch_task,
+        import_commit_payload_cache_key,
+        import_commit_result_cache_key,
+    )
+    # نظّف أي نتيجة تأكيد سابقة لنفس الموظف (لو أعاد الضغط على تأكيد قبل
+    # كده ولسه فاتح الشاشة) — نفس فكرة تنظيف نتيجة القراءة القديمة في
+    # import_products قبل الـdelay.
+    cache.delete(import_commit_result_cache_key(request.user.pk))
+    payload = {
+        'rows': rows,
+        'decisions': decisions,
+        'errors': batch.get('errors') or [],
+        'notify_clients': request.POST.get('notify_clients') == 'on',
+    }
+    cache.set(import_commit_payload_cache_key(request.user.pk), payload, timeout=60 * 30)
+    cache.delete(review_key)
+    commit_import_batch_task.delay(request.user.pk)
+
+    return render(request, 'staff/products/import_committing.html')
+
+
+@perm_required('products.add_product')
+def import_products_commit_status(request):
+    """
+    نظير import_products_status بالظبط بس لمرحلة التأكيد/الحفظ — endpoint
+    خفيف بتستدعيه شاشة الانتظار (import_committing.html) كل ثانيتين،
+    بيتأكد هل commit_import_batch_task خلصت (النتيجة موجودة في الكاش).
+    """
+    from products.tasks import import_commit_result_cache_key
+    cached = cache.get(import_commit_result_cache_key(request.user.pk))
+    return JsonResponse({'ready': cached is not None})
+
+
+@perm_required('products.add_product')
+def import_products_commit_result(request):
+    """
+    بتقرا نتيجة الحفظ (اللي commit_import_batch_task خزّنتها في الكاش)
+    وتحوّلها لـmessages حقيقية — ده لازم يحصل جوه request فعلي (messages
+    framework مرتبط بالـsession، مش متاح جوه Celery task)، نفس فكرة
+    import_products_review بالظبط بالنسبة لنتيجة مرحلة القراءة.
+    """
+    from products.tasks import import_commit_result_cache_key
+    cached = cache.get(import_commit_result_cache_key(request.user.pk))
+    if not cached:
+        messages.error(request, 'مفيش نتيجة حفظ جاهزة. من فضلك ارفع الملف تاني.')
+        return redirect('staff:import_products')
+    cache.delete(import_commit_result_cache_key(request.user.pk))
+
+    if cached['status'] != 'done':
+        messages.error(request, cached.get('error_message') or 'حصل خطأ أثناء الحفظ ولم يتم حفظ أي صنف.')
         return redirect('staff:import_products')
 
-    del request.session[IMPORT_SESSION_KEY]
+    created_count = cached['created_count']
+    updated_count = cached['updated_count']
     if created_count:
         messages.success(request, f'تم إضافة {created_count} صنف جديد.')
     if updated_count:
         messages.success(request, f'تم تحديث {updated_count} صنف موجود.')
-    # قبل كده كان بيتحط toast منفصل لكل سطر فيه مشكلة (ممكن تبقى مئات
-    # التوستات فوق بعض مع ملف كبير) — دلوقتي بنحفظ التفاصيل الكاملة
-    # (مجمّعة حسب نوع المشكلة) في الـ session ونوجّه الموظف لصفحة مخصصة
-    # يراجعها فيها براحته، بدل ما تتفرقع كلها كـ toasts فوق بعض.
 
-    # إشعار العملاء بالوارد الجديد — اختياري، الموظف بيحدده من شاشة المراجعة.
-    # new_arrival_at اتحدّث تلقائيًا لكل صنف جديد أو اتزوّد رصيده (راجع
-    # Product.save و StockMovement.save)، فمفيش داعي نحسب حاجة تانية هنا —
-    # بس نتأكد إن فيه فعلاً حاجة جديدة تستاهل إشعار قبل ما نبعته.
-    new_arrivals_total = created_count + restocked_count
-    if request.POST.get('notify_clients') == 'on' and new_arrivals_total > 0:
-        from notifications.services import notify_all_clients
-        notify_all_clients(
-            kind='NEW_ARRIVALS',
-            title='وارد جديد في المتجر 🆕',
-            message=f'تم إضافة {new_arrivals_total} صنف جديد أو تزويد رصيده — اطّلع على صفحة الوارد.',
-            url_name='store:new_arrivals',
-        )
-        messages.success(request, 'تم إرسال إشعار الوارد الجديد لكل العملاء.')
-
-    if batch['errors']:
-        request.session[IMPORT_ERRORS_SESSION_KEY] = batch['errors']
-        messages.warning(request, f'تم تجاهل {len(batch["errors"])} صف فيهم مشكلة أثناء القراءة — التفاصيل تحت.')
+    errors = cached.get('errors') or []
+    if errors:
+        request.session[IMPORT_ERRORS_SESSION_KEY] = errors
+        messages.warning(request, f'تم تجاهل {len(errors)} صف فيهم مشكلة أثناء القراءة — التفاصيل تحت.')
         return redirect('staff:import_products_errors')
 
     return redirect('staff:product_list')
@@ -276,7 +328,7 @@ def export_products(request):
     الإكسل متزامن جوه نفس طلب الـ HTTP على web-staff (بدون أي حد أقصى
     لعدد الصفوف)، وده بيتفاقم تلقائيًا مع نمو الكتالوج (راجع ADR-001).
     دلوقتي بنبعت المعالجة لـ Celery في الخلفية (نفس نمط
-    import_products/parse_import_workbook_task) ونرجّع فورًا شاشة انتظار
+    import_products/parse_import_file) ونرجّع فورًا شاشة انتظار
     بسيطة بتعمل polling على export_products_status.
     """
     from products.tasks import export_products_task, export_result_cache_key
@@ -336,7 +388,8 @@ def export_products_download(request):
     cache.delete(export_result_cache_key(request.user.pk))
 
     response = HttpResponse(data, content_type=XLSX_CONTENT_TYPE)
-    response['Content-Disposition'] = 'attachment; filename="biozone_products_export.xlsx"'
+    download_filename = cached.get('download_filename', 'biozone_products_export.xlsx')
+    response['Content-Disposition'] = f'attachment; filename="{download_filename}"'
     return response
 
 
@@ -424,7 +477,15 @@ def export_products_category_ids(request):
 
 @perm_required('products.view_product')
 def export_products_selected(request):
-    """يستقبل قائمة IDs من صفحة الاختيار ويصدّرها كملف إكسل واحد."""
+    """
+    يستقبل قائمة IDs من صفحة الاختيار ويصدّرها كملف إكسل واحد.
+
+    كانت لسه بتبني الملف متزامن جوه الـ request/response (فجوة حقيقية
+    لقيناها أثناء مراجعة الفرق مع mg — export_products نفسها كانت أصلاً
+    منقولة لـCelery من زمان، بس النسخة "المحددة" دي اتنستيت). دلوقتي
+    بتستخدم نفس export_products_task المعمَّمة (product_ids بدل None) —
+    نفس النمط، نفس شاشة الانتظار، من غير أي تكرار منطق.
+    """
     if request.method != 'POST':
         return redirect('staff:export_products_select')
 
@@ -433,8 +494,7 @@ def export_products_selected(request):
         messages.warning(request, 'لازم تحدد صنف واحد على الأقل قبل التصدير.')
         return redirect('staff:export_products_select')
 
-    products = Product.objects.select_related('category').prefetch_related(
-        'units__discounts__account_type',
-    ).filter(pk__in=ids)
-    wb = import_export_service.build_products_export_workbook(products)
-    return workbook_response(wb, 'biozone_products_export_selected.xlsx')
+    from products.tasks import export_products_task, export_result_cache_key
+    cache.delete(export_result_cache_key(request.user.pk))
+    export_products_task.delay(request.user.pk, product_ids=ids, download_filename='biozone_products_export_selected.xlsx')
+    return render(request, 'staff/products/export_processing.html')

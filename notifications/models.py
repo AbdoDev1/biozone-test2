@@ -44,6 +44,11 @@ class Notification(models.Model):
         # الموظف)، وبيبعته بس في حالة النجاح أو تعارض التوقيت (الحالتين
         # اللي مفيش لهم أي إشعار حاليًا).
         BACKUP_READY = 'BACKUP_READY', 'نتيجة النسخة الاحتياطية اليدوية'
+        # نتيجة مرحلة التأكيد/الحفظ الفعلي للاستيراد (commit_import_batch_task
+        # عبر Celery) — منفصل عن IMPORT_READY فوق (اللي بيغطي مرحلة
+        # القراءة/التصنيف بس) عشان الموظف يقدر يميّز الإشعارين لو الاتنين
+        # وصلوا قريب من بعض. راجع products/tasks.py — commit_import_batch_task.
+        IMPORT_COMMITTED = 'IMPORT_COMMITTED', 'نتيجة حفظ الاستيراد'
 
     recipient = models.ForeignKey(User, on_delete=models.CASCADE, related_name='notifications')
     kind = models.CharField(max_length=40, choices=Kind.choices)

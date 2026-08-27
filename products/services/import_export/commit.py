@@ -6,6 +6,8 @@
 """
 from decimal import Decimal
 
+from django.db.models import Q
+
 from accounts.models import AccountType
 from activity.models import ActivityLog
 from activity.services import log_activity
@@ -22,7 +24,8 @@ __all__ = [
 
 
 def commit_product(row_data, target_pk, user, account_types_by_pk, category_cache=None,
-                    product_cache=None, inventory_cache=None):
+                    product_cache=None, inventory_cache=None,
+                    discount_upserts=None, discount_delete_pairs=None):
     """
     بيطبّق صنف واحد (وحدة أو وحدتين + خصوماته) فعليًا على قاعدة البيانات،
     بعد ما يبقى معروف بالظبط (من مرحلة المراجعة) هل ده تحديث لمنتج
@@ -41,6 +44,18 @@ def commit_product(row_data, target_pk, user, account_types_by_pk, category_cach
     حدة) — ده أكبر سبب لبطء الاستيراد مع ملفات كبيرة (مئات/آلاف الصفوف).
     لو معدّاش الاثنين (الاستخدام المباشر القديم، زي الاختبارات)، السلوك
     زي ما هو بالظبط: استعلام منفصل لكل صف.
+
+    discount_upserts / discount_delete_pairs (اختياريان، لستتان مُمرَّرتان
+    من commit_import_batch ومُشتركتان بين كل صفوف الدفعة): بدل ما كل صف
+    يعمل UnitDiscount.objects.update_or_create/.filter().delete() لوحده
+    (استعلام + كتابة منفصلة لكل زوج صنف/نوع حساب)، هنا بس بنجمّع العملية
+    المطلوبة (upsert أو delete) في اللستة المشتركة، وcommit_import_batch
+    هي اللي بتنفّذها كلها دفعة واحدة (bulk_create واحد + delete واحد) بعد
+    ما كل صفوف الدفعة تخلص. UnitDiscount من غير أي save() override أو
+    side effects (بعكس StockMovement تحت — راجع ملحوظة commit_import_batch
+    لسبب إننا مبنعملش نفس الحاجة للحركات)، فالتجميع ده آمن تمامًا. لو
+    معدّاش الاثنين (الاستخدام المباشر القديم، زي الاختبارات)، السلوك
+    زي ما هو بالظبط: كتابة مباشرة فورية لكل صف.
     """
     category = None
     if row_data['category_slug']:
@@ -137,12 +152,21 @@ def commit_product(row_data, target_pk, user, account_types_by_pk, category_cach
             if not account_type:
                 continue
             if pct_raw is None:
-                UnitDiscount.objects.filter(unit=discount_unit, account_type=account_type).delete()
+                if discount_delete_pairs is not None:
+                    discount_delete_pairs.append((discount_unit.pk, account_type.pk))
+                else:
+                    UnitDiscount.objects.filter(unit=discount_unit, account_type=account_type).delete()
             else:
-                UnitDiscount.objects.update_or_create(
-                    unit=discount_unit, account_type=account_type,
-                    defaults={'discount_percent': Decimal(pct_raw)},
-                )
+                if discount_upserts is not None:
+                    discount_upserts.append(UnitDiscount(
+                        unit=discount_unit, account_type=account_type,
+                        discount_percent=Decimal(pct_raw),
+                    ))
+                else:
+                    UnitDiscount.objects.update_or_create(
+                        unit=discount_unit, account_type=account_type,
+                        defaults={'discount_percent': Decimal(pct_raw)},
+                    )
 
     return created, restocked
 
@@ -152,6 +176,16 @@ def commit_import_batch(rows, decisions, user):
     بتاخد قرارات الموظف على صفوف "المراجعة" (decisions: dict بمفتاح
     row_num وقيمة إما 'new' أو pk المنتج المستهدف) وتنفّذ الحفظ الفعلي
     لكل صفوف الدفعة. بترجّع (created_count, updated_count, restocked_count).
+
+    ملحوظة عن StockMovement: مقصود إننا *مش* بنجمّعها في bulk_create زي
+    UnitDiscount تحت، رغم إنها كانت أول حاجة تيجي في بالك مع "كل صف بيعمل
+    كتابة منفصلة". السبب: StockMovement.save() فيه منطق حقيقي (تحديث
+    Inventory.quantity فعليًا عبر F()، تحديث Product.new_arrival_at،
+    وfull_clean() validation) — bulk_create بيتخطى save() بالكامل، يعني
+    الحركة هتتسجل في الجدول بس رصيد المخزون مش هيتزوّد فعليًا (باج صامت
+    وخطير). فده فضل StockMovement.objects.create() لكل صف زي ما هو
+    بالظبط (راجع inventory/models.py — StockMovement.save لتفاصيل الـ
+    side effects دي).
     """
     account_types_by_pk = {at.pk: at for at in AccountType.objects.all()}
     # كاش مشترك بين كل صفوف الدفعة: لو أكتر من صف بيحتاج نفس القسم الجديد
@@ -182,6 +216,11 @@ def commit_import_batch(rows, decisions, user):
         for inv in Inventory.objects.filter(product_id__in=target_pks)
     }
 
+    # مُشتركتان بين كل صفوف الدفعة — راجع تعليق discount_upserts/
+    # discount_delete_pairs في commit_product لتفاصيل الـ batching.
+    discount_upserts = []
+    discount_delete_pairs = []
+
     created_count = updated_count = restocked_count = 0
     for row_data in rows:
         if row_data['action'] == 'review':
@@ -193,6 +232,7 @@ def commit_import_batch(rows, decisions, user):
             row_data, target_pk, user, account_types_by_pk,
             category_cache=category_cache,
             product_cache=product_cache, inventory_cache=inventory_cache,
+            discount_upserts=discount_upserts, discount_delete_pairs=discount_delete_pairs,
         )
         if created:
             created_count += 1
@@ -200,4 +240,42 @@ def commit_import_batch(rows, decisions, user):
             updated_count += 1
             if restocked:
                 restocked_count += 1
+
+    # لو نفس الصنف اتكرر بالغلط في أكتر من صف في الملف (اسم مكرر)، ممكن
+    # يبقى فيه أكتر من عملية upsert لنفس زوج (unit, account_type) جوه
+    # discount_upserts — bulk_create بـupdate_conflicts بيرفض ده على
+    # PostgreSQL (ON CONFLICT DO UPDATE command cannot affect row a
+    # second time)، عكس update_or_create المتسلسل القديم اللي كان محصّن
+    # من المشكلة دي طبيعيًا. فبنعمل dedup هنا بنفس ترتيب الصفوف — آخر
+    # قيمة لكل زوج هي اللي بتتاخد (نفس سلوك "آخر صف بيكسب" اللي كان
+    # موجود ضمنيًا مع update_or_create المتتالي)، وأي زوج اتقرر حذفه في
+    # آخر ظهور ليه بيتشال من الـupserts تمامًا ويروح للحذف بدل كده.
+    upserts_by_key = {}
+    for du in discount_upserts:
+        upserts_by_key[(du.unit_id, du.account_type_id)] = du
+    delete_keys = set()
+    for unit_pk, account_type_pk in discount_delete_pairs:
+        delete_keys.add((unit_pk, account_type_pk))
+        upserts_by_key.pop((unit_pk, account_type_pk), None)
+
+    # تنفيذ كل عمليات الخصم المجمّعة من الدفعة كلها دفعة واحدة: bulk_create
+    # واحد بـupdate_conflicts (Django 4.1+) بدل update_or_create منفصل لكل
+    # زوج صنف/نوع حساب — بيعتمد على UniqueConstraint('unit', 'account_type')
+    # الموجود أصلًا على الموديل (راجع products/models.py — UnitDiscount.Meta)
+    # عشان يعرف يميّز "موجود يتحدّث" من "جديد يتضاف" في نفس الاستعلام.
+    if upserts_by_key:
+        UnitDiscount.objects.bulk_create(
+            list(upserts_by_key.values()),
+            update_conflicts=True,
+            unique_fields=['unit', 'account_type'],
+            update_fields=['discount_percent'],
+        )
+    # حذف كل أزواج (unit, account_type) اللي اتحددت كـ "امسح الخصم ده"
+    # في استعلام واحد، بدل .filter().delete() منفصل لكل زوج.
+    if delete_keys:
+        delete_q = Q()
+        for unit_pk, account_type_pk in delete_keys:
+            delete_q |= Q(unit_id=unit_pk, account_type_id=account_type_pk)
+        UnitDiscount.objects.filter(delete_q).delete()
+
     return created_count, updated_count, restocked_count

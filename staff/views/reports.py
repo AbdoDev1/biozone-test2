@@ -1,19 +1,44 @@
+import os
 from decimal import Decimal
 
+from django.contrib import messages
+from django.core.cache import cache
 from django.core.paginator import Paginator
 from django.db.models import F, Sum, Subquery, OuterRef, DecimalField, ExpressionWrapper
-from django.shortcuts import render
+from django.http import HttpResponse
+from django.shortcuts import render, redirect
 from django.utils import timezone
 
 from inventory.models import Inventory
 from orders.models import Order, OrderItem
 from products.models import ProductUnit
 from staff.permissions import perm_required
-from staff.excel_utils import build_simple_workbook, workbook_response
+from staff.excel_utils import XLSX_CONTENT_TYPE
 from staff import reports_queries as rq
 
 STAFF_LIST_PAGE_SIZE = 50
 MONEY = DecimalField(max_digits=14, decimal_places=2)
+
+
+def _start_report_export(request, report_kind):
+    """
+    بتبدأ بناء ملف تصدير التقرير (report_kind — راجع staff/report_export.py
+    — REPORT_KIND_BUILDERS) في الخلفية عبر Celery بدل ما تبنيه وترجّعه
+    مباشرة جوه نفس طلب HTTP — نفس نقل تصدير المنتجات (products/tasks.py
+    — export_products_task)، منقول من mg.
+
+    request.GET.dict() بيتلقط هنا (لحظة الطلب) ويتخزن كـargs للـtask —
+    ده بالظبط نفس فلاتر التقرير اللي كانت هتتستخدم لو التصدير حصل متزامن،
+    فالنتيجة النهائية مطابقة تمامًا لما كانت هتطلع لو الموظف ضغط تصدير
+    وهو شايف نفس الفلاتر دي على الشاشة.
+    """
+    from staff.report_export import REPORT_EXPORT_STATUS_TTL, report_export_status_cache_key
+    from staff.tasks import build_report_export_task
+
+    cache_key = report_export_status_cache_key(request.user.pk)
+    cache.delete(cache_key)
+    build_report_export_task.delay(report_kind, request.GET.dict(), request.user.pk)
+    return render(request, 'staff/reports/export_processing.html')
 
 
 # =====================================================================
@@ -101,7 +126,7 @@ def sales_report(request):
     )['d'] or Decimal('0')
 
     if request.GET.get('export') == 'excel':
-        return _export_sales_excel(invoice_qs)
+        return _start_report_export(request, 'sales')
 
     paginator = Paginator(invoice_qs, STAFF_LIST_PAGE_SIZE)
     page_obj = paginator.get_page(request.GET.get('page'))
@@ -117,25 +142,6 @@ def sales_report(request):
     return render(request, 'staff/reports/sales.html', context)
 
 
-def _export_sales_excel(invoice_qs):
-    data_rows = [
-        [
-            inv.invoice_number,
-            timezone.localtime(inv.issued_at).strftime('%Y-%m-%d %H:%M'),
-            inv.client_name,
-            inv.issued_by.username if inv.issued_by else '—',
-            float(inv.total),
-        ]
-        for inv in invoice_qs.select_related('order__client', 'issued_by')
-    ]
-    wb = build_simple_workbook(
-        sheet_title='تقرير المبيعات',
-        headers=['رقم الفاتورة', 'التاريخ', 'العميل', 'الموظف', 'الإجمالي (ج.م)'],
-        rows=data_rows,
-    )
-    return workbook_response(wb, 'biozone_sales_report.xlsx')
-
-
 # =====================================================================
 # 3) تقرير المنتجات المباعة (يشمل "الأكثر مبيعًا" عبر خيار الترتيب)
 # =====================================================================
@@ -149,7 +155,7 @@ def products_sold(request):
     rows = rq.products_sold_report(item_qs, order_by=sort)
 
     if request.GET.get('export') == 'excel':
-        return _export_products_excel(rows)
+        return _start_report_export(request, 'products')
 
     paginator = Paginator(rows, STAFF_LIST_PAGE_SIZE)
     page_obj = paginator.get_page(request.GET.get('page'))
@@ -164,27 +170,6 @@ def products_sold(request):
     return render(request, 'staff/reports/products.html', context)
 
 
-def _export_products_excel(rows):
-    data_rows = [
-        [
-            r['product_unit__product__code'],
-            r['display_name'],
-            r['product_unit__product__category__name'] or '—',
-            r['total_qty'],
-            float(r['total_revenue'] or 0),
-            float(r['total_profit'] or 0),
-            round(float(r['share_percent'] or 0), 2),
-        ]
-        for r in rows
-    ]
-    wb = build_simple_workbook(
-        sheet_title='المنتجات المباعة',
-        headers=['كود الصنف', 'اسم المنتج', 'القسم', 'الكمية المباعة', 'الإيراد (ج.م)', 'الربح (ج.م)', 'نسبة المساهمة %'],
-        rows=data_rows,
-    )
-    return workbook_response(wb, 'biozone_products_sold.xlsx')
-
-
 # =====================================================================
 # 4) تقرير أفضل العملاء
 # =====================================================================
@@ -195,7 +180,7 @@ def top_customers(request):
     rows = rq.top_customers_report(item_qs)
 
     if request.GET.get('export') == 'excel':
-        return _export_customers_excel(rows)
+        return _start_report_export(request, 'customers')
 
     paginator = Paginator(rows, STAFF_LIST_PAGE_SIZE)
     page_obj = paginator.get_page(request.GET.get('page'))
@@ -203,26 +188,6 @@ def top_customers(request):
     context = {'rows': page_obj, 'page_obj': page_obj}
     context.update(filters.filter_context())
     return render(request, 'staff/reports/customers.html', context)
-
-
-def _export_customers_excel(rows):
-    data_rows = [
-        [
-            r['display_name'],
-            float(r['total_revenue'] or 0),
-            r['invoices_count'],
-            float(r['avg_invoice'] or 0),
-            timezone.localtime(r['last_purchase']).strftime('%Y-%m-%d') if r['last_purchase'] else '—',
-        ]
-        for r in rows
-    ]
-    wb = build_simple_workbook(
-        sheet_title='أفضل العملاء',
-        headers=['العميل', 'إجمالي المشتريات (ج.م)', 'عدد الفواتير', 'متوسط الفاتورة (ج.م)', 'آخر عملية شراء'],
-        rows=data_rows,
-        column_width=24,
-    )
-    return workbook_response(wb, 'biozone_top_customers.xlsx')
 
 
 # =====================================================================
@@ -236,23 +201,11 @@ def profit_report(request):
     monthly_series = rq.monthly_profit_series(months=12)
 
     if request.GET.get('export') == 'excel':
-        return _export_profit_excel(monthly_series, totals)
+        return _start_report_export(request, 'profit')
 
     context = {'totals': totals, 'monthly_series': monthly_series}
     context.update(filters.filter_context())
     return render(request, 'staff/reports/profit.html', context)
-
-
-def _export_profit_excel(monthly_series, totals):
-    data_rows = [[m['label'], float(m['revenue']), float(m['profit'])] for m in monthly_series]
-    data_rows.append(['', '', ''])
-    data_rows.append(['الإجمالي (الفترة المختارة)', float(totals['revenue']), float(totals['profit'])])
-    wb = build_simple_workbook(
-        sheet_title='تقرير الأرباح',
-        headers=['الشهر', 'الإيرادات (ج.م)', 'الربح الإجمالي (ج.م)'],
-        rows=data_rows,
-    )
-    return workbook_response(wb, 'biozone_profit_report.xlsx')
 
 
 # =====================================================================
@@ -274,7 +227,7 @@ def stagnant_products(request):
     rows = rq.stagnant_products_report(days=days, category_id=category_id, product_id=product_id)
 
     if request.GET.get('export') == 'excel':
-        return _export_stagnant_excel(rows)
+        return _start_report_export(request, 'stagnant')
 
     paginator = Paginator(rows, STAFF_LIST_PAGE_SIZE)
     page_obj = paginator.get_page(request.GET.get('page'))
@@ -314,7 +267,7 @@ def supply_suggestions(request):
         items_qs = items_qs.filter(product__category_id=category_id)
 
     if request.GET.get('export') == 'excel':
-        return _export_supply_suggestions_excel(items_qs)
+        return _start_report_export(request, 'supply_suggestions')
 
     paginator = Paginator(items_qs, STAFF_LIST_PAGE_SIZE)
     page_obj = paginator.get_page(request.GET.get('page'))
@@ -329,41 +282,77 @@ def supply_suggestions(request):
     })
 
 
-def _export_supply_suggestions_excel(items_qs):
-    data_rows = []
-    for item in items_qs:
-        data_rows.append([
-            item.product.code,
-            item.product.display_name,
-            item.product.category.name if item.product.category_id else '—',
-            item.available_display,
-            item.min_quantity,
-            item.suggested_reorder_display,
-        ])
-    wb = build_simple_workbook(
-        sheet_title='مقترحات التوريد',
-        headers=['كود الصنف', 'اسم المنتج', 'القسم', 'المتاح حاليًا', 'الحد الأدنى (بالقطعة)', 'الكمية المقترح توريدها'],
-        rows=data_rows,
-        column_width=24,
-    )
-    return workbook_response(wb, 'biozone_supply_suggestions.xlsx')
+@perm_required('staff.view_reports')
+def reports_export_processing(request):
+    """
+    شاشة انتظار بينما build_report_export_task شغالة في celery-worker —
+    نظير export_products_processing (staff/views/products/import_export.py)
+    بالظبط، بس لتقارير قسم التقارير بدل تصدير المنتجات (منقول من mg —
+    راجع staff/report_export.py لتفاصيل النقل الكامل).
+    """
+    from staff.report_export import report_export_status_cache_key
+
+    cached = cache.get(report_export_status_cache_key(request.user.pk))
+    if cached is None:
+        return redirect('staff:reports_dashboard')
+    if cached.get('status') == 'failed':
+        cache.delete(report_export_status_cache_key(request.user.pk))
+        messages.error(request, cached.get('error_message') or 'حصل خطأ أثناء بناء ملف التقرير.')
+        return redirect('staff:reports_dashboard')
+    return render(request, 'staff/reports/export_processing.html')
 
 
-def _export_stagnant_excel(rows):
-    data_rows = []
-    for r in rows:
-        product = r['product']
-        data_rows.append([
-            product.code,
-            product.display_name,
-            product.category.name if product.category_id else '—',
-            r['inventory'].quantity_display,
-            timezone.localtime(r['last_sale']).strftime('%Y-%m-%d') if r['last_sale'] else 'لم يُبع من قبل',
-        ])
-    wb = build_simple_workbook(
-        sheet_title='منتجات راكدة',
-        headers=['كود الصنف', 'اسم المنتج', 'القسم', 'الرصيد الحالي', 'آخر عملية بيع'],
-        rows=data_rows,
-        column_width=24,
-    )
-    return workbook_response(wb, 'biozone_stagnant_products.xlsx')
+@perm_required('staff.view_reports')
+def reports_export_status(request):
+    """
+    Endpoint خفيف بتستدعيه شاشة الانتظار (export_processing.html) كل
+    ثانيتين — بيتأكد هل build_report_export_task خلصت (نتيجة موجودة في
+    الكاش) ولا لسه، وهل خلصت بنجاح ولا بفشل. نفس فكرة
+    export_products_status بالظبط (products/tasks.py).
+    """
+    from django.http import JsonResponse
+
+    from staff.report_export import report_export_status_cache_key
+    cached = cache.get(report_export_status_cache_key(request.user.pk))
+    return JsonResponse({
+        'ready': cached is not None,
+        'failed': bool(cached and cached.get('status') == 'failed'),
+    })
+
+
+@perm_required('staff.view_reports')
+def reports_export_download(request):
+    """
+    بتقرا ملف تصدير التقرير الجاهز من القرص المشترك (build_report_export_task
+    حفظه هناك) وترجعه للموظف كتحميل، وبعدين تمسحه فورًا — رابط استخدام واحد.
+    نظير export_products_download بالظبط (products/views، منقول من mg).
+    """
+    from staff.report_export import report_export_status_cache_key
+    cached = cache.get(report_export_status_cache_key(request.user.pk))
+    if not cached:
+        messages.error(request, 'مفيش ملف تصدير جاهز حاليًا (ممكن يكون اتحمّل قبل كده أو انتهت صلاحيته). جرّب تاني.')
+        return redirect('staff:reports_dashboard')
+
+    if cached.get('status') != 'done':
+        messages.error(request, cached.get('error_message') or 'حصل خطأ أثناء تجهيز ملف التقرير.')
+        cache.delete(report_export_status_cache_key(request.user.pk))
+        return redirect('staff:reports_dashboard')
+
+    file_path = cached['file_path']
+    if not os.path.exists(file_path):
+        messages.error(request, 'ملف التقرير مش موجود على السيرفر (اتحمّل قبل كده على الأرجح). جرّب تاني.')
+        cache.delete(report_export_status_cache_key(request.user.pk))
+        return redirect('staff:reports_dashboard')
+
+    with open(file_path, 'rb') as f:
+        data = f.read()
+    try:
+        os.remove(file_path)
+    except OSError:
+        pass
+    cache.delete(report_export_status_cache_key(request.user.pk))
+
+    response = HttpResponse(data, content_type=XLSX_CONTENT_TYPE)
+    download_filename = cached.get('download_filename', 'biozone_report.xlsx')
+    response['Content-Disposition'] = f'attachment; filename="{download_filename}"'
+    return response

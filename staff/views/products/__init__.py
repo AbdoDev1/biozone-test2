@@ -49,7 +49,6 @@ from .relations import (
 )
 
 from .import_export import (
-    IMPORT_SESSION_KEY,
     IMPORT_ERRORS_SESSION_KEY,
     IMPORT_MAX_FILE_SIZE_MB,
     IMPORT_MAX_ROWS,
@@ -61,6 +60,8 @@ from .import_export import (
     import_products_status,
     import_products_review,
     import_products_confirm,
+    import_products_commit_status,
+    import_products_commit_result,
     import_products_errors,
     download_template,
     export_products,
@@ -96,7 +97,6 @@ __all__ = [
     'company_add',
     'company_edit',
     'company_delete',
-    'IMPORT_SESSION_KEY',
     'IMPORT_ERRORS_SESSION_KEY',
     'IMPORT_MAX_FILE_SIZE_MB',
     'IMPORT_MAX_ROWS',
@@ -108,6 +108,8 @@ __all__ = [
     'import_products_status',
     'import_products_review',
     'import_products_confirm',
+    'import_products_commit_status',
+    'import_products_commit_result',
     'import_products_errors',
     'download_template',
     'export_products',

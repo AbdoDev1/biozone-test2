@@ -1,0 +1,59 @@
+{% extends 'staff/base.html' %}
+{% block title %}جاري حفظ الاستيراد — Biozone{% endblock %}
+{% block breadcrumbs %}
+{% load staff_ui %}
+<nav class="flex items-center text-sm text-gray-500 mb-4">
+    {% crumb "الرئيسية" "staff:dashboard" %}
+    {% crumb "المنتجات" "staff:product_list" %}
+    {% crumb "استيراد" "staff:import_products" %}
+    {% crumb "جاري الحفظ" %}
+</nav>
+{% endblock %}
+
+{% block content %}
+
+<!-- الحفظ الفعلي بقى بيحصل دلوقتي في الخلفية (Celery worker) — مش في نفس
+     طلب الـ HTTP زي قبل كده (ده اللي كان بيقفل web-staff طول مدة حفظ
+     دفعة كبيرة). نفس نمط import_processing.html بالظبط، بس هنا بتعمل
+     polling على import_products_commit_status، وأول ما النتيجة تجهز
+     بتحوّل لـimport_products_commit_result عشان تتحوّل لـmessages حقيقية. -->
+<div class="bg-white rounded-2xl shadow-sm p-8 max-w-lg mx-auto text-center">
+    <h1 class="text-xl font-bold text-gray-800 mb-2">جاري حفظ الأصناف…</h1>
+    <p class="text-sm text-gray-500 mb-6">
+        بنحفظ صفوف الملف في الخلفية. الصفحة هتحوّلك تلقائيًا أول ما تخلص —
+        تقدر تسيب الصفحة دي وترجع تاني، هتلاقي إشعار في الجرس لما تجهز.
+    </p>
+    <div class="h-1.5 w-full bg-primary-100 rounded-full overflow-hidden">
+        <div class="h-full w-1/3 bg-primary-500 rounded-full animate-import-progress"></div>
+    </div>
+</div>
+
+<style>
+    @keyframes import-progress-slide {
+        0% { transform: translateX(-100%); }
+        100% { transform: translateX(300%); }
+    }
+    .animate-import-progress {
+        animation: import-progress-slide 1.1s ease-in-out infinite;
+    }
+</style>
+
+<script>
+    (function () {
+        var statusUrl = "{% url 'staff:import_products_commit_status' %}";
+        var resultUrl = "{% url 'staff:import_products_commit_result' %}";
+        var poll = setInterval(function () {
+            fetch(statusUrl, { headers: { 'X-Requested-With': 'XMLHttpRequest' } })
+                .then(function (res) { return res.json(); })
+                .then(function (data) {
+                    if (data.ready) {
+                        clearInterval(poll);
+                        window.location.href = resultUrl;
+                    }
+                })
+                .catch(function () { /* هيحاول تاني في الدورة الجاية */ });
+        }, 2000);
+    })();
+</script>
+
+{% endblock %}

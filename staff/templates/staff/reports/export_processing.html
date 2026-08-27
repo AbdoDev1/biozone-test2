@@ -4,21 +4,22 @@
 {% load staff_ui %}
 <nav class="flex items-center text-sm text-gray-500 mb-4">
     {% crumb "الرئيسية" "staff:dashboard" %}
-    {% crumb "المنتجات" "staff:product_list" %}
+    {% crumb "التقارير" "staff:reports_dashboard" %}
     {% crumb "جاري التجهيز" %}
 </nav>
 {% endblock %}
 
 {% block content %}
 
-<!-- ملف التصدير بيتبني دلوقتي في الخلفية (Celery worker) — مش في نفس
-     طلب الـ HTTP زي قبل كده (راجع ADR-001 في biozone-tech-debt-plan.md).
-     نفس تصميم import_processing.html بالظبط: polling كل ثانيتين على
-     export_products_status، وأول ما الملف يجهز بتحوّل تلقائيًا لرابط
+<!-- ملف تصدير التقرير بيتبني دلوقتي في الخلفية (Celery worker) — مش في
+     نفس طلب الـ HTTP زي قبل كده (منقول من mg، بعد ما نفس التحويلة اتعملت
+     لتصدير المنتجات في Phase 1 — راجع staff/report_export.py). نفس تصميم
+     products/export_processing.html بالظبط: polling كل ثانيتين على
+     reports_export_status، وأول ما الملف يجهز بتحوّل تلقائيًا لرابط
      التحميل. لو الموظف قفل التاب أو غيّر صفحة، هيلاقي إشعار في الجرس
-     برضه (راجع products/tasks.py:export_products_task). -->
+     برضه (راجع staff/tasks.py:build_report_export_task). -->
 <div class="bg-white rounded-2xl shadow-sm p-8 max-w-lg mx-auto text-center">
-    <h1 class="text-xl font-bold text-gray-800 mb-2">جاري تجهيز ملف التصدير…</h1>
+    <h1 class="text-xl font-bold text-gray-800 mb-2">جاري تجهيز ملف التقرير…</h1>
     <p class="text-sm text-gray-500 mb-6">
         بنجهّز ملف الإكسل في الخلفية. الصفحة هتبدأ التحميل
         تلقائيًا أول ما يخلص — تقدر تسيب الصفحة دي وترجع تاني، هتلاقي
@@ -41,8 +42,8 @@
 
 <script>
     (function () {
-        var statusUrl = "{% url 'staff:export_products_status' %}";
-        var downloadUrl = "{% url 'staff:export_products_download' %}";
+        var statusUrl = "{% url 'staff:reports_export_status' %}";
+        var downloadUrl = "{% url 'staff:reports_export_download' %}";
         var poll = setInterval(function () {
             fetch(statusUrl, { headers: { 'X-Requested-With': 'XMLHttpRequest' } })
                 .then(function (res) { return res.json(); })

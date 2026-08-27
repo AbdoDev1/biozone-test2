@@ -225,6 +225,14 @@ services:
   # Celery worker — بينفذ المهام الطويلة في الخلفية (حاليًا: قراءة ملف
   # استيراد المنتجات) بعيدًا تمامًا عن أي worker بيخدم طلبات HTTP. ده
   # الحل الجذري لمشكلة الـ 504 (راجع products/tasks.py).
+  # Celery worker — بيشغّل استيراد/تصدير ملفات المنتجات (products/tasks.py)،
+  # تصدير التقارير (staff/tasks.py — build_report_export_task)، ونشر
+  # الإشعارات الجماعية (notifications/tasks.py). النسخ الاحتياطي
+  # (run_manual_backup_task) بقى على worker منفصل (celery-worker-backup
+  # تحت، منقول من mg) — قبل كده كانت كل المهام دي بتتصف في طابور واحد على
+  # نفس الـworker، فنسخة احتياطية طويلة كانت ممكن تأخر استيراد/تصدير
+  # موظف تاني. CELERY_QUEUES مش متحددة هنا فبترجع لـ'celery' الافتراضي
+  # (راجع entrypoint.sh) — يعني الطابور ده بس، مش 'backup'.
   celery-worker:
     <<: *web-base
     environment:
@@ -252,6 +260,30 @@ services:
     mem_limit: 400m
     cpus: 0.5
 
+  # Worker منفصل مخصص لطابور 'backup' بس (run_manual_backup_task) — راجع
+  # التعليق فوق وconfig/settings.py (CELERY_TASK_ROUTES) لسبب الفصل
+  # الكامل (منقول من mg). المهمة نفسها I/O-bound غالبًا (pg_dump ثم
+  # gzip — راجع staff/services/backup.py)، مش CPU-heavy زي بناء ملف إكسل
+  # كبير، فحد موارد أقل من celery-worker الأساسي كفاية. حجم صغير عمدًا
+  # (نفس فلسفة pgbouncer/nginx في الملف ده) — الهدف عزل تأثير النسخ
+  # الاحتياطي مش تشغيله بسرعة أكبر.
+  celery-worker-backup:
+    <<: *web-base
+    environment:
+      <<: *web-base-environment
+      SERVICE_ROLE: celery
+      CELERY_QUEUES: backup
+      CELERY_CONCURRENCY: 1
+    depends_on:
+      pgbouncer:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      web-store:
+        condition: service_healthy
+    mem_limit: 128m
+    cpus: 0.25
+
   nginx:
     image: nginx:alpine
     restart: unless-stopped
@@ -267,6 +299,13 @@ services:
         condition: service_healthy
       web-staff:
         condition: service_healthy
+    # كانت الخدمة الوحيدة من غير حدود موارد (كل خدمة تانية في الملف ده
+    # محدودة) — منقول من mg. استهلاك nginx كـ reverse proxy بسيط عادةً،
+    # بس غياب الحد كان بيسيبها الاستثناء الوحيد اللي ممكن ياخد موارد بلا
+    # سقف وقت أي مشكلة (حلقة تكرار في config غلط مثلاً). قيمة متواضعة زي
+    # pgbouncer.
+    mem_limit: 128m
+    cpus: 0.25
 
 volumes:
   postgres_data:

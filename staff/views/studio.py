@@ -9,6 +9,7 @@ from django.http import JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.views.decorators.http import require_POST
 
+from accounts.concurrency import thread_unbound
 from accounts.models import User
 from staff.permissions import perm_required
 from staff.utils import redirect_with_qs
@@ -208,6 +209,7 @@ def landing_settings_save(request):
     return redirect('staff:studio')
 
 
+@thread_unbound
 @perm_required('studio.add_studioimage')
 @require_POST
 def studio_upload(request):
@@ -217,6 +219,18 @@ def studio_upload(request):
     فشل التحقق (امتداد غير مسموح أو حجم أكبر من المسموح)، بيتجاهل هو بس
     مع رسالة تحذير — باقي الدفعة بتكمل عادي (نفس نمط التعامل مع أخطاء
     الصفوف في استيراد الإكسل).
+
+    @thread_unbound (المرحلة 5 من خطة نقل تعديلات mg — finding مستقل،
+    راجع accounts/concurrency.py للتفاصيل الكاملة): StudioImage.save()
+    بتولّد thumbnail بـPillow لكل صورة (CPU-bound)، بالتتابع لكل الصور في
+    نفس الطلب، بدون أي حد أقصى لعددها — كان بيقفل worker web-staff بالكامل
+    لمدة الرفعة، وأي طلب تاني واقع على نفس الـworker process (شاشات لوحة
+    الموظفين التانية، حتى polling الاستيراد) بيستنى وراه. الديكوريتور ده
+    لازم يكون **الأعلى/الأخارجي** (فوق perm_required وrequire_POST) —
+    مش تحته — عشان Django يكتشف إن الـview النهائية اللي بيسجّلها في
+    urls.py هي فعلًا async (thread_unbound.wrapped)، والدالتين التانيتين
+    (sync عاديتين) بيتنفذوا جوه الـthread pool thread زي الكود الأصلي
+    بالظبط، بلا أي تغيير في سلوكهم.
     """
     files = request.FILES.getlist('images')
     if not files:

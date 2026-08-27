@@ -4,8 +4,6 @@
 أعلى الملف) في الأماكن اللي بتستخدمها من apps تانية، عشان نتفادى أي
 circular import بين orders/accounts/notifications.
 """
-import threading
-
 from accounts.models import User
 
 from .models import Notification
@@ -13,6 +11,12 @@ from .models import Notification
 # أقصى عدد إشعارات بيتم الاحتفاظ بيه لكل مستخدم — أي حاجة أقدم من كده
 # بتتمسح تلقائيًا أول ما تتخطى الحد ده (راجع _trim_old أسفل).
 MAX_NOTIFICATIONS_PER_USER = 100
+
+# حجم أقصى للدفعة اللي notify_all_clients بتبعتها لـfanout_trim_and_push_task
+# (notifications/tasks.py) دفعة واحدة — بدل ما تبعت كل العملاء النشطين في
+# task واحدة غير محدودة، بتتقسم لدفعات بالحجم ده. راجع docstring
+# notify_all_clients تحت وnotifications/tasks.py لتفاصيل كاملة.
+NOTIFY_FANOUT_CHUNK_SIZE = 300
 
 
 def _push_realtime(recipient_id):
@@ -41,44 +45,6 @@ def _push_realtime(recipient_id):
         )
     except Exception:
         pass
-
-
-def _fanout_trim_and_push(recipient_ids):
-    """
-    بتشغّل التقليم (trim) وبث الإشعار الفوري (push) لكل مستلم في قائمة
-    recipient_ids، في Thread منفصل بالخلفية — عشان الطلب الأصلي (زي تأكيد
-    استيراد إكسل مع "إرسال إشعار للعملاء") يرجع استجابته فورًا بعد ما
-    الإشعارات اتسجلت في قاعدة البيانات فعلاً (bulk_create قبل نداء الدالة
-    دي)، من غير ما يستنى مية+ استعلام trim ومية+ نداء WebSocket واحد واحد
-    بالتتابع.
-
-    ده كان هو السبب الحقيقي وراء شاشة "جاري الحفظ..." اللي بتفضل شغالة
-    لفترة طويلة بعد تأكيد استيراد إكسل مع عدد كبير من العملاء النشطين،
-    رغم إن حفظ الأصناف وتسجيل الإشعارات كانا خلصوا فعلاً من زمان — الوقت
-    الضائع كله كان بعد كده، في نفس الطلب، قبل ما الصفحة تقدر ترجع تحويلة
-    للمستخدم.
-
-    Thread منفصل (مش async_to_sync عادي) عشان قاعدة بيانات Postgres مش
-    بتتحمّل نفس الـ connection من تريدات مختلفة — كل تريد بياخد connection
-    خاصة بيه تلقائيًا من Django، وبنقفلها بنفسنا في النهاية (connections.close_all)
-    عشان ما تتسربش. best-effort بالكامل زي _push_realtime نفسها: لو التريد
-    فشل أو اتقطع مفيش أي تأثير على الإشعارات نفسها (متسجلة بالفعل)، غاية
-    اللي ممكن يتأخر هو التقليم أو البوش اللحظي (وله fallback عادي: الـ
-    polling الدوري بتاع الجرس).
-    """
-    def _run():
-        from django.db import connections
-        try:
-            for recipient_id in recipient_ids:
-                try:
-                    _trim_old(recipient_id)
-                except Exception:
-                    pass
-                _push_realtime(recipient_id)
-        finally:
-            connections.close_all()
-
-    threading.Thread(target=_run, daemon=True).start()
 
 
 def _trim_old(recipient_id, keep=MAX_NOTIFICATIONS_PER_USER):
@@ -156,10 +122,13 @@ def notify_all_clients(kind, title, message='', url_name='', url_kwargs=None):
     التسجيل نفسه (bulk_create) بيحصل هنا بشكل متزامن (عشان الإشعار يبقى
     موجود في قاعدة البيانات فورًا لحظة رجوع الدالة — أي كود بينادي الدالة
     دي ويتأكد بعدها من وجود الإشعار هيلاقيه موجود). لكن التقليم (trim)
-    والبوش اللحظي (WebSocket) لكل عميل بيتأجّلوا لـ Thread بالخلفية عبر
-    _fanout_trim_and_push، لأنهم هما اللي بيبقوا بطيئين مع عدد عملاء كبير
-    (استعلام + نداء WebSocket منفصل لكل عميل) — راجع تعليق الدالة دي
-    لتفاصيل الباج اللي كان بيحصل قبل كده.
+    والبوش اللحظي (WebSocket) لكل عميل بيتأجّلوا لـCelery (راجع
+    notifications/tasks.py — fanout_trim_and_push_task)، مقسّمين لدفعات
+    من NOTIFY_FANOUT_CHUNK_SIZE مستلم — قبل كده كانت الدالة دي بتشغّل
+    threading.Thread(daemon=True) خام بتلف على كل عميل نشط دفعة واحدة من
+    غير حد أقصى ولا retry ولا أي أثر لو فشلت (منقول من mg — راجع
+    docstring notifications/tasks.py لتفاصيل المشاكل الثلاث اللي كانت فيها
+    والحل الكامل).
     """
     clients = User.objects.filter(role=User.Role.CLIENT, status=User.Status.ACTIVE, is_active=True)
     notifications = [
@@ -171,5 +140,8 @@ def notify_all_clients(kind, title, message='', url_name='', url_kwargs=None):
     ]
     if notifications:
         Notification.objects.bulk_create(notifications)
-        _fanout_trim_and_push([n.recipient_id for n in notifications])
+        from .tasks import fanout_trim_and_push_task
+        recipient_ids = [n.recipient_id for n in notifications]
+        for i in range(0, len(recipient_ids), NOTIFY_FANOUT_CHUNK_SIZE):
+            fanout_trim_and_push_task.delay(recipient_ids[i:i + NOTIFY_FANOUT_CHUNK_SIZE])
     return notifications

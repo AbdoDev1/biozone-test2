@@ -4,6 +4,7 @@ from django.contrib import messages
 from .forms import RegisterForm, LoginForm
 from .models import User
 from .security import is_login_blocked, record_failed_login, reset_login_attempts, LOGIN_BLOCKED_MESSAGE
+from .concurrency import thread_unbound
 
 
 def register_view(request):
@@ -27,7 +28,23 @@ def register_view(request):
     return render(request, 'accounts/register.html', {'form': form})
 
 
+@thread_unbound
 def login_view(request):
+    """
+    راجع accounts/concurrency.py — thread_unbound لسبب الديكوريتور ده
+    وتفاصيل التصميم الكامل.
+
+    ملحوظة مهمة (اتصلحت بعد تجربة فاشلة أولى): الـview هنا **sync عادي
+    100%** عمدًا — مش async def. أول محاولة كانت حوّلت الـview نفسها
+    لـasync واستخدمت request.auser() بدل request.user، لكن render() بتنفّذ
+    كل الـcontext processors المسجّلة في TEMPLATES (auth, cart_count,
+    new_arrivals_count, staff_nav, notifications) تلقائيًا، وهي بتلمس
+    request.user وبتعمل queries متزامنة عادية — جوه async def view حقيقية
+    ده بيرمي SynchronousOnlyOperation فورًا (وبيظهر للمستخدم كـ500، مش
+    واضح السبب من برة). الحل الأسلم: نسيب الـview كلها sync زي ما هي
+    بالظبط، ونخليها تتنفذ في thread pool عام (thread_sensitive=False) من
+    مستوى الـdecorator بدل ما نحول محتواها الداخلي.
+    """
     # لو موظف حاول يدخل من هنا نرفضه
     if request.user.is_authenticated:
         if request.user.role in ['ADMIN', 'WAREHOUSE']:

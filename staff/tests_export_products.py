@@ -4,7 +4,7 @@
 staff/views/products/import_export.py:export_products/_status/_download.
 
 نمط الاختبار هنا مطابق لمشكلة استيراد الإكسل الأصلية: مفيش أي اختبار
-موجود قبل كده يغطي export_products_task ولا parse_import_workbook_task
+موجود قبل كده يغطي export_products_task ولا parse_import_file
 (كل الاختبارات الحالية بتغطي منطق الخدمة نفسه، مش طبقة الـ Celery فوقه)،
 فده أول اختبار للنمط ده في المشروع. استدعاء الـ task كفنكشن عادي (مش
 .delay()) بيشغّله متزامن فورًا زي أي كود Python عادي — مفيش داعي لـ
