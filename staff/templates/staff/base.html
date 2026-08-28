@@ -5,11 +5,11 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>{% block title %}Biozone{% endblock %}</title>
-    <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 24 24%22><rect width=%2224%22 height=%2224%22 rx=%226%22 fill=%22%231d4ed8%22/><text x=%2212%22 y=%2217%22 font-size=%2214%22 font-family=%22sans-serif%22 font-weight=%22bold%22 fill=%22white%22 text-anchor=%22middle%22>B</text></svg>">
+    <title>{% block title %}MG Pharmacy{% endblock %}</title>
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 24 24%22><rect width=%2224%22 height=%2224%22 rx=%226%22 fill=%22%230D2B5B%22/><text x=%2212%22 y=%2217%22 font-size=%2214%22 font-family=%22sans-serif%22 font-weight=%22bold%22 fill=%22%23E0B74E%22 text-anchor=%22middle%22>M</text></svg>">
     <link rel="apple-touch-icon" href="{% static 'icons/apple-touch-icon.png' %}">
     <link rel="manifest" href="{% static 'manifest.json' %}">
-    <meta name="theme-color" content="#1d4ed8">
+    <meta name="theme-color" content="#0D2B5B">
     <link rel="stylesheet" href="{% static 'css/fonts.css' %}">
     <link rel="stylesheet" href="{% static 'css/tailwind.css' %}">
     <!-- htmx: بيفعّل hx-boost على كل لوحة الموظفين (راجع body تحت) — التنقل
@@ -103,13 +103,13 @@
 </div>
 {% with url_name=request.resolver_match.url_name %}
 <!-- Topbar -->
-<header id="staff-topbar" class="fixed top-0 right-0 left-0 h-14 bg-primary-600 shadow z-30 flex items-center px-4 gap-4">
+<header class="fixed top-0 right-0 left-0 h-14 bg-primary-600 shadow z-30 flex items-center px-4 gap-4">
     <button @click="sidebarOpen = !sidebarOpen" class="text-primary-100 hover:text-white">
         <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"/>
         </svg>
     </button>
-    <a href="{% url 'staff:dashboard' %}" class="font-bold text-white text-lg hover:text-primary-100">Biozone</a>
+    <a href="{% url 'staff:dashboard' %}" class="font-bold text-white text-lg hover:text-primary-100">MG Pharmacy</a>
     <div class="mr-auto flex items-center gap-4">
         {% include 'notifications/partials/bell.html' %}
         <span class="text-sm text-primary-100">{{ request.user.username }}</span>
@@ -129,7 +129,7 @@
 <!-- Sidebar — ثابت وظاهر في كل صفحات لوحة الموظف بما فيها الرئيسية،
      مقسّم لأقسام وظيفية (نفس عناصر staff/navigation.py وصلاحياتها
      بالظبط، مجمّعة بصريًا بس عن طريق فلتر nav_section). -->
-<aside id="staff-sidebar" class="fixed top-14 bottom-0 right-0 bg-white shadow-md z-20 transition-all duration-300 overflow-y-auto overflow-x-hidden"
+<aside class="fixed top-14 bottom-0 right-0 bg-white shadow-md z-20 transition-all duration-300 overflow-y-auto overflow-x-hidden"
        :class="sidebarOpen ? 'w-64 md:w-56' : 'w-0'">
     <nav class="p-4 space-y-5 text-sm w-64 md:w-56">
         {% for item in staff_nav_items %}
@@ -176,7 +176,7 @@
     </nav>
 </aside>
 <!-- Main Content -->
-<main id="staff-main" class="pt-14 transition-all duration-300"
+<main class="pt-14 transition-all duration-300"
       :class="sidebarOpen ? 'md:mr-56' : 'mr-0'">
     {% if messages %}
     <div class="fixed top-16 left-1/2 -translate-x-1/2 z-50 space-y-2">
@@ -210,30 +210,22 @@
      بيرمي "Cannot read properties of null (reading 'addEventListener')"
      ويوقف تنفيذ باقي السكريبت كله (وأي إعدادات htmx بعده) من غير أي
      رسالة خطأ واضحة في الصفحة نفسها. اتنقل هنا آخر <body> عشان
-     document.body يبقى موجود فعليًا وقت التنفيذ.
-
-     تحديث مهم: السكريبت ده لسه قاعد جوه <body>، ومع hx-boost="true"
-     full-page navigation، htmx بيستبدل innerHTML بتاع <body> بالكامل بمحتوى
-     الصفحة الجديدة — يعني السكريبت ده بيتشال وينضاف تاني (كعنصر <script>
-     جديد) مع كل تنقّل، وhtmx بينفّذه تاني (allowScriptTags). document.body
-     نفسه (العنصر) بيفضل هو هو (مش بيتغيّر)، فأي addEventListener اتسجل
-     عليه من أول مرة بيفضل شغال ومتراكم فوق أي نسخة جديدة بتتسجل. النتيجة:
-     (1) `const pageProgress` بيتحاول يتعرّف تاني في نفس الـ global scope
-     فيرمي "Identifier already declared" (SyntaxError بيوقف باقي السكريبت
-     كله، حتى الأسطر اللي قبله)، و(2) الأخطر: مستمع 'htmx:afterSettle' اللي
-     بينادي Alpine.initTree() بيتسجل من تاني مع كل تنقّل ناجح (قبل ما يوصل
-     لسطر pageProgress اللي بيوقف الباقي)، فبيتراكم أكتر من مستمع واحد،
-     ويبقى Alpine.initTree() بينادى أكتر من مرة على نفس العناصر مع كل
-     afterSettle لاحقة — وده اللي بيكسر scope بتاع x-for في جرس الإشعارات
-     (notifications/partials/bell.html: "n is not defined") ويخلي
-     this.$el.querySelector('[name=csrfmiddlewaretoken]') يرجع null أحيانًا
-     في markAllRead(). نفس الحل المستخدم أصلاً في bell.html
-     (window.__biozoneNotifState) لنفس السبب بالظبط: حارس بسيط يضمن إن كل
-     الكود ده (تعريف المتغيرات + تسجيل كل الـ event listeners) بيتنفذ مرة
-     واحدة بس طول عمر الصفحة، مهما اتكرر التنقّل بالـ htmx boost. -->
+     document.body يبقى موجود فعليًا وقت التنفيذ. -->
     <script>
-      if (!window.__biozoneBaseInit) {
-        window.__biozoneBaseInit = true;
+        // حارس تنفيذ مرة واحدة بس طول عمر الجلسة: hx-boost بيستبدل innerHTML
+        // بتاع <body> في كل تنقل (مش عنصر <body> أو window نفسهم — دول
+        // بيفضلوا موجودين طول الوقت)، وده معناه إن السكريبت ده (لأنه جوه
+        // <body>) كان بيتنفذ من جديد مع كل صفحة يوصلها المستخدم عن طريق رابط
+        // boosted. من غير الحارس ده، كل addEventListener تحت (على
+        // document.body أو window، اللي مش بيتشالوا مع أي swap) كان بيتسجّل
+        // من جديد فوق النسخة اللي قبله بدل ما يستبدلها — بعد كذا تنقل كان
+        // بيبقى فيه عشرات النسخ من نفس الـlistener شغالة مع بعض على نفس
+        // الحدث (Alpine.initTree بيتنفذ مرات مكررة، شريط التقدّم وتعطيل
+        // الـtransitions بيضاربوا بعض)، وده اللي كان بيبان كتقطيع/تهنيج
+        // تدريجي في التنقل والسايدبار كل ما الجلسة تطول من غير ريفريش كامل.
+        if (!window.__staffBaseScriptsInitialized) {
+        window.__staffBaseScriptsInitialized = true;
+
         // htmx بيحتاج يبعت CSRF token في header يدويًا لأي POST مُعمول
         // boost (زي فورم تسجيل الخروج)، لأنه مش فورم عادي بيتقرا من
         // الـ input المخفي وقت الإرسال — بنقرأه من كوكي csrftoken.
@@ -251,9 +243,12 @@
         // "-" لـ camelCase تلقائيًا (scan-result → scanResult)، فالاستماع
         // المباشر باسم الحدث الحرفي هنا هو الطريقة الموثوقة الوحيدة. (2)
         // body بيفضل موجود عبر أي boosted swap (عكس الفورم اللي بيتجدد مع
-        // كل تنقل)، فمفيش داعي تعيد الربط بعد كل مرة. الحدث بيتفلتر هنا
-        // بمجرد التأكد إن حقل الإدخال (scan-input) موجود فعلاً في الصفحة
-        // الحالية، فمفيش أي أثر على صفحات تانية.
+        // كل تنقل)، فمفيش داعي تعيد الربط بعد كل مرة. عناصر input/hint
+        // بتتقرا من جوه الهاندلر نفسه (مش خارجه) عشان تفضل تجيب العنصر
+        // الفعلي الموجود في الصفحة الحالية، مش نسخة قديمة اتشالت من الـDOM
+        // بعد أي swap لاحق. الحدث بيتفلتر هنا بمجرد التأكد إن حقل الإدخال
+        // (scan-input) موجود فعلاً في الصفحة الحالية، فمفيش أي أثر على
+        // صفحات تانية.
         document.body.addEventListener('scan-result', (evt) => {
             const input = document.getElementById('scan-input');
             const hint = document.getElementById('scan-input-hint');
@@ -322,9 +317,14 @@
         });
         // شريط تحميل رفيع فوق الصفحة (زي يوتيوب) بيظهر فورًا وقت الضغط على أي
         // رابط ويكبر تدريجيًا لحد ما الرد يوصل، عشان تبقى في إشارة بصرية
-        // فورية إن حاجة بتحصل من لحظة الضغط، مش بس فيد في الآخر.
-        const pageProgress = document.getElementById('page-progress');
+        // فورية إن حاجة بتحصل من لحظة الضغط، مش بس فيد في الآخر. العنصر
+        // بيتقرا من جوه كل هاندلر (مش متسرّب برّه مرة واحدة) عشان لو
+        // #page-progress اتستبدل بعنصر جديد بعد أي swap لاحق (هو جوه <body>
+        // زي باقي الصفحة)، الهاندلر يشتغل على العنصر الحالي مش نسخة قديمة
+        // اتشالت من الـDOM.
         document.body.addEventListener('htmx:beforeRequest', () => {
+            const pageProgress = document.getElementById('page-progress');
+            if (!pageProgress) return;
             pageProgress.style.transition = 'none';
             pageProgress.style.transform = 'scaleX(0)';
             pageProgress.style.opacity = '1';
@@ -333,6 +333,8 @@
             pageProgress.style.transform = 'scaleX(0.85)';
         });
         document.body.addEventListener('htmx:afterSettle', () => {
+            const pageProgress = document.getElementById('page-progress');
+            if (!pageProgress) return;
             pageProgress.style.transition = 'transform 0.2s ease-out';
             pageProgress.style.transform = 'scaleX(1)';
             setTimeout(() => {
@@ -343,60 +345,62 @@
 
         // شريط حالة النسخ الاحتياطي — بيستقبل الحدث المبعوت من bell.html
         // (شوف notifications/partials/bell.html: أي رسالة WebSocket نوعها
-        // مش 'new_notification' بتتبعت هنا كـ CustomEvent).
-        (function () {
+        // مش 'new_notification' بتتبعت هنا كـ CustomEvent). عناصر الشريط
+        // (bar/icon/text) بتتقرا من جوه هاندلر الحدث نفسه (مش متسرّبة برّه
+        // مرة واحدة) لنفس سبب #page-progress فوق — هي كمان جوه <body> وبتتبدّل
+        // مع أي swap لاحق.
+        const canManageBackup = {{ perms.staff.manage_backup|yesno:"true,false" }};
+        const backupManualUrl = "{% url 'staff:backup_manual' %}";
+        let backupHideTimer = null;
+
+        const BACKUP_SPINNER = '<svg class="w-3.5 h-3.5 animate-spin" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2.5"><path stroke-linecap="round" d="M12 3a9 9 0 100 18"/></svg>';
+        const BACKUP_CHECK = '<svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="3"><path stroke-linecap="round" stroke-linejoin="round" d="M4.5 12.75l6 6 9-13.5"/></svg>';
+
+        window.addEventListener('biozone:ws-message', function (e) {
             const bar = document.getElementById('backup-status-bar');
             const icon = document.getElementById('backup-status-icon');
             const text = document.getElementById('backup-status-text');
-            if (!bar) return;
-            const canManageBackup = {{ perms.staff.manage_backup|yesno:"true,false" }};
-            const backupManualUrl = "{% url 'staff:backup_manual' %}";
-            let hideTimer = null;
-
-            const SPINNER = '<svg class="w-3.5 h-3.5 animate-spin" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2.5"><path stroke-linecap="round" d="M12 3a9 9 0 100 18"/></svg>';
-            const CHECK = '<svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="3"><path stroke-linecap="round" stroke-linejoin="round" d="M4.5 12.75l6 6 9-13.5"/></svg>';
+            if (!bar || !icon || !text) return;
 
             function showBar() {
-                clearTimeout(hideTimer);
+                clearTimeout(backupHideTimer);
                 bar.classList.remove('opacity-0', 'pointer-events-none');
             }
             function hideBar() {
                 bar.classList.add('opacity-0', 'pointer-events-none');
             }
 
-            window.addEventListener('biozone:ws-message', function (e) {
-                const data = e.detail;
-                if (data.event !== 'backup_status') return;
+            const data = e.detail;
+            if (data.event !== 'backup_status') return;
 
-                if (data.status === 'running') {
-                    icon.className = 'shrink-0 w-6 h-6 rounded-full flex items-center justify-center text-white bg-primary-600';
-                    icon.innerHTML = SPINNER;
-                    text.textContent = data.message;
-                    showBar();
-                } else if (data.status === 'success') {
-                    icon.className = 'shrink-0 w-6 h-6 rounded-full flex items-center justify-center text-white bg-emerald-500';
-                    icon.innerHTML = CHECK;
-                    text.textContent = data.message;
-                    showBar();
-                    hideTimer = setTimeout(hideBar, 4000);
-                } else if (data.status === 'error') {
-                    // الفشل مش هيفضل شريط ثابت في الشاشة — بيتحول لتوست
-                    // عادي بيختفي لوحده (نفس أسلوب باقي إشعارات النظام)،
-                    // مع رابط لصفحة إعادة المحاولة لمين عنده صلاحية بس.
-                    hideBar();
-                    showToast(
-                        data.message,
-                        {
-                            type: 'error',
-                            duration: 10000,
-                            actionHref: canManageBackup ? backupManualUrl : undefined,
-                            actionLabel: canManageBackup ? 'صفحة النسخ الاحتياطي' : undefined,
-                        }
-                    );
-                }
-            });
-        })();
-      } // end of window.__biozoneBaseInit guard
+            if (data.status === 'running') {
+                icon.className = 'shrink-0 w-6 h-6 rounded-full flex items-center justify-center text-white bg-primary-600';
+                icon.innerHTML = BACKUP_SPINNER;
+                text.textContent = data.message;
+                showBar();
+            } else if (data.status === 'success') {
+                icon.className = 'shrink-0 w-6 h-6 rounded-full flex items-center justify-center text-white bg-emerald-500';
+                icon.innerHTML = BACKUP_CHECK;
+                text.textContent = data.message;
+                showBar();
+                backupHideTimer = setTimeout(hideBar, 4000);
+            } else if (data.status === 'error') {
+                // الفشل مش هيفضل شريط ثابت في الشاشة — بيتحول لتوست
+                // عادي بيختفي لوحده (نفس أسلوب باقي إشعارات النظام)،
+                // مع رابط لصفحة إعادة المحاولة لمين عنده صلاحية بس.
+                hideBar();
+                showToast(
+                    data.message,
+                    {
+                        type: 'error',
+                        duration: 10000,
+                        actionHref: canManageBackup ? backupManualUrl : undefined,
+                        actionLabel: canManageBackup ? 'صفحة النسخ الاحتياطي' : undefined,
+                    }
+                );
+            }
+        });
+        } // إغلاق حارس window.__staffBaseScriptsInitialized
     </script>
 </body>
 </html>

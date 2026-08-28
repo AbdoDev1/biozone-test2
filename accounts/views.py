@@ -14,15 +14,18 @@ def register_view(request):
             client = form.save()
             from notifications.services import notify_staff_with_perm
             from notifications.models import Notification
+            # مش "طلب" محتاج موافقة تاني (Phase 2 غيّرت الـ status لـ
+            # ACTIVE فورًا) — الإشعار هنا بقى إعلامي بس للموظفين إن عميل
+            # جديد انضم، مش دعوة يراجعوا/يوافقوا على حاجة.
             notify_staff_with_perm(
                 'accounts.change_clientprofile',
                 kind=Notification.Kind.NEW_CLIENT_REGISTRATION,
-                title='طلب تسجيل عميل جديد',
-                message=f'العميل {client.username} قدّم طلب تسجيل وبانتظار المراجعة.',
+                title='عميل جديد',
+                message=f'العميل {client.username} سجّل حساب جديد وبدأ يستخدم الموقع.',
                 url_name='staff:clients',
             )
-            messages.success(request, 'تم إرسال طلب التسجيل، انتظر موافقة الإدارة.')
-            return redirect('accounts:pending')
+            messages.success(request, 'تم إنشاء حسابك بنجاح، تقدر تسجّل دخول دلوقتي.')
+            return redirect('accounts:login')
     else:
         form = RegisterForm()
     return render(request, 'accounts/register.html', {'form': form})
@@ -68,13 +71,15 @@ def login_view(request):
                 password=form.cleaned_data['password'],
             )
             if user:
-                # موظف حاول يدخل من بوابة العملاء — رسالة عامة موحّدة
-                # (نفس رسالة "بيانات خاطئة") عشان منسربش إن اليوزرنيم ده
-                # حساب موظف لحد بيجرّب يوزرنيمات عشوائي. مفيش عقاب هنا
-                # لأن الباسورد كان فعلًا صح.
+                # موظف بيسجّل دخول من بوابة العملاء (نفس صفحة اللوجين
+                # الموحّدة) — بنسمحله يدخل عادي ونوجّهه للوحة التحكم
+                # الخاصة بيه بدل ما نرفضه. حالة PENDING/REJECTED خاصة
+                # بالعملاء بس (الموظف status بتاعه بيتحدد ACTIVE تلقائيًا
+                # وقت الإنشاء من شاشة إضافة موظف)، فمينفعش نطبّقها عليه.
                 if user.role in ['ADMIN', 'WAREHOUSE']:
-                    messages.error(request, 'اسم المستخدم أو كلمة المرور غير صحيحة.')
-                    return render(request, 'accounts/login.html', {'form': form})
+                    reset_login_attempts(request, username)
+                    login(request, user)
+                    return redirect('staff:dashboard')
 
                 if user.status == User.Status.PENDING:
                     reset_login_attempts(request, username)

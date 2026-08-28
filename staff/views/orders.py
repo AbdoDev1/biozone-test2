@@ -5,6 +5,7 @@ from django.contrib import messages
 from django.core.exceptions import ValidationError
 from django.core.paginator import Paginator
 from django.db import transaction
+from django.db.models import CharField, Value
 from django.shortcuts import render, redirect, get_object_or_404
 from django.urls import reverse
 
@@ -20,41 +21,102 @@ ITEMS_PER_DETAIL_PAGE = 20  # ترقيم صفحات جدول الأصناف في
 
 @perm_required('orders.view_order')
 def order_list(request):
+    """
+    ملحوظة أداء مهمة (قبل التعديل ده كان بيجيب *كل* الطلبات + *كل* أصنافها
+    + *كل* إشعارات المرتجع من أول يوم في الميموري في كل مرة الصفحة دي
+    بتتفتح، بس عشان يعرض 30 صف. مع نمو عدد الطلبات ده كان بيبقى أبطأ
+    وأبطأ تدريجيًا (ولحد timeout فعلي). الحل: الترتيب والـpagination
+    بيحصلوا على مستوى قاعدة البيانات (مش Python list + sort يدوي)،
+    والـselect_related/prefetch_related التقيلة (items، client، إلخ)
+    بتتحصر بس على أقصى 30 صف (صفوف الصفحة الحالية)، مش كل الجدول.
+    """
     status = request.GET.get('status', '')
-    orders = Order.objects.select_related('client').prefetch_related('items')
 
     if status:
-        orders = orders.filter(status=status)
+        # تبويب فلترة بحالة معينة: طلبات بس (بدون مرتجعات، زي الأول) —
+        # الترتيب والـpagination بيحصلوا على مستوى قاعدة البيانات مباشرة
+        # (LIMIT/OFFSET)، مش بجلب كل الطلبات المطابقة في الميموري الأول.
+        ordered_qs = Order.objects.filter(status=status).order_by('-created_at')
+        paginator = Paginator(ordered_qs, STAFF_LIST_PAGE_SIZE)
+        page_obj = paginator.get_page(request.GET.get('page'))
 
-    # إشعارات المرتجع بتتحط في نفس قائمة الطلبات كصف مستقل (رقم الإشعار،
-    # العميل، القيمة، التاريخ) — من غير تفاصيل الأصناف المرتجعة (دي موجودة
-    # في صفحة طباعة الإشعار نفسها لو الستاف عايز يفتحها). بتظهر بس في تبويب
-    # "الكل" لأن حالات الطلب (PENDING/CONFIRMED/...) مش منطبقة على إشعار مرتجع.
-    rows = [{'kind': 'order', 'obj': order, 'created_at': order.created_at} for order in orders]
-    if not status:
-        reversals = InvoiceReversal.objects.select_related(
-            'invoice__order__client',
-        )
-        rows += [
-            {'kind': 'return', 'obj': reversal, 'created_at': reversal.created_at}
-            for reversal in reversals
+        # جلب التفاصيل الكاملة (select_related/prefetch_related) بس
+        # لطلبات الصفحة الحالية (30 كحد أقصى)، مش كل الطلبات المطابقة للفلتر.
+        page_ids_in_order = [order.pk for order in page_obj]
+        orders_by_id = {
+            order.pk: order
+            for order in Order.objects.filter(pk__in=page_ids_in_order)
+            .select_related('client')
+            .prefetch_related('items')
+        }
+        rows = [
+            {'kind': 'order', 'obj': orders_by_id[pk], 'created_at': orders_by_id[pk].created_at}
+            for pk in page_ids_in_order
         ]
+    else:
+        # تبويب "الكل": طلبات + إشعارات مرتجع مرتبين زمنيًا مع بعض (شوف
+        # التعليق الأصلي تحت). عشان نرتب وندي صفحة من غير ما نجيب الجدولين
+        # كاملين، بنعمل union خفيف (id + kind + created_at بس، من غير أي
+        # select_related/prefetch_related تقيلة) على مستوى قاعدة البيانات،
+        # ونطبّق الـpagination عليه — وبعدين نجيب التفاصيل الكاملة بس
+        # لصفوف الصفحة الحالية (30 كحد أقصى)، مش كل السجلات.
+        #
+        # إشعارات المرتجع بتتحط في نفس قائمة الطلبات كصف مستقل (رقم الإشعار،
+        # العميل، القيمة، التاريخ) — من غير تفاصيل الأصناف المرتجعة (دي موجودة
+        # في صفحة طباعة الإشعار نفسها لو الستاف عايز يفتحها). بتظهر بس في تبويب
+        # "الكل" لأن حالات الطلب (PENDING/CONFIRMED/...) مش منطبقة على إشعار مرتجع.
+        #
+        # .order_by() فاضي هنا مهم: InvoiceReversal.Meta.ordering معرّف
+        # افتراضيًا (['-created_at']) وبيتسرّب كـORDER BY جوه كل استعلام
+        # فرعي من استعلامات الـunion لو ماتعملهوش reset صراحة — وده ممنوع
+        # قواعديًا في استعلامات UNION (SQLite بيرفضه بخطأ صريح، وPostgres
+        # بيرفض الشكل ده كمان إلا لو ملفوف بقوسين مع LIMIT). الترتيب
+        # الفعلي للنتيجة النهائية بيتحدد بـ.order_by('-created_at') على
+        # الـcombined queryset تحت، مش هنا.
+        orders_idx = Order.objects.order_by().annotate(
+            kind=Value('order', output_field=CharField()),
+        ).values('id', 'created_at', 'kind')
+        reversals_idx = InvoiceReversal.objects.order_by().annotate(
+            kind=Value('return', output_field=CharField()),
+        ).values('id', 'created_at', 'kind')
+        combined = orders_idx.union(reversals_idx).order_by('-created_at')
 
-    rows.sort(key=lambda row: row['created_at'], reverse=True)
+        paginator = Paginator(combined, STAFF_LIST_PAGE_SIZE)
+        page_obj = paginator.get_page(request.GET.get('page'))
+        page_index_rows = list(page_obj)
 
-    paginator = Paginator(rows, STAFF_LIST_PAGE_SIZE)
-    page_obj = paginator.get_page(request.GET.get('page'))
+        page_order_ids = [r['id'] for r in page_index_rows if r['kind'] == 'order']
+        page_reversal_ids = [r['id'] for r in page_index_rows if r['kind'] == 'return']
+
+        orders_by_id = {
+            order.pk: order
+            for order in Order.objects.filter(pk__in=page_order_ids)
+            .select_related('client')
+            .prefetch_related('items')
+        }
+        reversals_by_id = {
+            reversal.pk: reversal
+            for reversal in InvoiceReversal.objects.filter(pk__in=page_reversal_ids)
+            .select_related('invoice__order__client')
+        }
+
+        rows = []
+        for r in page_index_rows:
+            if r['kind'] == 'order':
+                rows.append({'kind': 'order', 'obj': orders_by_id[r['id']], 'created_at': r['created_at']})
+            else:
+                rows.append({'kind': 'return', 'obj': reversals_by_id[r['id']], 'created_at': r['created_at']})
 
     # وسم كل طلب في الصفحة الحالية باستعلام واحد بدل ما نستدعي tags_for
     # لكل صف على حدة (N+1) — الوسوم بتتعرض صغيرة تحت رقم الطلب في الجدول.
-    order_ids_on_page = [row['obj'].pk for row in page_obj if row['kind'] == 'order']
+    order_ids_on_page = [row['obj'].pk for row in rows if row['kind'] == 'order']
     tags_by_order_id = tags_for_many(Order, order_ids_on_page)
-    for row in page_obj:
+    for row in rows:
         if row['kind'] == 'order':
             row['obj'].tag_list = tags_by_order_id.get(row['obj'].pk, [])
 
     context = {
-        'rows': page_obj,
+        'rows': rows,
         'page_obj': page_obj,
         'selected_status': status,
         'status_choices': Order.Status.choices,
