@@ -5,11 +5,11 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>{% block title %}MG Pharmacy{% endblock %}</title>
-    <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 24 24%22><rect width=%2224%22 height=%2224%22 rx=%226%22 fill=%22%230D2B5B%22/><text x=%2212%22 y=%2217%22 font-size=%2214%22 font-family=%22sans-serif%22 font-weight=%22bold%22 fill=%22%23E0B74E%22 text-anchor=%22middle%22>M</text></svg>">
+    <title>{% block title %}Biozone{% endblock %}</title>
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 24 24%22><rect width=%2224%22 height=%2224%22 rx=%226%22 fill=%22%231d4ed8%22/><text x=%2212%22 y=%2217%22 font-size=%2214%22 font-family=%22sans-serif%22 font-weight=%22bold%22 fill=%22white%22 text-anchor=%22middle%22>B</text></svg>">
     <link rel="apple-touch-icon" href="{% static 'icons/apple-touch-icon.png' %}">
     <link rel="manifest" href="{% static 'manifest.json' %}">
-    <meta name="theme-color" content="#0D2B5B">
+    <meta name="theme-color" content="#1d4ed8">
     <link rel="stylesheet" href="{% static 'css/fonts.css' %}">
     <link rel="stylesheet" href="{% static 'css/tailwind.css' %}">
     <!-- htmx: بيفعّل hx-boost على كل لوحة الموظفين (راجع body تحت) — التنقل
@@ -109,7 +109,7 @@
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"/>
         </svg>
     </button>
-    <a href="{% url 'staff:dashboard' %}" class="font-bold text-white text-lg hover:text-primary-100">MG Pharmacy</a>
+    <a href="{% url 'staff:dashboard' %}" class="font-bold text-white text-lg hover:text-primary-100">Biozone</a>
     <div class="mr-auto flex items-center gap-4">
         {% include 'notifications/partials/bell.html' %}
         <span class="text-sm text-primary-100">{{ request.user.username }}</span>
